@@ -34,6 +34,7 @@ body.touch .zone.show { transform: translate(0, 0); }
 .who { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 44px); right: 10px; width: min(200px, calc(100% - 20px)); max-height: 45vh; overflow: auto; padding: 6px 10px; border-width: 2px; border-radius: 14px; font-size: 13px; z-index: 4; }
 .who[hidden] { display: none; }
 .who div { display: flex; align-items: center; gap: 6px; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who small.play { color: #e0557a; font-weight: 900; }
 .who i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
 .who small { color: var(--ink-soft); }
 .board { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(460px, calc(100% - 28px)); max-height: calc(100% - 150px); overflow: auto; padding: 16px 20px; z-index: 6; transition: transform .22s; }
@@ -55,6 +56,8 @@ body.touch .board.show { transform: translate(0, 0); }
 .board .subtabs button { padding: 4px 18px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
 .board .subtabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
 .board h3:first-child { margin-top: 0; }
+.board .ver { text-align: center; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.board .news { list-style: none; margin: 4px 0 0; padding: 0; font-size: 15px; color: var(--ink-soft); }
 .toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 14px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
 .toast.show { opacity: 1; }
 </style>
@@ -66,7 +69,7 @@ body.touch .board.show { transform: translate(0, 0); }
   <div style="display:flex;gap:8px;align-items:center"><span class="chip box" id="online">單機</span><button class="btn" id="acctBtn">登入</button><button class="btn" id="avatarBtn">外觀</button></div>
 </div>
 <div class="pad"><div class="stick" id="stick"><div class="knob" id="knob"></div></div></div>
-<div class="keys box"><b>WASD / 方向鍵</b> 移動，走進房間開玩，站上左下地墊看總積分</div>
+<div class="keys box"><b>WASD / 方向鍵</b> 移動，走進房間開玩，左下地墊看總積分，右下地墊看布告欄</div>
 <div class="zone box" id="zone">
   <h2 id="zTitle"></h2><p id="zInfo"></p><div class="zstat" id="zStat"></div>
   <button class="btn primary" id="zOnline">加入對戰</button>
@@ -75,6 +78,7 @@ body.touch .board.show { transform: translate(0, 0); }
 </div>
 <div class="who box" id="who" hidden></div>
 <div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
+<div class="board box" id="notice"><h2>布告欄</h2><p>目前版本</p><div class="ver" id="noticeVer">載入中…</div><h3>更新資訊</h3><ul class="news" id="noticeNews"><li>還沒有更新資訊</li></ul></div>
 <div class="toast box" id="toast"></div>
 
 <script type="importmap">
@@ -91,7 +95,7 @@ import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const W = 14, H = 12; // 大廳大小（格），與 apps/worker/worker.js 的 LOBBY 一致
+const W = 18, H = 20; // 大廳大小（格），與 apps/worker/worker.js 的 LOBBY 一致
 const SPEED = 4.2;
 
 /* ---------- Telegram ---------- */
@@ -100,9 +104,11 @@ if (inTelegram) { try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); }
 
 /* ---------- 房間（每款遊戲一間）。新增遊戲：加一筆，並在 deploy/build.mjs 的 GAMES 加同一個 id ---------- */
 const ROOMS = [
-  { id: 'bubble', title: '泡泡碰碰島', blurb: '放水球、炸箱子、撿道具，撐到最後的小傢伙獲勝', color: '#5ab8ff', x0: .6, x1: 4.6, y0: .6, y1: 4.4, path: '/bubble/', art(x) { x.save(); x.translate(-12, 4); x.scale(.9, .9); ITEM_ART.bomb(x); x.restore(); x.save(); x.translate(42, 26); x.scale(.7, .7); ITEM_ART.power(x); x.restore(); } },
-  { id: 'kart', title: '泡泡賽車', blurb: '道具賽或競速賽，3 圈漂移衝線，2–4 人連線', color: '#ff8fab', x0: 5, x1: 9, y0: .6, y1: 4.4, path: '/kart/', art(x) { GAME_ART.kart(x); } },
-  { id: 'artillery', title: '泡泡砲戰', blurb: '3 對 3 輪流砲擊，2–6 人，電腦遊玩', color: '#4cd68a', x0: 9.4, x1: 13.4, y0: .6, y1: 4.4, path: '/artillery/', art(x) { GAME_ART.artillery(x); } },
+  { id: 'bubble', title: '泡泡碰碰島', blurb: '放水球、炸箱子、撿道具，撐到最後的小傢伙獲勝', color: '#5ab8ff', x0: .8, x1: 4.8, y0: .8, y1: 4.6, path: '/bubble/', art(x) { x.save(); x.translate(-12, 4); x.scale(.9, .9); ITEM_ART.bomb(x); x.restore(); x.save(); x.translate(42, 26); x.scale(.7, .7); ITEM_ART.power(x); x.restore(); } },
+  { id: 'kart', title: '泡泡賽車', blurb: '道具賽或競速賽，3 圈漂移衝線，2–4 人連線', color: '#ff8fab', x0: 7, x1: 11, y0: .8, y1: 4.6, path: '/kart/', art(x) { GAME_ART.kart(x); } },
+  { id: 'artillery', title: '泡泡砲戰', blurb: '3 對 3 輪流砲擊，2–6 人，電腦遊玩', color: '#4cd68a', x0: 13.2, x1: 17.2, y0: .8, y1: 4.6, path: '/artillery/', art(x) { GAME_ART.artillery(x); } },
+  { id: 'soon1', title: '開發中', blurb: '敬請期待', color: '#c9bcbc', x0: 3.9, x1: 7.9, y0: 8.2, y1: 12, soon: true },
+  { id: 'soon2', title: '開發中', blurb: '敬請期待', color: '#c9bcbc', x0: 10.1, x1: 14.1, y0: 8.2, y1: 12, soon: true },
 ];
 
 /* ---------- three.js ---------- */
@@ -141,7 +147,7 @@ for (const r of ROOMS) { // 每間：底板 + 兩根門柱 + 橫樑 + 招牌
 }
 
 /* ---------- 總積分看板：地墊顯示前 3 名；站上去跳出完整排行 ---------- */
-const BOARD = { x0: .6, x1: 4.6, y0: 8.6, y1: 11.25 }; // 地墊範圍，也是觸發區：站上去跳出完整排行
+const BOARD = { x0: 1.2, x1: 5.2, y0: 15, y1: 17.65 }, NOTICE = { x0: 12.8, x1: 16.8, y0: 15, y1: 17.65 }; // 地墊範圍，也是觸發區：站上去跳出完整排行
 let boardData = null;
 const boardCv = document.createElement('canvas'); boardCv.width = 512; boardCv.height = 340;
 const boardTex = new THREE.CanvasTexture(boardCv); boardTex.colorSpace = THREE.SRGBColorSpace;
@@ -159,11 +165,29 @@ function drawBoard() {
   });
   boardTex.needsUpdate = true;
 }
-{ // 平鋪在地上的地墊：俯視看得清楚，也不會擋到後面的東西
-  const cxB = (BOARD.x0 + BOARD.x1) / 2, cyB = (BOARD.y0 + BOARD.y1) / 2, w = BOARD.x1 - BOARD.x0, d = BOARD.y1 - BOARD.y0;
+function placeMat(R, tex) { // 平鋪在地上的地墊：俯視看得清楚，也不會擋到後面的東西
+  const cxB = (R.x0 + R.x1) / 2, cyB = (R.y0 + R.y1) / 2, w = R.x1 - R.x0, d = R.y1 - R.y0;
   const rim = new THREE.Mesh(new THREE.PlaneGeometry(w + .24, d + .24), new THREE.MeshBasicMaterial({ color: 0x3b2f2f })); rim.rotation.x = -Math.PI / 2; rim.position.set(wx(cxB), .045, wz(cyB)); root.add(rim);
-  const mat = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: boardTex, transparent: true })); mat.rotation.x = -Math.PI / 2; mat.position.set(wx(cxB), .05, wz(cyB)); root.add(mat);
-  drawBoard();
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); mat.rotation.x = -Math.PI / 2; mat.position.set(wx(cxB), .05, wz(cyB)); root.add(mat);
+}
+placeMat(BOARD, boardTex); drawBoard();
+
+/* ---------- 布告欄：地墊顯示目前版本；站上去跳出版本與更新資訊 ---------- */
+let buildId = null;
+const noticeCv = document.createElement('canvas'); noticeCv.width = 512; noticeCv.height = 340;
+const noticeTex = new THREE.CanvasTexture(noticeCv); noticeTex.colorSpace = THREE.SRGBColorSpace;
+function drawNotice() {
+  const x = noticeCv.getContext('2d'); x.clearRect(0, 0, 512, 340);
+  x.beginPath(); x.roundRect(8, 8, 496, 324, 34); x.fillStyle = '#fffdf8'; x.fill(); x.lineWidth = 10; x.strokeStyle = INK; x.stroke();
+  x.fillStyle = INK; x.textBaseline = 'middle'; x.textAlign = 'center'; x.font = '900 46px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('布告欄', 256, 58);
+  x.font = '700 30px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('目前版本', 256, 150);
+  x.font = '900 52px sans-serif'; x.fillText(buildId || '載入中…', 256, 220);
+  x.font = '700 26px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('站上來看更新資訊', 256, 288);
+  noticeTex.needsUpdate = true;
+}
+placeMat(NOTICE, noticeTex); drawNotice();
+async function loadNotice() {
+  try { const r = await fetch('/version', { cache: 'no-store' }); if (r.ok) { buildId = (await r.json()).v || null; drawNotice(); $('noticeVer').textContent = buildId || '無法取得'; } } catch { $('noticeVer').textContent = '無法取得'; }
 }
 async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
@@ -249,6 +273,19 @@ ring.rotation.x = -Math.PI / 2; ring.position.y = .04; root.add(ring);
 function spawn(avatar, name) { const c = makeCritter(avatar); if (name) addNameTag(c, name); root.add(c.root); return c; }
 function setMeAvatar(a) { me.avatar = a; if (me.c) root.remove(me.c.root); me.c = spawn(a); net.send({ t: 'look', color: a.color, ear: a.ear }); }
 
+let playTex = null;
+function setPlaying(c, on) { // 遊戲中：名字上方的小牌子（共用同一張貼圖）
+  if (!on) { if (c.playTag) c.playTag.visible = false; return; }
+  if (c.playTag) { c.playTag.visible = true; return; }
+  if (!playTex) {
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const x = cv.getContext('2d');
+    x.beginPath(); x.roundRect(40, 8, 176, 48, 24); x.fillStyle = '#ff8fab'; x.fill(); x.lineWidth = 6; x.strokeStyle = INK; x.stroke();
+    x.font = '900 30px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff'; x.fillText('遊戲中', 128, 33);
+    playTex = new THREE.CanvasTexture(cv); playTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: playTex, transparent: true, depthTest: false }));
+  sp.scale.set(1.2, .3, 1); sp.position.y = 2.15; sp.renderOrder = 11; c.root.add(sp); c.playTag = sp;
+}
 const others = new Map(); // id -> { c, x, y, tx, ty, f }
 const net = { ws: null, tries: 0, me: null, lastX: 0, lastY: 0,
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
@@ -275,7 +312,7 @@ let lastWho = [];
 function renderWho(players = lastWho) {
   lastWho = players; const el = $('who'); el.hidden = !whoOpen || !players.length; if (el.hidden) return;
   const list = [...players].sort((a, b) => (b.id === net.me) - (a.id === net.me) || a.name.localeCompare(b.name));
-  el.innerHTML = list.map(p => `<div><i style="background:${esc(p.color)}"></i>${esc(p.name)}${p.id === net.me ? ' <small>（你）</small>' : ''}${String(p.id).startsWith('g:') ? ' <small>訪客</small>' : ''}</div>`).join('');
+  el.innerHTML = list.map(p => `<div><i style="background:${esc(p.color)}"></i>${esc(p.name)}${p.id === net.me ? ' <small>（你）</small>' : ''}${String(p.id).startsWith('g:') ? ' <small>訪客</small>' : ''}${p.st === 'play' ? ' <small class="play">遊戲中</small>' : ''}</div>`).join('');
 }
 function onNet(m) {
   if (m.t === 'hello') net.me = m.you;
@@ -286,7 +323,7 @@ function onNet(m) {
       if (p.id === net.me) continue; seen.add(p.id);
       let o = others.get(p.id);
       if (!o || o.key !== p.color + p.ear) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear }, p.name); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key: p.color + p.ear }; others.set(p.id, o); }
-      o.tx = p.x; o.ty = p.y; o.f = p.f;
+      o.tx = p.x; o.ty = p.y; o.f = p.f; setPlaying(o.c, p.st === 'play');
     }
     for (const [id, o] of others) if (!seen.has(id)) { root.remove(o.c.root); others.delete(id); }
   }
@@ -317,12 +354,14 @@ function showZone(r) {
   $('zone').classList.add('show');
 }
 function hideZone() { zoneRoom = null; $('zone').classList.remove('show'); }
+// 離開大廳進遊戲前先通知大廳，讓其他人看到「遊戲中」；留一點時間讓訊息送出
+function enterGame(r, url) { net.send({ t: 'playing', game: r.id }); setTimeout(() => { location.href = url; }, 150); }
 $('zOnline').onclick = async () => {
-  const path = zoneRoom?.path; if (!path) return;
+  const r = zoneRoom; if (!r?.path) return;
   if (!ID) { ID = await openLogin({ soloLabel: '取消' }); if (!ID) return; renderAcct(); }
-  location.href = path + '?mode=online';
+  enterGame(r, r.path + '?mode=online');
 };
-$('zSolo').onclick = () => { if (zoneRoom?.path) location.href = zoneRoom.path + '?mode=solo'; };
+$('zSolo').onclick = () => { if (zoneRoom?.path) enterGame(zoneRoom, zoneRoom.path + '?mode=solo'); };
 
 let toastT = 0;
 function toast(t, ms = 1800) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), ms); }
@@ -354,6 +393,8 @@ function tick(now) {
   else { dwell = 0; if (zoneRoom) hideZone(); }
   const atBoard = inRect(BOARD, me.x, me.y), bEl = $('board');
   if (atBoard && !bEl.classList.contains('show')) { bEl.classList.add('show'); loadBoard(); if (boardTab !== 'total') loadGames(); } else if (!atBoard && bEl.classList.contains('show')) bEl.classList.remove('show');
+  const atNotice = inRect(NOTICE, me.x, me.y), nEl = $('notice');
+  if (atNotice && !nEl.classList.contains('show')) { nEl.classList.add('show'); loadNotice(); } else if (!atNotice && nEl.classList.contains('show')) nEl.classList.remove('show');
   renderer.render(scene, camera);
 }
 
@@ -382,7 +423,7 @@ $('avatarBtn').onclick = async () => { const a = await openAvatarPicker({ initia
   renderAcct();
   const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '所有遊戲都會用這個外觀，之後可以按右上角「外觀」更換。' });
   setMeAvatar(a); requestAnimationFrame(tick);
-  loadBoard(); setInterval(loadBoard, 30000);
+  loadBoard(); setInterval(loadBoard, 30000); loadNotice();
   if (ID) connect(); else $('online').textContent = '單機';
 })();
 $('online').onclick = async () => {

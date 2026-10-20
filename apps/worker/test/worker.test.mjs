@@ -141,6 +141,21 @@ test('lobby: look validates color/ear; leaving removes the player; idle tick sen
   await L.msg(b, { t: 'ping', at: 7 }); assert.deepEqual(b.out.at(-1), { t: 'pong', at: 7 });
 });
 
+test('lobby: a player who enters a game stays visible as playing, then clears on return or expiry', async () => {
+  const L = fakeLobby(), a = L.connect('1', 'Alice'), b = L.connect('2', 'Bob');
+  await L.msg(a, { t: 'playing', game: 'nope' }); assert.equal(a.att.playing, undefined, 'unknown game ignored');
+  await L.msg(a, { t: 'playing', game: 'kart' });
+  a.readyState = 3; await L.room.webSocketClose(a); L.room.tick();
+  const ghost = b.out.findLast(m => m.t === 'snap').players.find(q => q.id === '1');
+  assert.equal(ghost.st, 'play'); assert.equal(ghost.x, 10);
+  const back = L.connect('1', 'Alice'); L.room.tick();
+  assert.equal(b.out.findLast(m => m.t === 'snap').players.filter(q => q.id === '1').length, 1, 'returning player replaces the ghost');
+  assert.equal(b.out.findLast(m => m.t === 'snap').players.find(q => q.id === '1').st, undefined);
+  await L.msg(back, { t: 'playing', game: 'artillery' }); back.readyState = 3; await L.room.webSocketClose(back);
+  L.adv(LOBBY.GHOST_MS + 1); await L.msg(b, { t: 'look', color: '#a8d8ff', ear: 'fe' }); L.room.tick();
+  assert.deepEqual(b.out.findLast(m => m.t === 'snap').players.map(q => q.id), ['2'], 'ghost expires');
+});
+
 test('bundle: exports the lobby room and serves hub, shared files and game pages', async () => {
   assert.equal(typeof Bundle.LobbyRoom, 'function');
   const env = {}; const get = async path => Bundle.default.fetch(new Request('https://x.test' + path), env);

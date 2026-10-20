@@ -573,9 +573,9 @@ function emptyGameBoard() {
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
-const LOBBY = { W: 14, H: 12, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40 };
+const LOBBY = { W: 18, H: 20, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
 export class LobbyRoom {
-  constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
+  constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
   async fetch(req) {
     const path = new URL(req.url).pathname;
     // /score 只有其他 Durable Object 會呼叫，/record 只有 Worker 驗過單人賽的票才呼叫（公開路由都不轉送這兩個路徑）；/board 是公開唯讀
@@ -690,8 +690,12 @@ export class LobbyRoom {
     this.boardCache = { players: all.length, top: all.slice(0, 20).map((p, i) => ({ rank: i + 1, name: p.name, points: p.points, games: p.games, wins: p.wins })) }; this.boardAt = this.now();
     return this.boardCache;
   }
-  snapshot() { const r3 = v => Math.round(v * 1000) / 1000; return { t: 'snap', players: this.sockets().map(ws => this.who(ws)).filter(p => p.uid).map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, x: r3(p.x), y: r3(p.y), f: r3(p.f) })) }; }
-  onOpen(ws, user) { this.active.set(user.id, this.now()); this.send(ws, { t: 'hello', you: user.id, W: LOBBY.W, H: LOBBY.H }); this.dirty = true; this.ensureTimer(); }
+  snapshot() {
+    const r3 = v => Math.round(v * 1000) / 1000, live = this.sockets().map(ws => this.who(ws)).filter(p => p.uid), ids = new Set(live.map(p => p.uid));
+    const ghosts = [...this.ghosts.values()].filter(g => !ids.has(g.uid));
+    return { t: 'snap', players: [...live, ...ghosts].map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, x: r3(p.x), y: r3(p.y), f: r3(p.f), ...(p.playing ? { st: 'play' } : {}) })) };
+  }
+  onOpen(ws, user) { this.ghosts.delete(user.id); this.active.set(user.id, this.now()); this.send(ws, { t: 'hello', you: user.id, W: LOBBY.W, H: LOBBY.H }); this.dirty = true; this.ensureTimer(); }
   async webSocketMessage(ws, raw) {
     let m; try { m = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)); } catch { return; }
     const a = this.who(ws); if (!a.uid) return;
@@ -707,14 +711,22 @@ export class LobbyRoom {
     } else if (m.t === 'look') {
       this.active.set(a.uid, now);
       if (Core.COLORS.includes(m.color)) a.color = m.color; if (Object.hasOwn(Core.EARS, m.ear)) a.ear = m.ear;
+    } else if (m.t === 'playing') {
+      if (!LOBBY.GAMES.includes(m.game)) return;
+      this.active.set(a.uid, now); a.playing = m.game;
     } else return;
     ws.serializeAttachment(a); this.dirty = true;
   }
-  async webSocketClose(ws) { this.dirty = true; }
+  async webSocketClose(ws) {
+    const a = this.who(ws);
+    if (a.playing && a.uid && !this.ctx.getWebSockets(a.uid).some(w => w !== ws && w.readyState === 1)) this.ghosts.set(a.uid, { ...a, until: this.now() + LOBBY.GHOST_MS });
+    this.dirty = true;
+  }
   async webSocketError(ws) { this.dirty = true; }
   tick() {
     const socks = this.sockets(); if (!socks.length) { this.stopTimer(); return; }
     const now = this.now();
+    for (const [uid, g] of this.ghosts) if (g.until <= now) { this.ghosts.delete(uid); this.dirty = true; }
     for (const ws of socks) {
       const { uid } = this.who(ws); if (!uid) continue;
       if (!this.active.has(uid)) this.active.set(uid, now);

@@ -68,8 +68,9 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 客戶端送出 | `{t:'pos', x, y, f}` | 回報位置與朝向，間隔太短的會被忽略 |
 | 客戶端送出 | `{t:'look', color, ear}` | 換外觀 |
 | 客戶端送出 | `{t:'ping', at}` | 保活 |
+| 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
 | 伺服器送出 | `{t:'hello', you, W, H}` | 連上後第一則，含大廳尺寸 |
-| 伺服器送出 | `{t:'snap', players}` | 所有人的位置 |
+| 伺服器送出 | `{t:'snap', players}` | 所有人的位置；遊戲中的人多一個 `st:'play'` |
 | 伺服器送出 | `{t:'rooms', rooms}` | 各遊戲房間狀態（等待、選地圖、比賽中、結算中） |
 
 ### 掛機踢除

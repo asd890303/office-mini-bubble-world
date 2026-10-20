@@ -659,3 +659,19 @@ test('kart speed records: speed races get their own boards (online and solo, nor
     assert.deepEqual(t('candy').speedHard.map(p => [p.name, p.time]), [['Alice', between]], 'solo speed race against hard computers'); assert.deepEqual(t('candy').hard, []);
   } finally { Date.now = realNow; }
 });
+
+test('kart loadouts: the join message carries shape and perks; bad values are dropped, a later join without them keeps the earlier picks; the race uses them', async () => {
+  const R = fakeRoom(KartRoom);
+  const a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', shape: 'spike', rperk: 'top', iperk: 'lucky' }); await R.msg(b, { t: 'join', shape: 'rocket', rperk: 'fly', iperk: 'power' });
+  await R.msg(a, { t: 'join', color: KartCore.COLORS[2] }); // 只換顏色：車子的選擇不變
+  const [la, lb] = R.room.lobby; assert.deepEqual([la.shape, la.rperk, la.iperk], ['spike', 'top', 'lucky']);
+  assert.deepEqual([lb.shape, lb.rperk, lb.iperk], ['classic', null, 'power'], 'unknown shape and perk are dropped');
+  R.adv(20500); R.tick(); await R.msg(a, { t: 'vote', track: 'candy' }); await R.msg(b, { t: 'vote', track: 'candy' }); R.tick();
+  assert.equal(R.room.phase, 'play'); const [ka, kb] = R.room.game.karts;
+  assert.deepEqual([ka.shape, ka.rperk, ka.iperk, kb.iperk], ['spike', 'top', 'lucky', 'power']);
+  assert.equal(a.out.find(m => m.t === 'start').s.karts[0].shape, 'spike', 'the start snapshot shows everyone the karts');
+  // 單人紀錄的最短時間把極速算進去
+  const candy = KartCore.trackById('candy');
+  assert.ok(Math.abs(kartMinTime(candy) - KartCore.LAPS * candy.T.L / (KartCore.KART.VMAX * KartCore.DRIFT.MULT * KartCore.RACE_PERKS.top.speed)) < 1e-9);
+});

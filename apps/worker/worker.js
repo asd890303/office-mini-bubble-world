@@ -156,8 +156,8 @@ async function handleAuth(req, url, env) {
 /* ---------- 泡泡賽車單人紀錄 ---------- */
 // 單人賽在瀏覽器裡跑，伺服器只能檢查合不合理：開跑時發票（記下賽道與開跑時間），完賽時驗票，
 // 時間不能比開票後真實經過的時間短，也不能比「全程維持漂移加速的極速」跑完還快。通過才交給大廳寫入賽道紀錄（不加總積分）。
-// 競速賽每圈能集到好幾個氮氣（效果和加速鞋一樣 ×1.8），上限改用氮氣的倍率
-export function kartMinTime(track, mode = 'item') { return KartCore.LAPS * track.T.L / (KartCore.KART.VMAX * (mode === 'speed' ? KartCore.ITEMS.shoe.mult : KartCore.DRIFT.MULT)); }
+// 競速賽每圈能集到好幾個氮氣（效果和道具賽的氮氣一樣 ×1.8），上限改用氮氣的倍率；競速能力「極速」的最高速倍率（RACE_PERKS.top.speed）一律算進去
+export function kartMinTime(track, mode = 'item') { return KartCore.LAPS * track.T.L / (KartCore.KART.VMAX * (mode === 'speed' ? KartCore.ITEMS.shoe.mult : KartCore.DRIFT.MULT) * KartCore.RACE_PERKS.top.speed); }
 async function handleKartSolo(req, url, env) {
   const fail = (error, status) => Response.json({ error }, { status, headers: { 'cache-control': 'no-store' } });
   if (req.method !== 'POST') return fail('method', 405);
@@ -408,6 +408,8 @@ export class KartRoom extends GameRoom {
   constructor(ctx, env) { super(ctx, env); this.core = KartCore; this.gameId = 'kart'; this.votes = new Map(); this.modeVotes = new Map(); this.voteEndsAt = 0; this.track = KartCore.TRACKS[0].id; this.mode = 'item'; }
   gamePlayers() { return this.game?.karts || []; }
   newGame(seed) { return this.core.createGame({ seed, humans: this.lobby, bots: false, track: this.track, mode: this.mode }); }
+  // 加入時一起送車子的造型與能力；不合法的欄位不採用，沒送的沿用上次選的
+  join(ws, uid, name, m) { super.join(ws, uid, name, m); const p = this.lobby.find(q => q.uid === uid); if (p && this.phase !== 'play') Object.assign(p, this.core.pickLoadout(m, p)); }
   // 投票：地圖和模式（道具賽／競速賽）分開計票，只算目前在房間名單裡的人
   voteCounts() { const c = {}; for (const t of this.core.TRACKS) c[t.id] = 0; for (const p of this.lobby) { const v = this.votes.get(p.uid); if (v in c) c[v]++; } return c; }
   modeCounts() { const c = {}; for (const id in this.core.MODES) c[id] = 0; for (const p of this.lobby) { const v = this.modeVotes.get(p.uid); if (v in c) c[v]++; } return c; }

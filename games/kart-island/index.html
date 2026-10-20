@@ -226,7 +226,7 @@ let ID = identity();
 const ONLINE = !!ID;
 let mode = ONLINE ? 'online' : 'offline';
 const myName = (ID?.name || tgUser?.first_name || '你').slice(0, 10);
-const setup = { color: Core.COLORS[0], ear: 'be' };
+const setup = { color: Core.COLORS[0], ear: 'be', eye: 'dot' };
 
 /* ---------- 音效 ---------- */
 let muted = store.get('kt-muted') === '1', actx = null;
@@ -363,7 +363,7 @@ function makeKart(d) {
   const seat = new THREE.Mesh(G.box, toon(d.color)); seat.scale.set(.7, .38, .16); seat.position.set(0, .62, -.5); boxOutline(seat, .7, .38, .16); body.add(seat);
   const tire = toon('#4a3b3b');
   for (const [x, z] of [[-.52, .42], [.52, .42], [-.52, -.45], [.52, -.45]]) { const w = blob(G.cyl, tire, .2, .12, .2, 1.15); w.rotation.z = Math.PI / 2; w.position.set(x, .2, z); body.add(w); }
-  const critter = makeCritter({ color: d.color, ear: d.ear }); critter.root.scale.setScalar(.6); critter.root.position.set(0, .42, -.12); body.add(critter.root);
+  const critter = makeCritter({ color: d.color, ear: d.ear, eye: d.eye, body: d.body, blush: d.blush }); critter.root.scale.setScalar(.6); critter.root.position.set(0, .42, -.12); body.add(critter.root);
   if (d.name) { addNameTag(critter, d.name); critter.nameTag.scale.set(3.4, .85, 1); critter.nameTag.position.y = 2.7; } // 車上的角色縮小過，名字放大回來
   const sparks = [];
   for (const s of [-1, 1]) { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0x5ab8ff })); m.scale.setScalar(.14); m.position.set(s * .52, .15, -.75); m.visible = false; body.add(m); sparks.push(m); }
@@ -689,7 +689,7 @@ const bestOf = (id, m = raceMode) => { try { return JSON.parse(store.get(bestKey
 function startOffline(track = Core.TRACKS[0].id) {
   endSeq++;
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer();
-  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], track, diff, mode: raceMode });
+  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }], track, diff, mode: raceMode });
   toast(`${Core.MODES[raceMode].label}：${Core.trackById(track).name}`, 1600);
   soloStart(track);
   acc = 0; prevLocal = null; buf.length = 0;
@@ -700,7 +700,7 @@ $('startBtn').addEventListener('click', () => showVote(null));
 $('soloBtn').addEventListener('click', () => goOffline());
 $('againBtn').addEventListener('click', () => {
   $('endScreen').hidden = true;
-  if (mode === 'online') { net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear }); showLobby(); } else showVote(null);
+  if (mode === 'online') { net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }); showLobby(); } else showVote(null);
 });
 function showEnd(r) {
   playing = false; const me = V?.myId, mine = r.players.find(p => p.id === me);
@@ -809,7 +809,7 @@ function connect() {
 function tryJoin() {
   if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
   const L = net.lobby; if (L && (L.phase === 'play' || L.players.length >= L.max)) return;
-  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear });
+  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
 }
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
@@ -886,7 +886,7 @@ function tick(now) {
 requestAnimationFrame(tick);
 
 /* ---------- 外觀與進場：外觀由大廳設定；沒設定過就先跳選擇視窗 ---------- */
-function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear }); }
+function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; setup.eye = a.eye; setup.body = a.body; setup.blush = a.blush; if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }); }
 async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
 $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
 // 連線對戰：沒有身分就先請玩家選 Telegram 登入或訪客

@@ -35,6 +35,11 @@ body.touch .zone.show { transform: translate(0, 0); }
 .who[hidden] { display: none; }
 .who div { display: flex; align-items: center; gap: 6px; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who small.play { color: #e0557a; font-weight: 900; }
+.who-tip { position: fixed; z-index: 7; width: 148px; padding: 8px 8px 10px; text-align: center; pointer-events: none; }
+.who-tip[hidden] { display: none; }
+.who-tip .slot { width: 132px; height: 132px; margin: 0 auto; border-radius: 50%; background: radial-gradient(circle at 50% 62%, var(--chip) 0 55%, transparent 70%); }
+.who-tip b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who-tip small { display: block; font-size: 12px; color: var(--ink-soft); }
 .who i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
 .who small { color: var(--ink-soft); }
 .board { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(460px, calc(100% - 28px)); max-height: calc(100% - 150px); overflow: auto; padding: 16px 20px; z-index: 6; transition: transform .22s; }
@@ -77,6 +82,7 @@ body.touch .board.show { transform: translate(0, 0); }
   <small id="zNote"></small>
 </div>
 <div class="who box" id="who" hidden></div>
+<div class="who-tip box" id="whoTip" hidden><div class="slot" id="tipSlot"></div><b id="tipName"></b><small id="tipLook"></small></div>
 <div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
 <div class="board box" id="notice"><h2>布告欄</h2><p>目前版本</p><div class="ver" id="noticeVer">載入中…</div><h3>更新資訊</h3><ul class="news" id="noticeNews"><li>還沒有更新資訊</li></ul></div>
 <div class="toast box" id="toast"></div>
@@ -88,7 +94,7 @@ body.touch .board.show { transform: translate(0, 0); }
 import * as THREE from 'three';
 import { toon, G, boxOutline, makeCritter, animateCritter, addNameTag } from '/shared/three-kit.js';
 import { ITEM_ART, GAME_ART, badgeFrame, INK } from '/shared/draw.js';
-import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { loadAppearance, openAvatarPicker, createCritterPreview, EARS, EYES } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
@@ -271,7 +277,7 @@ const me = { x: W / 2, y: H - 1.8, f: 0, c: null, avatar: null, moving: false };
 const ring = new THREE.Mesh(new THREE.RingGeometry(.52, .7, 40), new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = .04; root.add(ring);
 function spawn(avatar, name) { const c = makeCritter(avatar); if (name) addNameTag(c, name); root.add(c.root); return c; }
-function setMeAvatar(a) { me.avatar = a; if (me.c) root.remove(me.c.root); me.c = spawn(a); net.send({ t: 'look', color: a.color, ear: a.ear }); }
+function setMeAvatar(a) { me.avatar = a; if (me.c) root.remove(me.c.root); me.c = spawn(a); net.send({ t: 'look', color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush }); }
 
 let playTex = null;
 function setPlaying(c, on) { // 遊戲中：名字上方的小牌子（共用同一張貼圖）
@@ -292,7 +298,7 @@ const net = { ws: null, tries: 0, me: null, lastX: 0, lastY: 0,
 function connect() {
   const url = location.origin.replace(/^http/, 'ws') + '/lobby/ws?' + ID.query;
   let ws; try { ws = new WebSocket(url); } catch { return; }
-  net.ws = ws; ws.onopen = () => { net.tries = 0; $('online').textContent = '連線中…'; if (me.avatar) net.send({ t: 'look', color: me.avatar.color, ear: me.avatar.ear }); };
+  net.ws = ws; ws.onopen = () => { net.tries = 0; $('online').textContent = '連線中…'; if (me.avatar) net.send({ t: 'look', color: me.avatar.color, ear: me.avatar.ear, eye: me.avatar.eye, body: me.avatar.body, blush: me.avatar.blush }); };
   ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
   ws.onclose = e => {
     if (net.ws !== ws) return;
@@ -308,12 +314,28 @@ function connect() {
 }
 // 在線玩家清單：預設展開，點右上角人數收合（記在這台裝置）。訪客的 id 以 g: 開頭
 let whoOpen = true; try { whoOpen = localStorage.getItem('ombw-who-open') !== '0'; } catch {}
-let lastWho = [];
+let lastWho = [], whoList = [], tipPreview = null, tipId = null;
 function renderWho(players = lastWho) {
   lastWho = players; const el = $('who'); el.hidden = !whoOpen || !players.length; if (el.hidden) return;
   const list = [...players].sort((a, b) => (b.id === net.me) - (a.id === net.me) || a.name.localeCompare(b.name));
-  el.innerHTML = list.map(p => `<div><i style="background:${esc(p.color)}"></i>${esc(p.name)}${p.id === net.me ? ' <small>（你）</small>' : ''}${String(p.id).startsWith('g:') ? ' <small>訪客</small>' : ''}${p.st === 'play' ? ' <small class="play">遊戲中</small>' : ''}</div>`).join('');
+  whoList = list;
+  el.innerHTML = list.map((p, i) => `<div data-i="${i}"><i style="background:${esc(p.color)}"></i>${esc(p.name)}${p.id === net.me ? ' <small>（你）</small>' : ''}${String(p.id).startsWith('g:') ? ' <small>訪客</small>' : ''}${p.st === 'play' ? ' <small class="play">遊戲中</small>' : ''}</div>`).join('');
 }
+// 滑鼠移到在線清單的名字上：旁邊跳出該玩家的外觀預覽（點一下也可以，給觸控裝置）
+function showTip(row) {
+  const p = whoList[Number(row.dataset.i)]; if (!p) return;
+  const tip = $('whoTip'); tipId = p.id;
+  if (!tipPreview) { tipPreview = createCritterPreview(132, { spin: false }); $('tipSlot').append(tipPreview.el); }
+  tipPreview.set({ color: p.color, ear: p.ear, eye: p.eye, body: p.body, blush: p.blush });
+  $('tipName').textContent = p.name; $('tipLook').textContent = `${EARS[p.ear] || ''}・${EYES[p.eye] || ''}`;
+  tip.hidden = false;
+  const r = row.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(8, r.left - w - 10) + 'px'; tip.style.top = Math.max(8, Math.min(innerHeight - h - 8, r.top + r.height / 2 - h / 2)) + 'px';
+}
+function hideTip() { tipId = null; $('whoTip').hidden = true; tipPreview?.stop(); }
+$('who').addEventListener('mouseover', e => { const row = e.target.closest('[data-i]'); if (row) showTip(row); });
+$('who').addEventListener('mouseleave', hideTip);
+$('who').addEventListener('click', e => { const row = e.target.closest('[data-i]'); if (!row) return; if (!$('whoTip').hidden && tipId === whoList[Number(row.dataset.i)]?.id) hideTip(); else showTip(row); });
 function onNet(m) {
   if (m.t === 'hello') net.me = m.you;
   else if (m.t === 'rooms') { const now = Date.now(); roomStatus = m.rooms || {}; for (const st of Object.values(roomStatus)) st.recv = now; }
@@ -322,7 +344,7 @@ function onNet(m) {
     for (const p of m.players) {
       if (p.id === net.me) continue; seen.add(p.id);
       let o = others.get(p.id);
-      if (!o || o.key !== p.color + p.ear) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear }, p.name); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key: p.color + p.ear }; others.set(p.id, o); }
+      if (!o || o.key !== [p.color, p.ear, p.eye, p.body, p.blush].join()) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear, eye: p.eye, body: p.body, blush: p.blush }, p.name); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key: [p.color, p.ear, p.eye, p.body, p.blush].join() }; others.set(p.id, o); }
       o.tx = p.x; o.ty = p.y; o.f = p.f; setPlaying(o.c, p.st === 'play');
     }
     for (const [id, o] of others) if (!seen.has(id)) { root.remove(o.c.root); others.delete(id); }

@@ -135,6 +135,8 @@ test('lobby: look validates color/ear; leaving removes the player; idle tick sen
   const L = fakeLobby(), a = L.connect('1', 'Alice'), b = L.connect('2', 'Bob');
   await L.msg(a, { t: 'look', color: '#a8d8ff', ear: 'fe' }); assert.equal(a.att.color, '#a8d8ff'); assert.equal(a.att.ear, 'fe');
   await L.msg(a, { t: 'look', color: 'red', ear: 'wings' }); assert.equal(a.att.color, '#a8d8ff', 'invalid look ignored'); assert.equal(a.att.ear, 'fe');
+  await L.msg(a, { t: 'look', eye: 'sparkle', body: '#ffe9d6', blush: '#9fd8ff' }); assert.deepEqual([a.att.eye, a.att.body, a.att.blush], ['sparkle', '#ffe9d6', '#9fd8ff']);
+  await L.msg(a, { t: 'look', eye: 'constructor', body: 'red', blush: 1 }); assert.deepEqual([a.att.eye, a.att.body, a.att.blush], ['sparkle', '#ffe9d6', '#9fd8ff'], 'invalid eye / body / blush ignored');
   L.room.tick(); const n = b.out.length; L.room.tick(); assert.equal(b.out.length, n, 'nothing changed, nothing sent');
   a.readyState = 3; await L.room.webSocketClose(a); L.room.tick();
   assert.deepEqual(b.out.findLast(m => m.t === 'snap').players.map(q => q.id), ['2']);

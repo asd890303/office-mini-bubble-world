@@ -250,7 +250,7 @@ export class GameRoom {
   constructor(ctx, env) {
     this.ctx = ctx; this.env = env; this.core = Core; this.gameId = 'bubble';
     this.phase = 'lobby';      // lobby -> play -> end -> lobby
-    this.lobby = [];           // [{ uid, name, color, ear }] next game's players, join order = slot
+    this.lobby = [];           // [{ uid, name, color, ear, eye, body, blush }] next game's players, join order = slot
     this.countdownAt = 0; this.endAt = 0; this.game = null; this.result = null; this.timer = null; this.lastPush = 0;
     this.gone = new Map();     // uid -> 斷線時間（遊戲中）
     this.active = new Map();   // uid -> 最後一次操作時間（ping 不算）
@@ -324,9 +324,9 @@ export class GameRoom {
     if (this.phase === 'play') return this.send(ws, { t: 'note', text: '這局進行中，下一局再加入（目前觀戰）' });
     if (!this.lobby.some(p => p.uid === uid)) {
       if (this.lobby.length >= this.core.MAX_PLAYERS) return this.send(ws, { t: 'note', text: '房間已滿（4 人），這局先觀戰' });
-      this.lobby.push({ uid, name, color: this.core.COLORS.includes(m.color) ? m.color : null, ear: this.core.EARS[m.ear] ? m.ear : null });
+      this.lobby.push({ uid, name, color: this.core.COLORS.includes(m.color) ? m.color : null, ear: this.core.EARS[m.ear] ? m.ear : null, eye: Object.hasOwn(this.core.EYES, m.eye) ? m.eye : null, body: this.core.BODIES.includes(m.body) ? m.body : null, blush: this.core.BLUSHES.includes(m.blush) ? m.blush : null });
       if (this.phase === 'lobby' && this.lobby.length === MIN_PLAYERS) this.countdownAt = this.now() + LOBBY_MS;
-    } else { const p = this.lobby.find(p => p.uid === uid); if (this.core.COLORS.includes(m.color)) p.color = m.color; if (this.core.EARS[m.ear]) p.ear = m.ear; }
+    } else { const p = this.lobby.find(p => p.uid === uid); if (this.core.COLORS.includes(m.color)) p.color = m.color; if (this.core.EARS[m.ear]) p.ear = m.ear; if (Object.hasOwn(this.core.EYES, m.eye)) p.eye = m.eye; if (this.core.BODIES.includes(m.body)) p.body = m.body; if (this.core.BLUSHES.includes(m.blush)) p.blush = m.blush; }
     if (this.phase === 'lobby' && this.lobby.length >= this.core.MAX_PLAYERS) this.countdownAt = this.now();
     this.broadcast(this.lobbyMsg()); this.ensureTimer();
   }
@@ -485,10 +485,10 @@ export class ArtilleryRoom extends GameRoom {
     let p = this.lobby.find(q => q.uid === uid);
     if (!p) {
       if (this.lobby.length >= this.core.MAX_PLAYERS) return this.send(ws, { t: 'note', text: `人滿了（${this.core.MAX_PLAYERS} 人），先觀戰` });
-      p = { uid, name, color: null, ear: null, team: null, seat: null }; this.lobby.push(p);
+      p = { uid, name, color: null, ear: null, eye: null, body: null, blush: null, team: null, seat: null }; this.lobby.push(p);
       if (this.phase === 'lobby' && this.lobby.length === MIN_PLAYERS) this.countdownAt = this.now() + LOBBY_MS;
     }
-    if (this.core.COLORS.includes(m.color)) p.color = m.color; if (Object.hasOwn(this.core.EARS, m.ear)) p.ear = m.ear;
+    if (this.core.COLORS.includes(m.color)) p.color = m.color; if (Object.hasOwn(this.core.EARS, m.ear)) p.ear = m.ear; if (Object.hasOwn(this.core.EYES, m.eye)) p.eye = m.eye; if (this.core.BODIES.includes(m.body)) p.body = m.body; if (this.core.BLUSHES.includes(m.blush)) p.blush = m.blush;
     const free = (t, s) => !this.lobby.some(q => q !== p && q.team === t && q.seat === s), t = Number(m.team), s = Number(m.seat);
     if ((t === 0 || t === 1) && Number.isInteger(s) && s >= 0 && s < this.core.TEAM_SIZE && free(t, s)) { p.team = t; p.seat = s; }
     else if (p.team == null) {
@@ -591,7 +591,7 @@ export class LobbyRoom {
     for (const old of this.ctx.getWebSockets(user.id)) { try { old.close(4000, '已在其他視窗開啟'); } catch {} }
     this.ctx.acceptWebSocket(server, [user.id]);
     // 出生在大廳下方中間附近，避免所有人疊在同一格
-    server.serializeAttachment({ uid: user.id, name: user.name, color: Core.COLORS[0], ear: 'be', x: LOBBY.W / 2 + (Math.random() - .5) * 3, y: LOBBY.H - 1.5, f: 0 });
+    server.serializeAttachment({ uid: user.id, name: user.name, color: Core.COLORS[0], ear: 'be', eye: 'dot', body: Core.BODIES[0], blush: Core.BLUSHES[0], x: LOBBY.W / 2 + (Math.random() - .5) * 3, y: LOBBY.H - 1.5, f: 0 });
     this.onOpen(server, user);
     this.send(server, { t: 'rooms', rooms: await this.loadRooms() });
     return new Response(null, { status: 101, webSocket: client });
@@ -693,7 +693,7 @@ export class LobbyRoom {
   snapshot() {
     const r3 = v => Math.round(v * 1000) / 1000, live = this.sockets().map(ws => this.who(ws)).filter(p => p.uid), ids = new Set(live.map(p => p.uid));
     const ghosts = [...this.ghosts.values()].filter(g => !ids.has(g.uid));
-    return { t: 'snap', players: [...live, ...ghosts].map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, x: r3(p.x), y: r3(p.y), f: r3(p.f), ...(p.playing ? { st: 'play' } : {}) })) };
+    return { t: 'snap', players: [...live, ...ghosts].map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, eye: p.eye || 'dot', body: p.body || Core.BODIES[0], blush: p.blush || Core.BLUSHES[0], x: r3(p.x), y: r3(p.y), f: r3(p.f), ...(p.playing ? { st: 'play' } : {}) })) };
   }
   onOpen(ws, user) { this.ghosts.delete(user.id); this.active.set(user.id, this.now()); this.send(ws, { t: 'hello', you: user.id, W: LOBBY.W, H: LOBBY.H }); this.dirty = true; this.ensureTimer(); }
   async webSocketMessage(ws, raw) {
@@ -710,7 +710,7 @@ export class LobbyRoom {
       this.active.set(a.uid, now); a.x = nx; a.y = ny; a.f = nf;
     } else if (m.t === 'look') {
       this.active.set(a.uid, now);
-      if (Core.COLORS.includes(m.color)) a.color = m.color; if (Object.hasOwn(Core.EARS, m.ear)) a.ear = m.ear;
+      if (Core.COLORS.includes(m.color)) a.color = m.color; if (Object.hasOwn(Core.EARS, m.ear)) a.ear = m.ear; if (Object.hasOwn(Core.EYES, m.eye)) a.eye = m.eye; if (Core.BODIES.includes(m.body)) a.body = m.body; if (Core.BLUSHES.includes(m.blush)) a.blush = m.blush;
     } else if (m.t === 'playing') {
       if (!LOBBY.GAMES.includes(m.game)) return;
       this.active.set(a.uid, now); a.playing = m.game;

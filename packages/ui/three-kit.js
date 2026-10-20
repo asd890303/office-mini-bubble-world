@@ -23,27 +23,47 @@ export const withOutline = (m, s = 1.07) => { const o = new THREE.Mesh(m.geometr
 export const blob = (geo, mat, sx, sy, sz, ol = 1.07) => { const m = new THREE.Mesh(geo, mat); m.scale.set(sx, sy, sz); if (ol) withOutline(m, ol); return m; };
 export const boxOutline = (m, w, h, d) => { const o = new THREE.Mesh(G.box, OUTLINE); o.scale.set(1 + .07 / w, 1 + .07 / h, 1 + .07 / d); m.add(o); return m; };
 
-export function makeCritter({ ear, color }) {
-  const root = new THREE.Group();
+const EAR_TAN = toon('#d9b38c'), EAR_GOLD = toon('#ffd36b'), EAR_BOW = toon('#ff8fab');
+
+const blushMats = new Map();
+const blushMat = c => { if (!blushMats.has(c)) blushMats.set(c, new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: .85 })); return blushMats.get(c); };
+
+export function makeCritter({ ear, color, eye = 'dot', body: bodyColor = '#fffdf7', blush: blushColor = '#ffa3b5' }) { // 只改外觀，不影響碰撞與遊戲判定
+  const root = new THREE.Group(), bm = toon(bodyColor);
   const pivot = new THREE.Group(); root.add(pivot);
-  const body = blob(G.sphere, M.body, .55, .5, .52); body.position.y = .5; pivot.add(body);
+  const body = blob(G.sphere, bm, .55, .5, .52); body.position.y = .5; pivot.add(body);
   const arms = [];
   for (const s of [-1, 1]) {
-    const foot = blob(G.small, M.body, .16, .08, .18, 1.2); foot.position.set(s * .22, .05, .12); pivot.add(foot);
+    const foot = blob(G.small, bm, .16, .08, .18, 1.2); foot.position.set(s * .22, .05, .12); pivot.add(foot);
     const ap = new THREE.Group(); ap.position.set(s * .46, .48, .08); pivot.add(ap);
-    const arm = blob(G.small, M.body, .1, .14, .1, 1.2); arm.position.set(s * .06, -.08, 0); ap.add(arm);
+    const arm = blob(G.small, bm, .1, .14, .1, 1.2); arm.position.set(s * .06, -.08, 0); ap.add(arm);
     ap.rotation.z = s * .5; ap.userData.side = s; arms.push(ap);
   }
   for (const s of [-1, 1]) {
     if (ear === 'be') {
-      const e = blob(G.small, M.body, .14, .13, .1, 1.15); e.position.set(s * .32, .95, 0); pivot.add(e);
+      const e = blob(G.small, bm, .14, .13, .1, 1.15); e.position.set(s * .32, .95, 0); pivot.add(e);
       const inner = new THREE.Mesh(G.disc, M.innerEar); inner.scale.setScalar(.07); inner.position.set(s * .32, .95, .105); pivot.add(inner);
     } else if (ear === 'pay') {
-      const e = blob(G.small, M.body, .1, .34, .08, 1.12); e.position.set(s * .18, 1.18, -.02); e.rotation.z = -s * .18; pivot.add(e);
+      const e = blob(G.small, bm, .1, .34, .08, 1.12); e.position.set(s * .18, 1.18, -.02); e.rotation.z = -s * .18; pivot.add(e);
       const inner = new THREE.Mesh(G.disc, M.innerEar); inner.scale.set(.045, .22, 1); inner.position.set(s * .17, 1.18, .07); inner.rotation.z = -s * .18; pivot.add(inner);
     } else if (ear === 'fe') {
-      const e = withOutline(new THREE.Mesh(G.cone, M.body), 1.15); e.position.set(s * .3, 1.0, 0); e.rotation.z = -s * .35; pivot.add(e);
+      const e = withOutline(new THREE.Mesh(G.cone, bm), 1.15); e.position.set(s * .3, 1.0, 0); e.rotation.z = -s * .35; pivot.add(e);
+    } else if (ear === 'cat') {
+      const e = withOutline(new THREE.Mesh(G.cone, bm), 1.15); e.scale.set(1.3, 1, .75); e.position.set(s * .27, 1.03, 0); e.rotation.z = -s * .2; pivot.add(e);
+      const inner = new THREE.Mesh(G.cone, M.innerEar); inner.scale.set(.7, .6, .5); inner.position.set(s * .27, 1.0, .07); inner.rotation.z = -s * .2; pivot.add(inner);
+    } else if (ear === 'bear') {
+      const e = blob(G.small, EAR_TAN, .17, .17, .1, 1.15); e.position.set(s * .4, .9, 0); pivot.add(e);
+      const inner = new THREE.Mesh(G.disc, M.innerEar); inner.scale.setScalar(.085); inner.position.set(s * .4, .9, .105); pivot.add(inner);
+    } else if (ear === 'horn') {
+      const e = withOutline(new THREE.Mesh(G.cone, EAR_GOLD), 1.15); e.scale.set(.6, .7, .6); e.position.set(s * .2, 1.02, 0); e.rotation.z = -s * .3; pivot.add(e);
+    } else if (ear === 'ant') {
+      const stem = new THREE.Mesh(G.stem, bm); stem.scale.y = 1.3; stem.position.set(s * .12, 1.1, 0); stem.rotation.z = -s * .35; pivot.add(stem);
+      const tip = blob(G.small, EAR_GOLD, .06, .06, .06, 1.2); tip.position.set(s * .2, 1.27, 0); pivot.add(tip);
     }
+  }
+  if (ear === 'bow') {
+    for (const s of [-1, 1]) { const w = blob(G.small, EAR_BOW, .13, .09, .07, 1.15); w.position.set(s * .13, 1.04, 0); w.rotation.z = s * .35; pivot.add(w); }
+    const knot = blob(G.small, EAR_BOW, .06, .06, .06, 1.15); knot.position.set(0, 1.03, 0); pivot.add(knot);
   }
   if (ear === 'tool') {
     const stem = new THREE.Mesh(G.stem, M.leaf); stem.position.set(0, 1.08, 0); pivot.add(stem);
@@ -52,9 +72,15 @@ export function makeCritter({ ear, color }) {
   const face = new THREE.Group(); face.position.y = .5; pivot.add(face);
   const eyes = [];
   for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(G.small, M.black); eye.scale.set(.05, .065, .03); eye.position.set(s * .16, .06, .5); face.add(eye); eyes.push(eye);
-    const hl = new THREE.Mesh(G.small, M.white); hl.scale.setScalar(.35); hl.position.set(.3, .35, .6); eye.add(hl);
-    const bl = new THREE.Mesh(G.disc, M.blush); bl.scale.set(.085, .055, 1); bl.position.set(s * .3, -.04, .44); bl.rotation.y = s * .55; face.add(bl);
+    const style = eye === 'wink' ? (s < 0 ? 'dot' : 'happy') : eye;
+    if (style === 'happy') { const arc = new THREE.Mesh(G.smile, M.black); arc.scale.setScalar(1.5); arc.position.set(s * .16, .03, .5); face.add(arc); }
+    else if (style === 'sleepy') { const lid = new THREE.Mesh(G.small, M.black); lid.scale.set(.06, .014, .03); lid.position.set(s * .16, .04, .5); face.add(lid); }
+    else {
+      const big = style === 'big' || style === 'sparkle', e = new THREE.Mesh(G.small, M.black); e.scale.set(big ? .07 : .05, big ? .09 : .065, .03); e.userData.sy = e.scale.y; e.position.set(s * .16, .06, .5); face.add(e); eyes.push(e);
+      const hl = new THREE.Mesh(G.small, M.white); hl.scale.setScalar(style === 'sparkle' ? .4 : .35); hl.position.set(.3, .35, .6); e.add(hl);
+      if (style === 'sparkle') { const h2 = new THREE.Mesh(G.small, M.white); h2.scale.setScalar(.2); h2.position.set(-.25, -.35, .6); e.add(h2); }
+    }
+    const bl = new THREE.Mesh(G.disc, blushMat(blushColor)); bl.scale.set(.085, .055, 1); bl.position.set(s * .3, -.04, .44); bl.rotation.y = s * .55; face.add(bl);
   }
   const mouth = new THREE.Mesh(G.smile, M.black); mouth.position.set(0, -.04, .52); mouth.rotation.z = Math.PI; face.add(mouth);
   const sm = toon(color);
@@ -86,5 +112,5 @@ export function animateCritter(c, dt, t, moving) {
   c.blinkAt -= dt;
   const blink = c.blinkAt < 0 && c.blinkAt > -.12;
   if (c.blinkAt < -.12) c.blinkAt = 2 + Math.random() * 4;
-  for (const e of c.eyes) e.scale.y = blink ? .008 : .065;
+  for (const e of c.eyes) e.scale.y = blink ? .008 : e.userData.sy;
 }

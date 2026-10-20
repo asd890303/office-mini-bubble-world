@@ -69,7 +69,7 @@ npm run deploy    # build + wrangler deploy
 
 - Telegram Mini App：直接用 Telegram 身分，成績計入總積分榜。
 - 一般網頁：先選「用 Telegram 登入」或「訪客加入」，再選外觀。訪客可以連線玩，成績不計分。大廳右上角的身分按鈕可以切換或登出。
-- 外觀（圍巾顏色、耳朵）存在 Telegram CloudStorage 並同步到 localStorage；一般瀏覽器只存 localStorage。直接點遊戲連結進來、還沒設定外觀時，遊戲頁面會先跳出選擇視窗。
+- 外觀（圍巾 12 色、身體 8 色、腮紅 6 色、耳朵 9 種、眼睛 6 種，選擇視窗用「顏色、耳朵、眼睛」三個分頁收納）只影響畫面，不影響任何遊戲判定。存在 Telegram CloudStorage 並同步到 localStorage；一般瀏覽器只存 localStorage。直接點遊戲連結進來、還沒設定外觀時，遊戲頁面會先跳出選擇視窗。
 - 網址參數：`?mode=solo` 直接單人；`?mode=online` 直接進連線房間（需在 Telegram 內）。Mini App 連結加 `?startapp=bubble` 或 `?startapp=kart` 直接進該遊戲，不加則進大廳。
 - 玩家進遊戲後，角色留在大廳原地，頭上顯示「遊戲中」，右上角在線清單也會標示。回到大廳就清除，沒回來最多留 10 分鐘。
 - 大廳右上角列出在線玩家。房間面板顯示等待人數、倒數、選地圖中或比賽中；比賽中按「進去觀戰」，結束後自動加入下一場。

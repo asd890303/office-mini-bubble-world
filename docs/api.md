@@ -41,7 +41,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 | 方向 | 訊息 | 內容 |
 |---|---|---|
-| 客戶端送出 | `{t:'join', color, ear, ...}` | 加入等待區；砲戰可帶 `team`、`seat` |
+| 客戶端送出 | `{t:'join', color, ear, eye, body, blush, ...}` | 加入等待區；砲戰可帶 `team`、`seat` |
 | 客戶端送出 | `{t:'leave'}` | 離開等待區 |
 | 客戶端送出 | `{t:'ping', at}` | 保活，伺服器回 `pong` |
 | 伺服器送出 | `{t:'hello', you, name, phase, me, result}` | 連上後第一則 |
@@ -66,7 +66,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 方向 | 訊息 | 內容 |
 |---|---|---|
 | 客戶端送出 | `{t:'pos', x, y, f}` | 回報位置與朝向，間隔太短的會被忽略 |
-| 客戶端送出 | `{t:'look', color, ear}` | 換外觀 |
+| 客戶端送出 | `{t:'look', color, ear, eye, body, blush}` | 換外觀 |
 | 客戶端送出 | `{t:'ping', at}` | 保活 |
 | 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
 | 伺服器送出 | `{t:'hello', you, W, H}` | 連上後第一則，含大廳尺寸 |

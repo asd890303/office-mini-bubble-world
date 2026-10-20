@@ -244,7 +244,7 @@ const TG = window.Telegram?.WebApp, inTelegram = !!(TG && TG.initData);
 if (inTelegram) { try { TG.ready(); TG.expand(); } catch {} if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme; }
 const loginErr = captureLogin();
 let ID = identity(), mode = ID ? 'online' : 'offline';
-const myName = (ID?.name || '你').slice(0, 10), setup = { color: A.COLORS[0], ear: 'be', team: 0 };
+const myName = (ID?.name || '你').slice(0, 10), setup = { color: A.COLORS[0], ear: 'be', eye: 'dot', team: 0 };
 if (matchMedia('(pointer: coarse)').matches && !new URLSearchParams(location.search).has('touch')) $('pcnotice').hidden = false;
 
 /* ---------- 音效 ---------- */
@@ -345,7 +345,7 @@ function floatText(x, y, text, color = '#fffdf8', size = 1) {
 const CS = 28; // 模型縮放：半徑 12 點的身體
 let V = null; // 目前的畫面狀態
 function makeChar(sc) {
-  const critter = makeCritter({ color: sc.color, ear: sc.ear }), root = critter.root; root.scale.setScalar(CS);
+  const critter = makeCritter({ color: sc.color, ear: sc.ear, eye: sc.eye, body: sc.body, blush: sc.blush }), root = critter.root; root.scale.setScalar(CS);
   const ring = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: A.TEAMS[sc.team].color })); ring.scale.set(17, 6, 1); ring.position.set(0, 1, -2);
   const rim = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ color: 0x3b2f2f })); rim.scale.set(20, 8.4, 1); rim.position.set(0, 1, -3);
   const grp = new THREE.Group(); grp.add(rim, ring, root); scene.add(grp);
@@ -407,7 +407,7 @@ $('readyBtn').onclick = () => { if (V && V.me != null && V.phase === 'ready') ac
 // 換座位或切換電腦後，同一格換成別人的外觀：重建角色模型，並依 uid 找回自己的角色
 const myUid = () => (mode === 'online' ? net.me : 'me');
 function syncSeats(s) {
-  const sig = cs => cs.map(c => [c.uid, c.name, c.color, c.ear, c.off].join()).join('|'); if (sig(s.chars) === sig(V.chars)) return;
+  const sig = cs => cs.map(c => [c.uid, c.name, c.color, c.ear, c.eye, c.body, c.blush, c.off].join()).join('|'); if (sig(s.chars) === sig(V.chars)) return;
   for (const c of V.chars) { scene.remove(c.grp, c.tag); if (c.bub) scene.remove(c.bub); }
   V.chars = s.chars.map(makeChar); for (const c of V.chars) drawTag(c);
   const mine = s.chars.find(c => c.uid != null && c.uid === String(myUid())); V.me = mine ? mine.id : null; refreshHotbar();
@@ -765,7 +765,7 @@ function stepProjectile(p, now) {
 /* ---------- 單人 ---------- */
 function startLocal(recipe) {
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer(); mode = 'offline';
-  L.g = A.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, recipe, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, team: setup.team, seat: 0 }], waitReady: true });
+  L.g = A.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, recipe, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, team: setup.team, seat: 0 }], waitReady: true });
   const me = L.g.chars.find(c => c.human).id; buildView(A.snapshot(L.g), me); L.snapT = 0; L.g.events.length = 0; solo = soloStart('artillery', ID);
 }
 // 單人擊敗數紀錄：開局拿票，打完送出，伺服器檢查合理才進看板（訪客與沒登入的人不記錄）
@@ -773,7 +773,7 @@ let solo = null, endSeq = 0;
 $('t0').onclick = () => { setup.team = 0; $('t0').setAttribute('aria-pressed', 'true'); $('t1').setAttribute('aria-pressed', 'false'); };
 $('t1').onclick = () => { setup.team = 1; $('t1').setAttribute('aria-pressed', 'true'); $('t0').setAttribute('aria-pressed', 'false'); };
 $('startBtn').onclick = () => showVote(null);
-$('againBtn').onclick = () => { $('endScreen').hidden = true; if (mode === 'online') { net.wantIn = true; net.send({ t: 'join', color: setup.color, ear: setup.ear, ...(net.seat || {}) }); showLobby(); } else showVote(null); };
+$('againBtn').onclick = () => { $('endScreen').hidden = true; if (mode === 'online') { net.wantIn = true; net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...(net.seat || {}) }); showLobby(); } else showVote(null); };
 $('leave').onclick = () => { location.href = '/'; };
 
 /* ---------- 選地圖（單人：點了就開打；連線：投票） ---------- */
@@ -827,7 +827,7 @@ function connect() {
 }
 function goOffline(why) { mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null; $('lobbyScreen').hidden = true; if (!V) $('startScreen').hidden = false; if (why) toast(why, 2200); }
 const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
-function tryJoin() { if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return; const L2 = net.lobby; if (L2 && (L2.phase === 'play' || L2.players.length >= L2.max)) return; net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear, ...(net.seat || {}) }); }
+function tryJoin() { if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return; const L2 = net.lobby; if (L2 && (L2.phase === 'play' || L2.players.length >= L2.max)) return; net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...(net.seat || {}) }); }
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
@@ -843,7 +843,7 @@ function renderLobby() {
   const L2 = net.lobby; if (!L2) return; const mine = L2.players.find(p => p.uid === net.me);
   for (let t = 0; t < 2; t++) {
     const col = $('col' + t); col.innerHTML = `<h4 style="color:${A.TEAMS[t].color === '#ff8a8a' ? '#d0456b' : '#3a78c9'}">${A.TEAMS[t].name}</h4>`;
-    for (let s = 0; s < 3; s++) { const p = L2.players.find(q => q.team === t && q.seat === s), b = document.createElement('button'); b.className = 'seat' + (p && p.uid === net.me ? ' mine' : '') + (p ? '' : ' bot'); b.innerHTML = p ? `<i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}` : '空位'; if (!p || p.uid === net.me) b.onclick = () => { net.seat = { team: t, seat: s }; net.wantIn = true; net.send({ t: 'join', color: setup.color, ear: setup.ear, team: t, seat: s }); }; col.append(b); }
+    for (let s = 0; s < 3; s++) { const p = L2.players.find(q => q.team === t && q.seat === s), b = document.createElement('button'); b.className = 'seat' + (p && p.uid === net.me ? ' mine' : '') + (p ? '' : ' bot'); b.innerHTML = p ? `<i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}` : '空位'; if (!p || p.uid === net.me) b.onclick = () => { net.seat = { team: t, seat: s }; net.wantIn = true; net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, team: t, seat: s }); }; col.append(b); }
   }
   lobbyStatus(L2.phase === 'play' ? '對戰中' : L2.phase === 'vote' ? `選地圖 ${L2.vote?.endsIn ?? '?'} 秒` : L2.phase === 'end' ? `${L2.endIn} 秒後可加入` : L2.players.length >= (L2.min || 2) ? `${L2.countdown} 秒後開始` : L2.players.length ? `還差 ${(L2.min || 2) - L2.players.length} 人` : '等人');
   const joined = !!mine; $('joinBtn').textContent = joined ? '離開' : '加入'; $('joinBtn').disabled = !joined && (L2.phase === 'play' || L2.players.length >= L2.max);
@@ -855,7 +855,7 @@ $('joinBtn').onclick = () => { if (inLobby()) { net.wantIn = false; net.send({ t
 $('soloBtn').onclick = () => goOffline();
 
 /* ---------- 外觀與進場 ---------- */
-function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear, ...(net.seat || {}) }); }
+function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; setup.eye = a.eye; setup.body = a.body; setup.blush = a.blush; if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...(net.seat || {}) }); }
 async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
 $('avatarBtn').onclick = changeAvatar; $('lAvatarBtn').onclick = changeAvatar;
 async function goOnline() {

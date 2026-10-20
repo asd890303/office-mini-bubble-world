@@ -2,8 +2,12 @@
 // 不碰 DOM / three.js / Math.random：亂數全部來自種子，同一組種子與輸入會重播出同樣結果。
 // 座標單位是「格」，賽道在 (x, y) 平面；朝向 h 的前進方向是 (cos h, sin h)，h 增加是往右轉。
 export const MAX_PLAYERS = 4, LAPS = 3;
-export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2'];
-export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽' };
+export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a'];
+export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽', cat: '貓耳', bear: '熊耳', horn: '小角', bow: '蝴蝶結', ant: '觸角' };
+export const EYES = { dot: '圓眼', big: '大眼', happy: '笑眼', sleepy: '瞇眼', sparkle: '閃亮', wink: '眨眼' };
+const EYE_KEYS = Object.keys(EYES);
+export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3'];
+export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff'];
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓'];
 export const COUNTDOWN = 3, START_WINDOW = .5, START_BOOST = 1, FINISH_GRACE = 30, MAX_TIME = 240;
 export const ROAD = 3, WALL = 4.6; // 預設離中心線的距離：路面半寬（路寬 6 格，4 台車並排）、牆。地圖可用 road / wall 改窄
@@ -114,7 +118,7 @@ export function createGame({ seed = 1, humans = [], bots = true, laps = LAPS, tr
     const s0 = -2, lat = GRID_LANES[i] * laneK, p = trackPoint(s0, lat, T), loc = locate(p.x, p.y, null, T);
     g.karts.push({
       id: g.karts.length, uid: h ? String(h.uid ?? i) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names[i], human: !!h,
-      color: h ? colors[i] : pickColor(null), ear: h && EARS[h.ear] ? h.ear : earKeys[(i + 1) % earKeys.length],
+      color: h ? colors[i] : pickColor(null), ear: h && EARS[h.ear] ? h.ear : earKeys[(i + 1) % earKeys.length], eye: h ? (Object.hasOwn(EYES, h.eye) ? h.eye : 'dot') : EYE_KEYS[(i + 2) % EYE_KEYS.length], body: h && BODIES.includes(h.body) ? h.body : BODIES[0], blush: h && BLUSHES.includes(h.blush) ? h.blush : BLUSHES[0],
       x: p.x, y: p.y, h: p.h, v: 0, steer: 0, gas: false, brake: false, driftIn: false, drift: 0, charge: 0, level: 0, boost: 0, chain: 0, combo: 0, shoe: 0, trap: 0, immune: 0, spin: 0, shield: 0,
       storm: 0, stormBy: null, hot: 0, hotBy: null, hotCD: 0, ghost: 0, gauge: 0, nitro: 0,
       item: null, hint: loc.i, s: loc.s, total: s0, lap: 1, done: false, place: 0, finishT: null, state: 'racing', rank: i + 1, startPress: null,
@@ -442,7 +446,7 @@ export function step(g, dt) {
 // 連線每個 tick 送 full: false 的版本，約省一半流量：不送整場不變的資料（名字、顏色、耳朵、道具箱座標），值是 0 的欄位也省略。
 // 客戶端用 expandFrame 拿開局時的完整快照補回來
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
-const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'cl', 'ho', 'gh', 'ni', 'ga', 'done', 'place'];
+const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear', 'eye', 'body', 'blush'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'cl', 'ho', 'gh', 'ni', 'ga', 'done', 'place'];
 // shots 第 4 欄的道具代碼（0 原本是水球，已移除）；haz 第 4 欄 1 = 假道具箱、0 = 水窪
 export const SHOT_CODE = { jet: 1, storm: 2, hot: 3 };
 export function snapshot(g, { full = true } = {}) {
@@ -465,7 +469,7 @@ function fullSnapshot(g) {
   return {
     seed: g.seed, track: g.trackId, mode: g.mode, phase: g.phase, cd: r2(g.cd), time: r2(g.time), over: g.over, laps: g.laps,
     karts: g.karts.map(k => ({
-      id: k.id, uid: k.uid, name: k.name, human: k.human, color: k.color, ear: k.ear, x: r3(k.x), y: r3(k.y), h: r3(k.h), v: r2(k.v),
+      id: k.id, uid: k.uid, name: k.name, human: k.human, color: k.color, ear: k.ear, eye: k.eye, body: k.body, blush: k.blush, x: r3(k.x), y: r3(k.y), h: r3(k.h), v: r2(k.v),
       dr: k.drift, dl: k.level, bo: k.boost > 0 || k.shoe > 0 ? 1 : 0, tr: r2(k.trap), sp: r2(k.spin), im: k.immune > 0 ? 1 : 0, sh: k.shield > 0 ? 1 : 0,
       // cl：頭上有雷雨雲；ho：燙手泡泡還剩幾秒（無條件進位，每秒才變一次）；gh：透明；ni、ga：氮氣個數與氮氣槽（每 5% 一格）
       cl: k.storm > 0 ? 1 : 0, ho: Math.ceil(k.hot), gh: k.ghost > 0 ? 1 : 0, ni: k.nitro, ga: Math.round(k.gauge * 20) / 20,

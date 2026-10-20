@@ -2,8 +2,12 @@
 // 不碰 DOM / three.js / Math.random：亂數全部來自種子，同一組種子與輸入會重播出同樣結果。
 // 座標單位是「點」，原點在左上角，x 往右、y 往下；地形遮罩 1 點 1 格（1 = 有地）。角度以 +x 為 0 度、往上為正。
 export const W = 1200, H = 600, TEAM_SIZE = 3, MAX_PLAYERS = 6, ROUNDS = 10, STAGES = 5;
-export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2'];
-export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽' };
+export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a'];
+export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽', cat: '貓耳', bear: '熊耳', horn: '小角', bow: '蝴蝶結', ant: '觸角' };
+export const EYES = { dot: '圓眼', big: '大眼', happy: '笑眼', sleepy: '瞇眼', sparkle: '閃亮', wink: '眨眼' };
+const EYE_KEYS = Object.keys(EYES);
+export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3'];
+export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff'];
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓', '年糕', '銅鑼燒'];
 export const TEAMS = [{ name: '紅隊', color: '#ff8a8a' }, { name: '藍隊', color: '#7ab8ff' }];
 export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 235, STEP: 4, DROP: 8, HEAD: 22, JUMP_COST: 30, JUMP_VX: 70, JUMP_VY: 330 };
@@ -181,7 +185,7 @@ export function createGame({ seed = 1, recipe = RECIPES[0], humans = [], botErr 
   const earKeys = Object.keys(EARS), chars = [];
   for (let t = 0; t < 2; t++) for (let s = 0; s < 3; s++) {
     const h = seats[t][s], [x, y] = terrain.spawns[t][s];
-    chars.push({ id: chars.length, uid: h ? String(h.uid ?? chars.length) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names.pop(), human: !!h, team: t, seat: s, color: pickColor(h?.color), ear: h && EARS[h.ear] ? h.ear : earKeys[Math.floor(rng() * 4)],
+    chars.push({ id: chars.length, uid: h ? String(h.uid ?? chars.length) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names.pop(), human: !!h, team: t, seat: s, color: pickColor(h?.color), ear: h && EARS[h.ear] ? h.ear : earKeys[Math.floor(rng() * 4)], eye: h ? (Object.hasOwn(EYES, h.eye) ? h.eye : 'dot') : EYE_KEYS[chars.length % EYE_KEYS.length], body: h && BODIES.includes(h.body) ? h.body : BODIES[0], blush: h && BLUSHES.includes(h.blush) ? h.blush : BLUSHES[0],
       x, y, hp: CHAR.HP, alive: true, money: RULES.START_MONEY, items: { ...RULES.START_ITEMS }, bought: {}, kills: 0, glove: false, shield: false, face: t ? -1 : 1, stamina: CHAR.STAMINA, move: 0, acc: 0, ai: h ? null : { err: botErr }, ready: !h, off: false });
   }
   const g = { seed: seed >>> 0, rng, recipe: rc, theme: themeOf(rc), mask: terrain.mask, chars, round: 0, order: [], idx: -1, cur: -1, phase: 'turn', turnT: 0, shopT: 0, offer: [], fired: false, resolveT: 0, botT: 0, aim: null, over: false, result: null, hp10: null, events: [], collapseStage: 0, bombs: [], bombSeq: 0, readyT: 0 };
@@ -190,7 +194,7 @@ export function createGame({ seed = 1, recipe = RECIPES[0], humans = [], botErr 
 }
 export function setReady(g, id) { const c = g.chars[id]; if (!c || g.phase !== 'ready' || c.ready) return false; c.ready = true; ev(g, { e: 'ready', id }); return true; }
 // ready 階段調整隊伍。座位 id = 隊伍 * 3 + 座位，位置固定；換座位是把兩格的身分互換。off = 這格不補電腦、這場沒有角色
-const IDENT = ['uid', 'name', 'human', 'color', 'ear', 'ai', 'off', 'alive', 'hp', 'ready'];
+const IDENT = ['uid', 'name', 'human', 'color', 'ear', 'eye', 'body', 'blush', 'ai', 'off', 'alive', 'hp', 'ready'];
 const fielded = (g, t) => g.chars.filter(c => c.team === t && !c.off).length;
 function seatsChanged(g) { for (const c of g.chars) c.ready = c.uid == null || !c.human; ev(g, { e: 'seats' }); } // 隊伍變了，大家重新按就緒
 // 真人換到一個沒有真人的座位；換完任一隊沒有角色就不准
@@ -515,7 +519,7 @@ export function snapshot(g, { mask = true } = {}) {
     seed: g.seed, recipe: { id: g.recipe.id, name: g.recipe.name, theme: g.recipe.theme, type: g.recipe.type }, round: g.round, rounds: ROUNDS, phase: g.phase, over: g.over, collapse: g.collapseStage, warn: bound,
     turn: c ? { id: g.cur, turnT: r2(g.turnT), shopT: r2(g.shopT), offer: g.offer, more: g.seen ? offerLeft(g, c) : 0, sup: !!g.supportUsed, glove: !!c.glove, fired: g.fired, stamina: Math.round(c.stamina) } : null, aim: g.aim,
     readyT: g.phase === 'ready' ? Math.ceil(g.readyT) : null, bombs: g.bombs.map(b => ({ ...b })),
-    chars: g.chars.map(c => ({ id: c.id, uid: c.uid, name: c.name, human: c.human, team: c.team, seat: c.seat, color: c.color, ear: c.ear, frozen: !!c.frozen, x: r1(c.x), y: r1(c.y), hp: c.hp, alive: c.alive, money: c.money, items: c.items, shield: c.shield, face: c.face, ready: c.ready, off: c.off })),
+    chars: g.chars.map(c => ({ id: c.id, uid: c.uid, name: c.name, human: c.human, team: c.team, seat: c.seat, color: c.color, ear: c.ear, eye: c.eye, body: c.body, blush: c.blush, frozen: !!c.frozen, x: r1(c.x), y: r1(c.y), hp: c.hp, alive: c.alive, money: c.money, items: c.items, shield: c.shield, face: c.face, ready: c.ready, off: c.off })),
     mask: mask ? encodeMask(g.mask) : undefined, result: g.result,
   };
 }

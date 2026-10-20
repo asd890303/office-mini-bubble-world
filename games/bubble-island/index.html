@@ -271,7 +271,7 @@ let local = null;      // 單人版：本機跑 game-core
 const buf = [];        // 連線版：收到的位置快照，用來內插
 const INTERP_MS = 100;
 let setup = {
-  color: COLORS[0], ear: 'be', // 載入後由 applyAppearance 設定
+  color: COLORS[0], ear: 'be', eye: 'dot', // 載入後由 applyAppearance 設定
   diff: store.get('bp-diff') || 'normal',
 };
 const myName = (ID?.name || tgUser?.first_name || store.get('bp-name') || '你').slice(0, 10);
@@ -485,7 +485,7 @@ let solo = null, endSeq = 0;
 function startOffline() {
   $('startScreen').hidden = true; $('endScreen').hidden = true; $('lobbyScreen').hidden = true;
   try { TG?.MainButton?.hide(); } catch {}
-  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], diff: setup.diff, roundTime: ROUND_TIME });
+  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }], diff: setup.diff, roundTime: ROUND_TIME });
   buildView(Core.snapshot(local), 0); playing = true; solo = soloStart('bubble', ID);
   toast('開始！', 900);
   window.dispatchEvent(new CustomEvent('bubblepop:start', { detail: { difficulty: setup.diff, online: false } }));
@@ -497,7 +497,7 @@ function goOffline(why) {
 }
 $('startBtn').addEventListener('click', startOffline);
 $('againBtn').addEventListener('click', () => {
-  if (mode === 'online') { $('endScreen').hidden = true; net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear }); showLobby(); }
+  if (mode === 'online') { $('endScreen').hidden = true; net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }); showLobby(); }
   else startOffline();
 });
 $('soloBtn').addEventListener('click', () => goOffline());
@@ -547,7 +547,7 @@ function connect() {
 function tryJoin() {
   if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
   const L = net.lobby; if (L && (L.phase === 'play' || L.players.length >= L.max)) return;
-  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear });
+  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
 }
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
@@ -715,7 +715,7 @@ function animate(dt, t) {
     c.blinkAt -= dt;
     const blink = c.blinkAt < 0 && c.blinkAt > -.12;
     if (c.blinkAt < -.12) c.blinkAt = 2 + Math.random() * 4;
-    for (const e of c.eyes) e.scale.y = blink ? .008 : trapped ? .03 : .065;
+    for (const e of c.eyes) e.scale.y = blink ? .008 : trapped ? .03 : e.userData.sy;
     for (const a of c.arms) { const s = a.userData.side; a.rotation.z = trapped ? s * (2.4 + Math.sin(t * 9 + s) * .3) : s * (.5 + (moving ? Math.sin(t * 13 + c.phase + s) * .35 : 0)); }
   }
   hudTick -= dt;
@@ -736,8 +736,8 @@ function tick() {
 buildView(Core.snapshot(Core.createGame({ seed: 20261016 })), null);
 /* ---------- 外觀與進場：外觀由大廳設定；沒設定過（直接點連結或受邀進來）就先跳選擇視窗 ---------- */
 function applyAppearance(a) {
-  setup.color = a.color; setup.ear = a.ear;
-  if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear });
+  setup.color = a.color; setup.ear = a.ear; setup.eye = a.eye; setup.body = a.body; setup.blush = a.blush;
+  if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
 }
 async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
 $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);

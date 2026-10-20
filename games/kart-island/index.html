@@ -80,6 +80,7 @@ body.touch .keys { display: none; }
 .screen h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
 .screen p { margin: 6px 0 12px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
 .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.row[hidden] { display: none; } /* 連線時藏起電腦難度列；.row 的 display 會蓋掉 hidden */
 .go { margin-top: 14px; width: 100%; padding: 10px; font-size: 17px; }
 .legend { display: grid; grid-template-columns: 1fr; gap: 4px; text-align: left; font-size: 12.5px; margin-top: 8px; }
 .legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; background: var(--c); }
@@ -142,18 +143,21 @@ body.touch .keys { display: none; }
     <button class="act gas" id="gasBtn">油門</button>
   </div>
 </div>
-<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具</div>
+<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣</div>
 
 <section class="screen" id="startScreen">
   <div class="box">
     <h1>泡泡賽車</h1>
-    <p>3 圈。按住油門（W）前進，S 煞車。撿問號箱拿道具，按住漂移轉彎累積火花，放開就加速；加速中再漂移，火花集得更快，可以一路連噴。倒數最後一刻才踩油門，可以起跑加速。</p>
+    <p>3 圈。按住油門（W）前進，S 煞車。按住漂移轉彎累積火花，放開就加速；加速中再漂移，火花集得更快，可以一路連噴。倒數最後一刻才踩油門，可以起跑加速。道具賽撿問號箱拿道具；競速賽沒有道具，漂移集滿氮氣槽得到氮氣。</p>
     <div class="legend">
-      <span style="--c:#7cc8ff">水球：向前射，打中的人被泡泡困住 2 秒</span>
       <span style="--c:#4cd68a">加速鞋：衝刺 2 秒</span>
       <span style="--c:#9edcff">水窪：在車後丟一排 3 個，踩到會打滑</span>
       <span style="--c:#ffd6ec">泡泡盾：8 秒內擋下一次攻擊</span>
       <span style="--c:#3fb6ff">超級水柱：追著前一名噴，打中困住 2.5 秒</span>
+      <span style="--c:#c9d3e6">雷雨雲：飛到第一名頭上，2 秒後下雨困住他</span>
+      <span style="--c:#ff8a4c">燙手泡泡：黏到前面的車上，5 秒後爆炸，撞別人就傳出去</span>
+      <span style="--c:#fffdf8">小幽靈：偷前面一台車的道具，透明 3 秒</span>
+      <span style="--c:#ffb3c7">假道具箱：丟在車後，撞到會打滑</span>
     </div>
     <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線對戰</button></div>
     <button class="btn primary go" id="startBtn">開始（對 3 台電腦）</button>
@@ -166,6 +170,7 @@ body.touch .keys { display: none; }
     <h2>選地圖</h2>
     <div class="vtimer" id="vTimer">15</div>
     <p id="vNote">點一張地圖投票，票多的開跑，同票隨機。</p>
+    <div class="row diffs" id="modes"></div>
     <div class="row diffs" id="diffs" hidden></div>
     <div class="maps" id="maps"></div>
   </div>
@@ -258,7 +263,7 @@ function elevAt(s) {
   for (let k = 1; k < ELEV.length; k++) if (f <= ELEV[k][0]) { const [f0, h0] = ELEV[k - 1], [f1, h1] = ELEV[k]; return f < f0 ? 0 : h0 + (h1 - h0) * smooth((f - f0) / (f1 - f0)); }
   return 0;
 }
-// 回傳 (x, y) 的路面高度與沿賽道每格的坡度；o 記住上一次的位置索引，車和水球每幀只在附近找
+// 回傳 (x, y) 的路面高度與沿賽道每格的坡度；o 記住上一次的位置索引，車和道具每幀只在附近找
 function lift(o, x, y) {
   if (!ELEV) return { z: 0, slope: 0 };
   let loc = Core.locate(x, y, o.eh ?? null, TRACK);
@@ -350,7 +355,7 @@ function makeHouse(x, y, rng, th, n) {
   return g;
 }
 
-/* ---------- 物件：車、道具箱、水球、水窪 ---------- */
+/* ---------- 物件：車、道具箱、飛行道具、水窪 ---------- */
 function makeKart(d) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body); root.rotation.order = 'YXZ'; // 先轉朝向再俯仰，上下匝道時車頭跟著坡度
   const chassis = new THREE.Mesh(G.box, toon(d.color)); chassis.scale.set(.95, .3, 1.3); chassis.position.y = .32; boxOutline(chassis, .95, .3, 1.3); body.add(chassis);
@@ -364,17 +369,41 @@ function makeKart(d) {
   for (const s of [-1, 1]) { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0x5ab8ff })); m.scale.setScalar(.14); m.position.set(s * .52, .15, -.75); m.visible = false; body.add(m); sparks.push(m); }
   const trail = []; for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(G.small, M.splash); m.scale.setScalar(.26 - i * .04); m.position.set(0, .32, -.9 - i * .32); m.visible = false; body.add(m); trail.push(m); }
   const shield = new THREE.Mesh(G.sphere, SHIELD_MAT); shield.scale.set(1.05, .85, 1.2); shield.position.y = .55; shield.visible = false; root.add(shield); // 泡泡盾：罩住整台車的粉色泡泡
+  // 雷雨雲：頭上一朵雲加 4 滴往下掉的雨；燙手泡泡：黏在椅背上，上面浮著剩下的秒數
+  const cloud = makeCloud(.75); cloud.position.y = 2.5; cloud.visible = false; root.add(cloud);
+  const rain = []; for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(G.small, M.splash); m.scale.set(.06, .12, .06); m.position.set((i - 1.5) * .3, 2, (i % 2 - .5) * .3); cloud.add(m); rain.push(m); }
+  const hot = makeHotBubble(); hot.position.set(0, 1.15, -.55); hot.visible = false; root.add(hot);
+  const hotNum = new THREE.Sprite(new THREE.SpriteMaterial({ map: numTex(5), transparent: true, depthTest: false })); hotNum.scale.set(.7, .7, 1); hotNum.position.y = .75; hotNum.renderOrder = 11; hot.add(hotNum);
   scene.add(root);
-  return { root, body, critter, sparks, trail, shield, spin: 0 };
+  return { root, body, critter, sparks, trail, shield, cloud, rain, hot, hotNum, spin: 0 };
+}
+const CLOUD_MAT = toon('#c9d3e6'), HOT_MAT = toon('#ff8a4c'), FLAME_MAT = toon('#ffd23f');
+function makeCloud(s) {
+  const g = new THREE.Group();
+  for (const [x, y, z, r] of [[-.45, 0, 0, .4], [0, .15, 0, .55], [.45, 0, 0, .4], [0, -.05, .28, .38]]) { const m = blob(G.sphere, CLOUD_MAT, r, r * .8, r); m.position.set(x, y, z); g.add(m); }
+  g.scale.setScalar(s); return g;
+}
+function makeHotBubble() { const g = new THREE.Group(); g.add(blob(G.sphere, HOT_MAT, .3, .3, .3, 1.1)); const f = blob(G.cone, FLAME_MAT, 1, 1, 1); f.position.y = .4; g.add(f); return g; }
+// 燙手泡泡上的倒數數字（1 到 5），每個數字一張貼圖
+const numTexs = new Map();
+function numTex(n) {
+  if (!numTexs.has(n)) { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.font = '900 52px "Zen Maru Gothic",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round'; x.lineWidth = 8; x.strokeStyle = INK; x.strokeText(String(n), 32, 35); x.fillStyle = '#ffd23f'; x.fillText(String(n), 32, 35); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; numTexs.set(n, t); }
+  return numTexs.get(n);
 }
 const SHIELD_MAT = new THREE.MeshToonMaterial({ color: '#ffc8e8', gradientMap: grad, transparent: true, opacity: .4, depthWrite: false });
 const BOX_COLORS = ['#ffb3c7', '#ffe08a', '#a8e6cf', '#a8d8ff', '#c9b6ff', '#ffc8a2'];
 const qTex = (() => { const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'); x.fillStyle = '#ffffff'; x.fillRect(0, 0, 64, 64); x.font = '900 46px "Zen Maru Gothic",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round'; x.lineWidth = 6; x.strokeStyle = INK; x.strokeText('?', 32, 35); x.fillStyle = '#fffdf8'; x.fillText('?', 32, 35); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 const boxMats = BOX_COLORS.map(c => new THREE.MeshToonMaterial({ color: c, map: qTex, gradientMap: grad }));
 function makeBox(i) { const m = new THREE.Mesh(G.box, boxMats[i % boxMats.length]); m.scale.setScalar(.75); boxOutline(m, .75, .75, .75); scene.add(m); return m; }
+// 假道具箱：和道具箱同色同大小，只有問號上下顛倒
+const fakeTex = (() => { const t = qTex.clone(); t.center.set(.5, .5); t.rotation = Math.PI; t.needsUpdate = true; return t; })();
+const fakeMats = BOX_COLORS.map(c => new THREE.MeshToonMaterial({ color: c, map: fakeTex, gradientMap: grad }));
+function makeDecoy(id) { const m = new THREE.Mesh(G.box, fakeMats[id % fakeMats.length]); m.scale.setScalar(.75); boxOutline(m, .75, .75, .75); m.userData.decoy = true; scene.add(m); return m; }
 const JET_MAT = toon('#3fb6ff');
+// kind 是 Core.SHOT_CODE：1 超級水柱、2 雷雨雲、3 燙手泡泡
 function makeShot(kind) {
-  if (!kind) { const m = blob(G.sphere, M.balloon, .3, .3, .3, 1.1); scene.add(m); return m; }
+  if (kind === Core.SHOT_CODE.storm) { const g = makeCloud(.75); scene.add(g); return g; }
+  if (kind === Core.SHOT_CODE.hot) { const g = makeHotBubble(); scene.add(g); return g; }
   // 超級水柱：拉長的水團 + 白色核心 + 後面三顆水滴，朝前進方向轉
   const g = new THREE.Group(), head = blob(G.sphere, JET_MAT, .36, .3, .55, 1.08); g.add(head);
   const core = new THREE.Mesh(G.small, M.splashCore); core.scale.set(.16, .14, .28); core.position.set(0, .06, .1); g.add(core);
@@ -399,10 +428,12 @@ function drawMap(karts, me) {
   for (const k of [...karts].sort((a, b) => (a.id === me) - (b.id === me))) { const [x, y] = mp(k.x, k.y); mapX.beginPath(); mapX.arc(x, y, k.id === me ? 9 : 6.5, 0, Math.PI * 2); mapX.fillStyle = k.color; mapX.fill(); mapX.lineWidth = 3; mapX.strokeStyle = INK; mapX.stroke(); }
 }
 const ITEM_ICON = {
-  balloon: ['#7cc8ff', ITEM_ART.bomb, '水球', '向前射出，打中的人被泡泡困住 2 秒'], shoe: ['#4cd68a', ITEM_ART.speed, '加速鞋', '立刻衝刺 2 秒'], puddle: ['#9edcff', ITEM_ART.puddle, '水窪', '在車後丟一排 3 個，踩到的人會打滑'],
-  shield: ['#ffb3d9', ITEM_ART.shield, '泡泡盾', '8 秒內擋下一次水球、水柱或水窪'], jet: ['#3fb6ff', ITEM_ART.power, '超級水柱', '沿賽道追著前一名噴，打中困住 2.5 秒'],
+  shoe: ['#4cd68a', ITEM_ART.speed, '加速鞋', '立刻衝刺 2 秒'], puddle: ['#9edcff', ITEM_ART.puddle, '水窪', '在車後丟一排 3 個，踩到的人會打滑'],
+  shield: ['#ffb3d9', ITEM_ART.shield, '泡泡盾', '8 秒內擋下一次攻擊'], jet: ['#3fb6ff', ITEM_ART.power, '超級水柱', '沿賽道追著前一名噴，打中困住 2.5 秒'],
+  storm: ['#c9d3e6', ITEM_ART.storm, '雷雨雲', '飛到第一名頭上，2 秒後下雨困住他 1.5 秒'], hot: ['#ff8a4c', ITEM_ART.hot, '燙手泡泡', '黏到前面最近的車上，5 秒後爆炸；撞到別人就黏過去'],
+  ghost: ['#e2d6ff', ITEM_ART.ghost, '小幽靈', '偷前面最近一台車的道具，自己透明 3 秒'], decoy: ['#ffe08a', ITEM_ART.decoy, '假道具箱', '丟在車後，長得像道具箱，撞到的人會打滑'],
 };
-const ITEM_NAME = { balloon: '水球', jet: '水柱', puddle: '水窪' };
+const ITEM_NAME = { jet: '水柱', puddle: '水窪', storm: '雷雨雲', hot: '燙手泡泡', decoy: '假道具箱' };
 const useHint = () => document.body.classList.contains('touch') ? '按「道具」使用' : '按空白鍵使用';
 const slotX = $('slot').getContext('2d'); let slotKind = '-';
 function drawSlot(kind) {
@@ -412,6 +443,18 @@ function drawSlot(kind) {
   $('itemName').textContent = it ? it[2] : '沒有道具';
   $('itemDesc').textContent = it ? `${it[3]}。${useHint()}` : '撞問號箱拿道具';
   const box = $('slot').parentElement; box.classList.remove('has'); if (it) { void box.offsetWidth; box.classList.add('has'); }
+}
+// 競速賽的道具格：氮氣瓶（沒有氮氣時變淡）、外圈橘色弧線是氮氣槽、右下角是存了幾個
+let slotNitro = 0;
+function drawNitro(n, ga) {
+  const key = `nitro${n},${ga}`; if (key === slotKind) return; slotKind = key; const x = slotX;
+  x.clearRect(0, 0, 128, x.canvas.height); badgeFrame(x, n ? '#5ab8ff' : '#e8dede');
+  x.save(); x.globalAlpha = n ? 1 : .35; ITEM_ART.nitro(x); x.restore();
+  if (n < Core.NITRO.max && ga > 0) { x.beginPath(); x.arc(64, 64, 54, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ga); x.lineWidth = 9; x.lineCap = 'round'; x.strokeStyle = '#ffa63d'; x.stroke(); }
+  if (n) { x.beginPath(); x.arc(102, 102, 20, 0, Math.PI * 2); x.fillStyle = '#ff8fab'; x.fill(); x.lineWidth = 4; x.strokeStyle = INK; x.stroke(); x.fillStyle = INK; x.font = '900 24px "Zen Maru Gothic",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(`×${n}`, 102, 103); }
+  $('itemName').textContent = n ? `氮氣 ×${n}` : '氮氣槽';
+  $('itemDesc').textContent = n ? `衝刺 2 秒。${useHint()}` : `漂移集氣，集滿一格得到 1 個氮氣（最多 ${Core.NITRO.max} 個）`;
+  const box = $('slot').parentElement; if (n > slotNitro) { box.classList.remove('has'); void box.offsetWidth; box.classList.add('has'); } slotNitro = n;
 }
 drawSlot(null);
 setTrack(Core.TRACKS[0].id);
@@ -482,6 +525,7 @@ function disposeView() {
 function buildView(s, myId) {
   disposeView(); setTrack(s.track);
   V = { myId, s, karts: new Map(), boxes: [], shots: new Map(), haz: new Map(), lastCd: 99, camH: null, camPos: null, laps: [], lapAt: 0 }; ww.hint = null; // laps：自己每一圈的秒數
+  $('itemBtn').textContent = s.mode === 'speed' ? '氮氣' : '道具'; slotKind = '-'; slotNitro = 0;
   for (const d of s.karts) V.karts.set(d.id, makeKart(d));
   for (const b of s.boxes) { const m = makeBox(b[0]); m.userData.z = lift({}, b[1], b[2]).z; m.position.copy(W(b[1], b[2], m.userData.z + .7)); V.boxes.push(m); }
   applySnap(s, []);
@@ -492,12 +536,16 @@ function applySnap(s, evs) {
   for (const [id, x, y, kind] of s.shots) {
     seenS.add(id); let m = V.shots.get(id), fresh = !m;
     if (fresh) V.shots.set(id, m = makeShot(kind));
-    const p = W(x, y, .5 + lift(m.userData, x, y).z); if (fresh) m.position.copy(p);
-    if (kind) { const dx = p.x - m.position.x, dz = p.z - m.position.z; if (dx * dx + dz * dz > 1e-4) m.rotation.y = Math.atan2(dx, dz); } // 水柱轉向前進方向
+    const p = W(x, y, (kind === Core.SHOT_CODE.storm ? 2.6 : .5) + lift(m.userData, x, y).z); if (fresh) m.position.copy(p); // 雷雨雲飛在空中
+    if (kind) { const dx = p.x - m.position.x, dz = p.z - m.position.z; if (dx * dx + dz * dz > 1e-4) m.rotation.y = Math.atan2(dx, dz); } // 轉向前進方向
     m.position.copy(p);
   }
   for (const [id, m] of V.shots) if (!seenS.has(id)) { scene.remove(m); V.shots.delete(id); }
-  const seenH = new Set(); for (const [id, x, y] of s.haz) { seenH.add(id); let m = V.haz.get(id); if (!m) V.haz.set(id, m = makePuddle()); m.position.copy(W(x, y, lift(m.userData, x, y).z)); }
+  const seenH = new Set();
+  for (const [id, x, y, kind] of s.haz) { // kind 1 = 假道具箱：高度和上下飄動在主迴圈裡算，和真的道具箱一樣
+    seenH.add(id); let m = V.haz.get(id); if (!m) V.haz.set(id, m = kind ? makeDecoy(id) : makePuddle());
+    const z = lift(m.userData, x, y).z; m.userData.z = z; m.position.copy(W(x, y, kind ? z + .7 : z));
+  }
   for (const [id, m] of V.haz) if (!seenH.has(id)) { scene.remove(m); V.haz.delete(id); }
   s.boxes.forEach((b, i) => { V.boxes[i].visible = !!b[3]; });
   for (const e of evs) onEvent(e);
@@ -507,11 +555,17 @@ function onEvent(e) {
   if (e.e === 'spin' && V?.karts.get(e.id)) V.karts.get(e.id).spin = 1;
   if (e.e === 'go') { sfx.go(); showCount('GO!'); setTimeout(() => $('count').hidden = true, 700); }
   else if (e.e === 'item' && mine) { sfx.item(); haptic.tap(); }
-  else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了加速鞋', shield: '張開泡泡盾', jet: '噴出超級水柱' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); }
+  else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了加速鞋', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告
+  else if (e.e === 'nitro' && mine) { sfx.item(); toast(`氮氣 +1（${e.n}/${Core.NITRO.max}）`, 800); }
   else if (e.e === 'crash' && (e.a === me || e.b === me)) { sfx.bump(); haptic.tap(); }
-  else if (e.e === 'hit') { feed(`${who(e.by)} 的${ITEM_NAME[e.kind] || '水球'}打中 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.hit(); haptic.hit(); } }
+  else if (e.e === 'hit') { feed(e.kind === 'hot' ? `${who(e.by)} 的燙手泡泡在 ${who(e.id)} 身上爆炸` : e.kind === 'storm' ? `${who(e.by)} 的雷雨雲淋到 ${who(e.id)}` : `${who(e.by)} 的${ITEM_NAME[e.kind] || '道具'}打中 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.hit(); haptic.hit(); } }
   else if (e.e === 'block') { feed(`${who(e.id)} 的泡泡盾擋下 ${who(e.by)} 的${ITEM_NAME[e.kind] || '攻擊'}`, e.id, e.by); if (mine) { sfx.block(); haptic.tap(); } }
-  else if (e.e === 'spin') { feed(e.by === e.id ? `${who(e.id)} 踩到自己的水窪` : `${who(e.id)} 踩到 ${who(e.by)} 的水窪`, e.id, e.by); if (mine) { sfx.hit(); haptic.hit(); } }
+  else if (e.e === 'spin') { const what = ITEM_NAME[e.kind] || '水窪', verb = e.kind === 'decoy' ? '撞到' : '踩到'; feed(e.by === e.id ? `${who(e.id)} ${verb}自己的${what}` : `${who(e.id)} ${verb} ${who(e.by)} 的${what}`, e.id, e.by); if (mine) { sfx.hit(); haptic.hit(); } }
+  else if (e.e === 'cloud') { feed(`${who(e.by)} 的雷雨雲飄到 ${who(e.id)} 頭上`, e.by, e.id); if (mine) { sfx.beep(); toast('頭上有雷雨雲！2 秒後下雨，泡泡盾擋得掉', 1800); } }
+  else if (e.e === 'stick') { feed(`${who(e.by)} 的燙手泡泡黏到 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.beep(); haptic.tap(); toast('燙手泡泡黏上來了！撞別人就能傳出去', 1800); } }
+  else if (e.e === 'pass') { feed(`${who(e.by)} 把燙手泡泡傳給 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.beep(); haptic.tap(); toast('燙手泡泡傳到你身上了！', 1400); } else if (e.by === me) toast('傳出去了！', 900); }
+  else if (e.e === 'steal') { feed(`${who(e.id)} 的小幽靈偷走 ${who(e.from)} 的${ITEM_ICON[e.kind]?.[2] || '道具'}`, e.id, e.from); if (e.from === me) { sfx.hit(); toast('道具被小幽靈偷走了！', 1400); } }
+  else if (e.e === 'miss') feed(`${ITEM_NAME[e.kind] || '攻擊'}沒傷到 ${who(e.id)}`, e.id);
   else if (e.e === 'boost' && mine) { sfx.boost(e.level); haptic.tap(); if (e.chain >= 2) toast(`連噴 ×${e.chain}`, 800); }
   else if (e.e === 'lap' && mine) { const lt = V.s.time - V.lapAt; V.laps.push(lt); V.lapAt = V.s.time; sfx.lap(); toast(`${e.lap === V.s.laps ? '最後一圈！' : `第 ${e.lap} 圈`}　上一圈 ${lt.toFixed(1)} 秒`, 1600); }
   else if (e.e === 'bump' && mine) sfx.bump();
@@ -576,7 +630,7 @@ const SPARK = [0x5ab8ff, 0x5ab8ff, 0xffa63d, 0xff6fa8];
 function renderKarts(poses, dt, t) {
   for (const d of poses) {
     const k = V.karts.get(d.id); if (!k) continue;
-    k.root.visible = d.st !== 'out';
+    k.root.visible = d.st !== 'out' && !(d.gh && Math.sin(t * 30) > .4); // 小幽靈透明：一閃一閃
     const { z, slope } = lift(k, d.x, d.y), i = k.eh ?? 0; k.z = z;
     k.root.position.copy(W(d.x, d.y, z));
     k.root.rotation.x = slope ? -Math.atan(slope * (TRACK.tx[i] * Math.cos(d.h) + TRACK.ty[i] * Math.sin(d.h))) : 0; // 沿車頭方向的坡度
@@ -585,6 +639,8 @@ function renderKarts(poses, dt, t) {
     k.body.position.y = Math.abs(d.v) > .5 ? Math.abs(Math.sin(t * 18 + d.id)) * .03 : 0;
     k.critter.bubble.visible = k.critter.shine.visible = d.tr > 0;
     k.shield.visible = !!d.sh; if (d.sh) k.shield.rotation.y = t * 1.5;
+    k.cloud.visible = !!d.cl; if (d.cl) k.rain.forEach((m, i) => { m.position.y = -.35 - ((t * 2.2 + i * .27) % 1) * 1.6; });
+    k.hot.visible = !!d.ho; if (d.ho) { k.hot.scale.setScalar(1 + .12 * Math.sin(t * (8 + (6 - d.ho) * 3))); if (k.hotNum.material.map !== numTex(d.ho)) k.hotNum.material.map = numTex(d.ho); } // 越接近爆炸跳得越快
     animateCritter(k.critter, dt, t, false);
     for (const sp of k.sparks) { sp.visible = d.dr !== 0 && d.dl > 0 && Math.sin(t * 40 + sp.position.x) > -.3; sp.material.color.setHex(SPARK[d.dl] || SPARK[1]); }
     k.trail.forEach((m, i) => { m.visible = !!d.bo; if (d.bo) m.scale.setScalar((.26 - i * .04) * (1 + .35 * Math.sin(t * 30 + i))); });
@@ -608,7 +664,7 @@ function updateHud(s, me) {
   $('rank').innerHTML = k ? `${k.rank}<small> / ${n}</small>` : '<small>觀戰中</small>';
   $('lap').textContent = k ? (k.done ? `完賽 第 ${k.place} 名` : `第 ${k.lap}/${s.laps} 圈`) : `${s.laps} 圈`;
   $('time').textContent = fmtTime(s.time);
-  drawSlot(k?.item || null);
+  if (s.mode === 'speed') drawNitro(k?.ni || 0, k?.ga || 0); else drawSlot(k?.item || null);
   if (s.phase === 'countdown') { const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); sfx.beep(); } }
 }
 
@@ -618,12 +674,23 @@ let diff = Core.DIFFS[store.get('kt-diff')] ? store.get('kt-diff') : 'normal';
 function renderDiffs() { $('diffs').innerHTML = '<b>電腦</b>' + Object.entries(Core.DIFFS).map(([k, v]) => `<button class="btn" data-diff="${k}" aria-pressed="${k === diff}">${v.label}</button>`).join(''); }
 $('diffs').addEventListener('click', e => { const b = e.target.closest('[data-diff]'); if (!b) return; diff = b.dataset.diff; store.set('kt-diff', diff); renderDiffs(); });
 renderDiffs();
-// 個人最佳：每張地圖的最快完賽與最快一圈 { time, lap }，選地圖時顯示在卡片上
-const bestOf = id => { try { return JSON.parse(store.get('kt-best-' + id)) || null; } catch { return null; } };
+// 模式（道具賽／競速賽）：單人直接用；連線時是投票，點了就送出，數字是目前票數。選擇記在瀏覽器
+let raceMode = Core.MODES[store.get('kt-mode')] ? store.get('kt-mode') : 'item';
+function renderModes(counts) { $('modes').innerHTML = '<b>模式</b>' + Object.entries(Core.MODES).map(([k, v]) => `<button class="btn" data-mode="${k}" aria-pressed="${k === raceMode}">${v.label}${counts?.[k] ? `・${counts[k]} 票` : ''}</button>`).join(''); }
+$('modes').addEventListener('click', e => {
+  const b = e.target.closest('[data-mode]'); if (!b) return; haptic.tap(); raceMode = b.dataset.mode; store.set('kt-mode', raceMode);
+  if (mode === 'online') net.send({ t: 'vote', mode: raceMode });
+  renderModes(mode === 'online' ? net.lobby?.vote?.modes : null); renderMaps(mode === 'online' ? net.lobby?.vote?.counts : null); // 卡片上的個人最佳跟著模式換
+});
+renderModes(null);
+// 個人最佳：每張地圖、每個模式的最快完賽與最快一圈 { time, lap }，選地圖時顯示在卡片上（道具賽沿用舊的 key）
+const bestKey = (id, m) => 'kt-best-' + id + (m === 'speed' ? '-speed' : '');
+const bestOf = (id, m = raceMode) => { try { return JSON.parse(store.get(bestKey(id, m))) || null; } catch { return null; } };
 function startOffline(track = Core.TRACKS[0].id) {
   endSeq++;
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer();
-  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], track, diff });
+  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], track, diff, mode: raceMode });
+  toast(`${Core.MODES[raceMode].label}：${Core.trackById(track).name}`, 1600);
   soloStart(track);
   acc = 0; prevLocal = null; buf.length = 0;
   buildView(Core.snapshot(local), 0); playing = true;
@@ -642,8 +709,8 @@ function showEnd(r) {
   $('againBtn').textContent = mode === 'online' ? '回房間，再賽一場' : '再賽一場';
   const lapEl = $('lapLine'), laps = V?.laps || []; lapEl.hidden = true; lapEl.className = 'endnote';
   if (mine?.time != null && laps.length) { // 圈速與個人最佳（記在瀏覽器，單人和連線都算）
-    const id = V.s.track, old = bestOf(id), fast = Math.min(...laps), pb = !old || mine.time < old.time;
-    store.set('kt-best-' + id, JSON.stringify({ time: Math.min(mine.time, old?.time ?? Infinity), lap: Math.min(fast, old?.lap ?? Infinity) }));
+    const id = V.s.track, m = V.s.mode, old = bestOf(id, m), fast = Math.min(...laps), pb = !old || mine.time < old.time;
+    store.set(bestKey(id, m), JSON.stringify({ time: Math.min(mine.time, old?.time ?? Infinity), lap: Math.min(fast, old?.lap ?? Infinity) }));
     lapEl.textContent = `圈速 ${laps.map(t => t.toFixed(1)).join(' / ')} 秒，最快一圈 ${fast.toFixed(1)} 秒｜${pb ? '個人最佳！' : `個人最佳 ${old.time.toFixed(2)} 秒`}`;
     lapEl.classList.toggle('best', pb); lapEl.hidden = false;
   }
@@ -656,9 +723,9 @@ function showEnd(r) {
 /* ---------- 單人紀錄：開跑時向伺服器拿票，完賽送出成績，伺服器檢查合理才進賽道紀錄（訪客與沒登入的人不記錄） ---------- */
 let solo = null, endSeq = 0;
 function soloStart(track) {
-  solo = { track, diff, ticket: Promise.resolve(null) };
+  solo = { track, diff, mode: raceMode, ticket: Promise.resolve(null) };
   if (!ID || ID.guest) return;
-  solo.ticket = fetch('/kart/solo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, track, diff }) })
+  solo.ticket = fetch('/kart/solo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, track, diff, mode: raceMode }) })
     .then(r => (r.ok ? r.json() : null)).then(j => j?.ticket || null).catch(() => null);
 }
 // 回傳結算畫面要顯示的一句話 { text, best }；沒完賽回傳 null
@@ -667,7 +734,8 @@ async function soloFinish(time) {
   if (!s || time == null) return null;
   if (!ID) return { text: '登入後，單人成績也會進賽道紀錄' };
   if (ID.guest) return { text: '訪客的成績不進賽道紀錄' };
-  const name = Core.trackById(s.track).name + (s.diff === 'hard' ? '（困難）' : ''), ticket = await s.ticket;
+  const tags = [s.mode === 'speed' ? '競速賽' : '', s.diff === 'hard' ? '困難' : ''].filter(Boolean).join('、');
+  const name = Core.trackById(s.track).name + (tags ? `（${tags}）` : ''), ticket = await s.ticket;
   if (!ticket) return { text: '紀錄沒送出：連不上伺服器' };
   try {
     const r = await fetch('/kart/record', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, ticket, time }) });
@@ -704,14 +772,14 @@ function stopVoteTimer() { clearInterval(voteTimer); voteTimer = 0; }
 function showVote(v) {
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = true; $('voteScreen').hidden = false;
   $('diffs').hidden = mode === 'online'; // 電腦難度只有單人賽有
-  if (mode === 'online') { $('vNote').textContent = '點一張地圖投票，票多的開跑，同票隨機。'; $('vTimer').textContent = v?.endsIn ?? ''; renderMaps(v?.counts); return; }
-  myVote = null; renderMaps(null); $('vNote').textContent = '點一張地圖開跑，15 秒沒選就隨機。';
+  if (mode === 'online') { $('vNote').textContent = '選模式、點一張地圖投票，各自票多的開跑，同票隨機。沒人選模式就是道具賽。'; $('vTimer').textContent = v?.endsIn ?? ''; renderModes(v?.modes); renderMaps(v?.counts); return; }
+  myVote = null; renderModes(null); renderMaps(null); $('vNote').textContent = '選好模式，點一張地圖開跑，15 秒沒選就隨機。';
   let left = 15; $('vTimer').textContent = left; stopVoteTimer();
   voteTimer = setInterval(() => { left--; $('vTimer').textContent = left; if (left <= 0) startOffline(Core.TRACKS[Math.floor(Math.random() * Core.TRACKS.length)].id); }, 1000);
 }
 $('maps').addEventListener('click', e => {
   const b = e.target.closest('[data-track]'); if (!b) return; haptic.tap();
-  if (mode === 'online') { myVote = b.dataset.track; net.send({ t: 'vote', track: myVote }); renderMaps(net.lobby?.vote?.counts); }
+  if (mode === 'online') { myVote = b.dataset.track; net.send({ t: 'vote', track: myVote, mode: raceMode }); renderMaps(net.lobby?.vote?.counts); } // 投地圖時一起投目前選的模式
   else startOffline(b.dataset.track);
 });
 
@@ -749,7 +817,7 @@ function onNet(m) {
   else if (m.t === 'start') {
     net.base = m.s; resetClock(); buildView(m.s, m.me); playing = true;
     $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = $('voteScreen').hidden = true; myVote = null;
-    toast(`地圖：${Core.trackById(m.s.track).name}`, 1600);
+    toast(`${Core.MODES[m.s.mode]?.label || '道具賽'}：${Core.trackById(m.s.track).name}`, 1600);
     if (m.me == null) toast('觀戰中', 1200);
   }
   else if (m.t === 's') {
@@ -811,6 +879,7 @@ function tick(now) {
     const own = meId != null ? poses.find(d => d.id === meId) : null; $('speedo').hidden = !own; if (own) drawSpeedo(own.v, own.bo, own.dr ? own.dl : 0);
     wrongWay(own, dt);
     for (const [i, m] of V.boxes.entries()) { m.rotation.y = t * 1.6 + i; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + i) * .1; }
+    for (const [id, m] of V.haz) if (m.userData.decoy) { m.rotation.y = t * 1.6 + id; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + id) * .1; }
   } else { orbitCam(dt); $('wrongWay').hidden = true; }
   renderer.render(scene, camera);
 }

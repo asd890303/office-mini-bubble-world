@@ -34,6 +34,33 @@ export const ITEM_ART = {
     x.beginPath(); x.arc(64, 50, 22, Math.PI * 1.08, Math.PI * 1.42); x.lineWidth = 5; x.lineCap = 'round'; x.strokeStyle = '#fff'; x.stroke(); shine(x, 82, 34, 3, 5, .5);
     x.beginPath(); x.moveTo(64, 64); x.bezierCurveTo(50, 55, 53, 42, 64, 49); x.bezierCurveTo(75, 42, 78, 55, 64, 64); x.closePath(); inkPath(x, '#ff6fa8', 3);
   },
+  storm(x) { // 雷雨雲：灰藍雲朵 + 黃色閃電 + 兩滴雨
+    x.beginPath(); x.arc(46, 46, 14, Math.PI * .5, Math.PI * 1.5); x.arc(62, 34, 18, Math.PI * 1.1, Math.PI * 1.95); x.arc(82, 46, 14, Math.PI * 1.5, Math.PI * .5); x.closePath(); inkPath(x, '#c9d3e6');
+    x.beginPath(); x.moveTo(66, 54); x.lineTo(54, 72); x.lineTo(63, 72); x.lineTo(57, 88); x.lineTo(76, 66); x.lineTo(67, 66); x.lineTo(74, 54); x.closePath(); inkPath(x, '#ffd23f', 3);
+    for (const dx of [40, 88]) { x.beginPath(); x.moveTo(dx, 68); x.quadraticCurveTo(dx - 6, 78, dx, 81); x.quadraticCurveTo(dx + 6, 78, dx, 68); x.closePath(); inkPath(x, '#7cc8ff', 2.5); }
+  },
+  hot(x) { // 燙手泡泡：橘紅泡泡 + 頂端火苗 + 反光
+    x.beginPath(); x.arc(64, 58, 26, 0, Math.PI * 2); inkPath(x, '#ff8a4c'); shine(x, 54, 48, 5, 9);
+    x.beginPath(); x.moveTo(64, 14); x.bezierCurveTo(76, 24, 73, 34, 64, 36); x.bezierCurveTo(55, 34, 52, 24, 64, 14); x.closePath(); inkPath(x, '#ffd23f', 3);
+  },
+  ghost(x) { // 小幽靈：白色幽靈 + 波浪下擺 + 眼睛和圓嘴
+    x.beginPath(); x.moveTo(40, 82); x.lineTo(40, 48); x.arc(64, 48, 24, Math.PI, 0); x.lineTo(88, 82);
+    for (let sx = 88; sx > 40; sx -= 12) x.quadraticCurveTo(sx - 6, 92, sx - 12, 82);
+    x.closePath(); inkPath(x, '#fffdf8');
+    x.fillStyle = INK; for (const ex of [55, 73]) { x.beginPath(); x.ellipse(ex, 50, 3.5, 5, 0, 0, Math.PI * 2); x.fill(); }
+    x.beginPath(); x.ellipse(64, 63, 4, 5, 0, 0, Math.PI * 2); x.fill();
+  },
+  decoy(x) { // 假道具箱：和道具箱一樣的方塊，問號上下顛倒
+    x.save(); x.translate(64, 52); x.rotate(-.12); x.beginPath(); x.roundRect(-26, -26, 52, 52, 9); inkPath(x, '#ffb3c7');
+    x.rotate(Math.PI); x.font = '900 40px "Zen Maru Gothic",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    x.lineWidth = 6; x.strokeStyle = INK; x.strokeText('?', 0, 2); x.fillStyle = '#fffdf8'; x.fillText('?', 0, 2); x.restore();
+  },
+  nitro(x) { // 氮氣（競速賽）：藍色氣瓶 + 白色 N + 尾焰
+    x.beginPath(); x.moveTo(52, 84); x.quadraticCurveTo(64, 104, 76, 84); x.closePath(); inkPath(x, '#ffa63d', 3);
+    x.beginPath(); x.roundRect(47, 30, 34, 54, 11); inkPath(x, '#5ab8ff');
+    x.beginPath(); x.roundRect(57, 18, 14, 14, 4); inkPath(x, '#c9d3e6', 3);
+    x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#fffdf8'; x.beginPath(); x.moveTo(57, 68); x.lineTo(57, 46); x.lineTo(71, 68); x.lineTo(71, 46); x.stroke();
+  },
   super(x) { // 超級水球：紫色爆炸星 + 黃色核心
     x.beginPath(); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8 - Math.PI / 2, r = i % 2 ? 17 : 32; x[i ? 'lineTo' : 'moveTo'](64 + Math.cos(a) * r, 50 + Math.sin(a) * r); } x.closePath(); inkPath(x, '#c86bff');
     x.beginPath(); x.arc(64, 50, 11, 0, Math.PI * 2); inkPath(x, '#ffe14d', 3); shine(x, 60, 46, 3, 4);

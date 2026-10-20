@@ -33,7 +33,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 路徑 | 房間 | 說明 |
 |---|---|---|
 | `/ws` | 泡泡碰碰島 | 2 到 4 人 |
-| `/kart/ws` | 泡泡賽車 | 2 到 4 人，倒數後 15 秒選地圖 |
+| `/kart/ws` | 泡泡賽車 | 2 到 4 人，倒數後 15 秒選地圖與模式 |
 | `/artillery/ws` | 泡泡砲戰 | 3 對 3，倒數後 15 秒選地圖 |
 | `/lobby/ws` | 大廳 | 位置同步、房間狀態、在線玩家 |
 
@@ -56,7 +56,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 房間 | 訊息 |
 |---|---|
 | 泡泡碰碰島 | `in`（方向輸入，欄位 `d`）、`bomb`（放水球） |
-| 泡泡賽車 | `vote`（選地圖）、`in`（`steer`、`drift`、`gas`、`brake`）、`item`（用道具） |
+| 泡泡賽車 | `vote`（`track` 選地圖、`mode` 選 `item` 道具賽或 `speed` 競速賽，可只帶其中一個；票沒變不廣播）、`in`（`steer`、`drift`、`gas`、`brake`）、`item`（用道具，競速賽是用氮氣） |
 | 泡泡砲戰 | `vote`（`plains`、`twin`、`canyon`）、`ready`、`seat`（`slot`）、`bot`（`slot`）、`move`（`dir`）、`jump`（`dir`，-1 左、1 右、0 朝面向的方向）、`aim`（`angle`、`power`、`item`、`charging`）、`buy`（`item`）、`refresh`、`use`（`item`，瞬間移動另帶 `x`、`y`）、`fire`（`angle`、`power`、`item`）、`mark`（`kind`、`x`、`y`）、`say`（`msg`） |
 
 砲戰的標記與快捷訊息只轉發給同隊，每人每回合各最多 3 則。標記種類是 `attack`、`danger`、`heal`，快捷訊息編號 0 到 5。
@@ -93,8 +93,8 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 | 路徑 | body | 說明 |
 |---|---|---|
-| `/kart/solo` | `id`、`track`、`diff`（選填，`hard` 為困難，其他值視為普通） | 領票，票綁定賽道與難度，10 分鐘有效 |
-| `/kart/record` | `id`、`ticket`、`time` | 送完賽秒數，檢查最短時間與票的經過時間 |
+| `/kart/solo` | `id`、`track`、`diff`（選填，`hard` 為困難，其他值視為普通）、`mode`（選填，`speed` 為競速賽，其他值視為道具賽） | 領票，票綁定賽道、難度與模式，10 分鐘有效 |
+| `/kart/record` | `id`、`ticket`、`time` | 送完賽秒數，檢查最短時間與票的經過時間；競速賽的最短時間用氮氣倍率 ×1.8 算 |
 | `/bubble/solo` | `id` | 領票，15 分鐘有效 |
 | `/bubble/record` | `id`、`ticket`、`kills` | 送擊敗數，1 到 3，每擊敗 1 人至少 5 秒 |
 | `/artillery/solo` | `id` | 領票，40 分鐘有效 |
@@ -116,14 +116,14 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 429 | 同一人兩次送出間隔不到 5 秒 |
 | 503 | 伺服器沒綁定紀錄儲存 |
 
-單人紀錄只更新各遊戲看板，不加總積分。賽車的 `top` 是連線與單人普通電腦的榜，`hard` 是單人困難電腦的榜，兩份分開。每條賽道和每款遊戲的看板只留前 3 名，每位玩家只留自己最好的一次。
+單人紀錄只更新各遊戲看板，不加總積分。賽車每條賽道有 4 份榜：道具賽的 `top`（連線與單人普通電腦）、`hard`（單人困難電腦），競速賽的 `speed`、`speedHard`，分法相同。每條賽道和每款遊戲的看板只留前 3 名，每位玩家只留自己最好的一次。
 
 ## 公開唯讀
 
 | 路徑 | 說明 | 回應 |
 |---|---|---|
 | GET `/board` | 總積分榜前 20 名 | `{"players":<總人數>,"top":[{rank,name,points,games,wins}]}` |
-| GET `/board/games` | 各遊戲紀錄 | `{"kart":{laps,tracks:[{id,name,top,hard}]},"bubble":{kills:[]},"artillery":{kills:[]}}` |
+| GET `/board/games` | 各遊戲紀錄 | `{"kart":{laps,tracks:[{id,name,top,hard,speed,speedHard}]},"bubble":{kills:[]},"artillery":{kills:[]}}` |
 | GET `/version` | 目前部署的版本碼，`no-store` | `{"v":"<12 碼>"}` |
 | GET `/health` | 健康檢查 | `{"ok":true,"game":"office-mini-bubble-world"}` |
 

@@ -15,7 +15,7 @@ const VOTE_MS = 15000;
 const SCORE_POINTS = [5, 3, 2, 1];
 // 看板儲存前綴：換一個新前綴，看板就從零重新記錄；舊前綴底下的資料保留不刪
 const SCORE_PREFIX = 'score2:';
-// 各遊戲紀錄：賽車每條賽道最快完賽 best:kart:<賽道 id>（困難電腦的單人成績另存 best:kart:<賽道 id>:hard），泡泡島單場最多擊敗 best:bubble:kills，泡泡砲戰單場擊敗對手數 best:artillery:kills；每份只留前 RECORD_TOP 名，每位玩家只留自己最好的一次
+// 各遊戲紀錄：賽車每條賽道最快完賽 best:kart:<賽道 id>（困難電腦的單人成績另存 best:kart:<賽道 id>:hard；競速賽在賽道 id 後面多 :speed，例如 best:kart:candy:speed:hard），泡泡島單場最多擊敗 best:bubble:kills，泡泡砲戰單場擊敗對手數 best:artillery:kills；每份只留前 RECORD_TOP 名，每位玩家只留自己最好的一次
 const RECORD_PREFIX = 'best:', RECORD_TOP = 3, KART_MIN_TIME = 5;
 // 泡泡賽車單人紀錄：開跑時發的票 SOLO_TICKET_MS 內有效；同一人兩次送出至少隔 RECORD_GAP_MS
 const SOLO_TICKET_MS = 10 * 60 * 1000, RECORD_GAP_MS = 5000;
@@ -156,7 +156,8 @@ async function handleAuth(req, url, env) {
 /* ---------- 泡泡賽車單人紀錄 ---------- */
 // 單人賽在瀏覽器裡跑，伺服器只能檢查合不合理：開跑時發票（記下賽道與開跑時間），完賽時驗票，
 // 時間不能比開票後真實經過的時間短，也不能比「全程維持漂移加速的極速」跑完還快。通過才交給大廳寫入賽道紀錄（不加總積分）。
-export function kartMinTime(track) { return KartCore.LAPS * track.T.L / (KartCore.KART.VMAX * KartCore.DRIFT.MULT); }
+// 競速賽每圈能集到好幾個氮氣（效果和加速鞋一樣 ×1.8），上限改用氮氣的倍率
+export function kartMinTime(track, mode = 'item') { return KartCore.LAPS * track.T.L / (KartCore.KART.VMAX * (mode === 'speed' ? KartCore.ITEMS.shoe.mult : KartCore.DRIFT.MULT)); }
 async function handleKartSolo(req, url, env) {
   const fail = (error, status) => Response.json({ error }, { status, headers: { 'cache-control': 'no-store' } });
   if (req.method !== 'POST') return fail('method', 405);
@@ -171,16 +172,17 @@ async function handleKartSolo(req, url, env) {
   const now = Date.now();
   if (url.pathname === '/kart/solo') {
     const tr = KartCore.TRACKS.find(t => t.id === body.track); if (!tr) return fail('track', 400);
-    const diff = KartCore.DIFFS[body.diff] ? body.diff : 'normal'; // 電腦難度：困難的成績進另一份榜
-    return Response.json({ ticket: await signSession({ uid: u.id, track: tr.id, diff, t0: now, exp: now + SOLO_TICKET_MS }, env, 'kart-solo') }, { headers: { 'cache-control': 'no-store' } });
+    const diff = KartCore.DIFFS[body.diff] ? body.diff : 'normal', mode = KartCore.MODES[body.mode] ? body.mode : 'item'; // 電腦難度與模式：困難、競速賽的成績各進另一份榜
+    return Response.json({ ticket: await signSession({ uid: u.id, track: tr.id, diff, mode, t0: now, exp: now + SOLO_TICKET_MS }, env, 'kart-solo') }, { headers: { 'cache-control': 'no-store' } });
   }
   const tk = await readSession(body.ticket, env, now, 'kart-solo');
   if (!tk || tk.uid !== u.id) return fail('ticket', 403);
   const tr = KartCore.TRACKS.find(t => t.id === tk.track), time = Number(body.time);
-  if (!tr || !Number.isFinite(time) || time < kartMinTime(tr) || time > KartCore.MAX_TIME) return fail('time', 422);
+  const mode = tk.mode === 'speed' ? 'speed' : 'item';
+  if (!tr || !Number.isFinite(time) || time < kartMinTime(tr, mode) || time > KartCore.MAX_TIME) return fail('time', 422);
   if ((now - tk.t0) / 1000 < time) return fail('time', 422); // 倒數 3 秒不算在成績裡，剛好當網路延遲的緩衝
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, diff: tk.diff === 'hard' ? 'hard' : 'normal', entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
+  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, diff: tk.diff === 'hard' ? 'hard' : 'normal', mode, entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -403,29 +405,33 @@ export class GameRoom {
 
 /* ---------- 泡泡賽車房間：沿用 GameRoom 的大廳、倒數、斷線寬限、掛機踢除，只換規則與輸入 ---------- */
 export class KartRoom extends GameRoom {
-  constructor(ctx, env) { super(ctx, env); this.core = KartCore; this.gameId = 'kart'; this.votes = new Map(); this.voteEndsAt = 0; this.track = KartCore.TRACKS[0].id; }
+  constructor(ctx, env) { super(ctx, env); this.core = KartCore; this.gameId = 'kart'; this.votes = new Map(); this.modeVotes = new Map(); this.voteEndsAt = 0; this.track = KartCore.TRACKS[0].id; this.mode = 'item'; }
   gamePlayers() { return this.game?.karts || []; }
-  newGame(seed) { return this.core.createGame({ seed, humans: this.lobby, bots: false, track: this.track }); }
-  // 投票：只算目前在房間名單裡的人
+  newGame(seed) { return this.core.createGame({ seed, humans: this.lobby, bots: false, track: this.track, mode: this.mode }); }
+  // 投票：地圖和模式（道具賽／競速賽）分開計票，只算目前在房間名單裡的人
   voteCounts() { const c = {}; for (const t of this.core.TRACKS) c[t.id] = 0; for (const p of this.lobby) { const v = this.votes.get(p.uid); if (v in c) c[v]++; } return c; }
+  modeCounts() { const c = {}; for (const id in this.core.MODES) c[id] = 0; for (const p of this.lobby) { const v = this.modeVotes.get(p.uid); if (v in c) c[v]++; } return c; }
   lobbyMsg() {
-    const m = super.lobbyMsg(); m.track = this.track;
-    if (this.phase === 'vote') m.vote = { endsIn: Math.max(0, Math.ceil((this.voteEndsAt - this.now()) / 1000)), counts: this.voteCounts(), tracks: this.core.TRACKS.map(t => ({ id: t.id, name: t.name })) };
+    const m = super.lobbyMsg(); m.track = this.track; m.mode = this.mode;
+    if (this.phase === 'vote') m.vote = { endsIn: Math.max(0, Math.ceil((this.voteEndsAt - this.now()) / 1000)), counts: this.voteCounts(), modes: this.modeCounts(), tracks: this.core.TRACKS.map(t => ({ id: t.id, name: t.name })) };
     return m;
   }
-  pickTrack() {
-    const c = this.voteCounts(), max = Math.max(...Object.values(c)), top = Object.keys(c).filter(k => c[k] === max);
-    return top[Math.floor(crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 * top.length)];
+  // 票多的贏，同票隨機；沒人投就用 fallback
+  pickTop(c, fallback) {
+    const max = Math.max(...Object.values(c)), top = Object.keys(c).filter(k => c[k] === max);
+    return max > 0 || !fallback ? top[Math.floor(crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 * top.length)] : fallback;
   }
+  pickTrack() { return this.pickTop(this.voteCounts()); }
+  pickMode() { return this.pickTop(this.modeCounts(), 'item'); } // 沒人選模式就是道具賽
   startGame() { // 大廳倒數結束先投票 VOTE_MS，投完或時間到才開跑
-    if (this.phase !== 'vote') { this.phase = 'vote'; this.voteEndsAt = this.now() + VOTE_MS; this.votes.clear(); this.broadcast(this.lobbyMsg()); return; }
-    this.track = this.pickTrack(); super.startGame();
+    if (this.phase !== 'vote') { this.phase = 'vote'; this.voteEndsAt = this.now() + VOTE_MS; this.votes.clear(); this.modeVotes.clear(); this.broadcast(this.lobbyMsg()); return; }
+    this.track = this.pickTrack(); this.mode = this.pickMode(); super.startGame();
   }
   tick() {
     if (this.phase !== 'vote') return super.tick();
     const now = this.now(); this.maybeNotify(now); this.kickIdle(now);
-    if (this.lobby.length < MIN_PLAYERS) { this.phase = 'lobby'; this.countdownAt = 0; this.votes.clear(); this.lastPush = now; return this.broadcast(this.lobbyMsg()); }
-    if (now >= this.voteEndsAt || this.lobby.every(p => this.votes.has(p.uid))) return this.startGame();
+    if (this.lobby.length < MIN_PLAYERS) { this.phase = 'lobby'; this.countdownAt = 0; this.votes.clear(); this.modeVotes.clear(); this.lastPush = now; return this.broadcast(this.lobbyMsg()); }
+    if (now >= this.voteEndsAt || this.lobby.every(p => this.votes.has(p.uid))) return this.startGame(); // 地圖全員投完就開跑，模式可以不投
     if (now - this.lastPush >= LOBBY_PUSH_MS) { this.lastPush = now; this.broadcast(this.lobbyMsg()); }
   }
   async webSocketMessage(ws, raw) {
@@ -433,7 +439,14 @@ export class KartRoom extends GameRoom {
       let m; try { m = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw)); } catch { return; }
       if (m.t === 'vote') {
         const { uid } = this.who(ws);
-        if (uid && this.lobby.some(p => p.uid === uid) && this.core.TRACKS.some(t => t.id === m.track)) { this.votes.set(uid, m.track); this.active.set(uid, this.now()); this.broadcast(this.lobbyMsg()); }
+        if (!uid || !this.lobby.some(p => p.uid === uid)) return;
+        const track = this.core.TRACKS.some(t => t.id === m.track), mode = !!this.core.MODES[m.mode]; // 一則訊息可以只投地圖、只投模式，或兩個都投
+        if (!track && !mode) return;
+        this.active.set(uid, this.now());
+        if ((!mode || this.modeVotes.get(uid) === m.mode) && (!track || this.votes.get(uid) === m.track)) return; // 票沒變就不廣播，重複送票的客戶端不會灌爆房間
+        if (mode) this.modeVotes.set(uid, m.mode);
+        if (track) this.votes.set(uid, m.track);
+        this.broadcast(this.lobbyMsg());
         return;
       }
     }
@@ -444,10 +457,10 @@ export class KartRoom extends GameRoom {
   stopPlayer(p) { this.core.setInput(this.game, p.id, {}); }
   alive(p) { return p.state === 'racing' && !p.done; }
   recordStats(p) { return { time: p.time }; } // 只有完賽的人有 time，其他是 null
-  recordInfo(r) { return { track: this.game?.trackId || this.track }; }
+  recordInfo(r) { return { track: this.game?.trackId || this.track, mode: this.game?.mode || this.mode }; }
   resultText(r) {
     const medal = ['🥇', '🥈', '🥉', '4.'];
-    return `🏎 泡泡賽車 結果（${r.laps} 圈）\n` + r.players.map((p, i) => `${medal[i]} ${p.name}｜${p.time != null ? p.time.toFixed(2) + ' 秒' : p.out ? '出局' : '未完賽'}｜${p.points} 分`).join('\n');
+    return `🏎 泡泡賽車 ${this.core.MODES[this.game?.mode || this.mode].label} 結果（${r.laps} 圈）\n` + r.players.map((p, i) => `${medal[i]} ${p.name}｜${p.time != null ? p.time.toFixed(2) + ' 秒' : p.out ? '出局' : '未完賽'}｜${p.points} 分`).join('\n');
   }
 }
 
@@ -556,7 +569,7 @@ export class ArtilleryRoom extends GameRoom {
 
 // /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS。新遊戲在這裡加一個欄位
 function emptyGameBoard() {
-  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] } };
+  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [], speed: [], speedHard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] } };
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
@@ -631,7 +644,7 @@ export class LobbyRoom {
         const t = Number(e.stats.time);
         if (e.stats.time == null || !Number.isFinite(t) || t < KART_MIN_TIME || t > KartCore.MAX_TIME) continue;
         if (!KartCore.TRACKS.some(tr => tr.id === body.track)) return [];
-        rows.push({ key: `${RECORD_PREFIX}kart:${body.track}${body.diff === 'hard' ? ':hard' : ''}`, uid: String(e.uid), name, v: Math.round(t * 100) / 100, low: true });
+        rows.push({ key: `${RECORD_PREFIX}kart:${body.track}${body.mode === 'speed' ? ':speed' : ''}${body.diff === 'hard' ? ':hard' : ''}`, uid: String(e.uid), name, v: Math.round(t * 100) / 100, low: true });
       } else if (body.game === 'artillery') {
         const k = Number(e.stats.kills);
         if (!Number.isInteger(k) || k < 1 || k > 5) continue;
@@ -662,6 +675,8 @@ export class LobbyRoom {
     for (const t of out.kart.tracks) {
       t.top = ((await st.get(`${RECORD_PREFIX}kart:${t.id}`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
       t.hard = ((await st.get(`${RECORD_PREFIX}kart:${t.id}:hard`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
+      t.speed = ((await st.get(`${RECORD_PREFIX}kart:${t.id}:speed`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
+      t.speedHard = ((await st.get(`${RECORD_PREFIX}kart:${t.id}:speed:hard`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
     }
     out.bubble.kills = ((await st.get(`${RECORD_PREFIX}bubble:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));
     out.artillery.kills = ((await st.get(`${RECORD_PREFIX}artillery:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));

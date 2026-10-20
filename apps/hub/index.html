@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Office Mini Bubble World</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.top { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; pointer-events: none; }
+.top > * { pointer-events: auto; }
+.title { padding: 4px 14px; font-weight: 900; font-size: 15px; border-width: 2px; }
+.chip { cursor: pointer; padding: 2px 12px; font-size: 12px; font-weight: 700; border-width: 2px; border-radius: 999px; }
+.pad { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 22px; display: none; pointer-events: none; }
+body.touch .pad { display: block; }
+.stick { width: 140px; height: 140px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 70%, transparent); position: relative; pointer-events: auto; touch-action: none; }
+.knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: var(--pink); border: 3px solid var(--ink); }
+.keys { position: fixed; bottom: 12px; left: 12px; font-size: 12px; padding: 6px 12px; }
+body.touch .keys { display: none; }
+.zone { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%); width: min(340px, calc(100% - 24px)); padding: 14px 16px; text-align: center; transition: transform .22s; z-index: 5; }
+body.touch .zone { bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; transform: translate(0, 300%); width: min(250px, calc(100% - 190px)); padding: 10px 12px; }
+.zone.show { transform: translate(-50%, 0); }
+body.touch .zone.show { transform: translate(0, 0); }
+.zone h2 { margin: 0; font-size: 20px; font-weight: 900; }
+.zone p { margin: 2px 0 8px; font-size: 12.5px; color: var(--ink-soft); }
+.zone .btn { display: block; width: 100%; margin-top: 6px; padding: 9px; font-size: 16px; font-weight: 900; }
+.zone .btn[disabled] { opacity: .5; cursor: default; }
+.zstat { font-size: 14px; font-weight: 900; margin: -2px 0 6px; }
+.zstat:empty { display: none; }
+.zone small { display: block; margin-top: 6px; font-size: 11.5px; color: var(--ink-soft); }
+.who { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 44px); right: 10px; width: min(200px, calc(100% - 20px)); max-height: 45vh; overflow: auto; padding: 6px 10px; border-width: 2px; border-radius: 14px; font-size: 13px; z-index: 4; }
+.who[hidden] { display: none; }
+.who div { display: flex; align-items: center; gap: 6px; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
+.who small { color: var(--ink-soft); }
+.board { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%); width: min(340px, calc(100% - 24px)); max-height: 42%; overflow: auto; padding: 12px 16px; z-index: 6; transition: transform .22s; }
+.board.show { transform: translate(-50%, 0); }
+body.touch .board { bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; width: min(250px, calc(100% - 190px)); transform: translate(0, 300%); }
+body.touch .board.show { transform: translate(0, 0); }
+.board h2 { margin: 0; font-size: 22px; font-weight: 900; text-align: center; }
+.board p { margin: 2px 0 8px; font-size: 12px; color: var(--ink-soft); text-align: center; }
+.board ol { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.board li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.board li:last-child { border: 0; }
+.board li b { font-variant-numeric: tabular-nums; }
+.board li span small { color: var(--ink-soft); margin-left: 6px; }
+.board .tabs { display: flex; gap: 6px; justify-content: center; margin: 8px 0 4px; }
+.board .tabs button { flex: 1; min-width: 0; padding: 5px 4px; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.board .tabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
+.board h3 { margin: 8px 0 2px; font-size: 14px; font-weight: 900; }
+.board h3:first-child { margin-top: 0; }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 14px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="top">
+  <div class="title box">Office Mini Bubble World</div>
+  <div style="display:flex;gap:8px;align-items:center"><span class="chip box" id="online">單機</span><button class="btn" id="acctBtn">登入</button><button class="btn" id="avatarBtn">外觀</button></div>
+</div>
+<div class="pad"><div class="stick" id="stick"><div class="knob" id="knob"></div></div></div>
+<div class="keys box"><b>WASD / 方向鍵</b> 移動，走進房間開玩，站上左下地墊看總積分</div>
+<div class="zone box" id="zone">
+  <h2 id="zTitle"></h2><p id="zInfo"></p><div class="zstat" id="zStat"></div>
+  <button class="btn primary" id="zOnline">加入對戰</button>
+  <button class="btn" id="zSolo">單人</button>
+  <small id="zNote"></small>
+</div>
+<div class="who box" id="who" hidden></div>
+<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
+<div class="toast box" id="toast"></div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { toon, G, boxOutline, makeCritter, animateCritter, addNameTag } from '/shared/three-kit.js';
+import { ITEM_ART, GAME_ART, badgeFrame, INK } from '/shared/draw.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+watchUpdates(); // 有新版本時在畫面上方提醒重新整理
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const W = 14, H = 12; // 大廳大小（格），與 apps/worker/worker.js 的 LOBBY 一致
+const SPEED = 4.2;
+
+/* ---------- Telegram ---------- */
+const TG = window.Telegram?.WebApp, inTelegram = !!(TG && TG.initData);
+if (inTelegram) { try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {} if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme; }
+
+/* ---------- 房間（每款遊戲一間）。新增遊戲：加一筆，並在 deploy/build.mjs 的 GAMES 加同一個 id ---------- */
+const ROOMS = [
+  { id: 'bubble', title: '泡泡碰碰島', blurb: '放水球、炸箱子、撿道具，撐到最後的小傢伙獲勝', color: '#5ab8ff', x0: .6, x1: 4.6, y0: .6, y1: 4.4, path: '/bubble/', art(x) { x.save(); x.translate(-12, 4); x.scale(.9, .9); ITEM_ART.bomb(x); x.restore(); x.save(); x.translate(42, 26); x.scale(.7, .7); ITEM_ART.power(x); x.restore(); } },
+  { id: 'kart', title: '泡泡賽車', blurb: '3 圈搶道具、漂移、衝線，2–4 人連線', color: '#ff8fab', x0: 5, x1: 9, y0: .6, y1: 4.4, path: '/kart/', art(x) { GAME_ART.kart(x); } },
+  { id: 'artillery', title: '泡泡砲戰', blurb: '3 對 3 輪流砲擊，2–6 人，電腦遊玩', color: '#4cd68a', x0: 9.4, x1: 13.4, y0: .6, y1: 4.4, path: '/artillery/', art(x) { GAME_ART.artillery(x); } },
+];
+
+/* ---------- three.js ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(42, 1, .1, 200);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(6, 20, 10); scene.add(sun);
+const wx = x => x - W / 2, wz = y => y - H / 2;
+const root = new THREE.Group(); scene.add(root);
+
+{ // 地板：同泡泡島的奶油底 + 草地棋盤
+  const base = new THREE.Mesh(G.box, toon('#f3c9b0')); base.scale.set(W + .6, 1, H + .6); base.position.y = -.5; boxOutline(base, W + .6, 1, H + .6); root.add(base);
+  const grass = new THREE.Mesh(G.box, toon('#e4f6d4')); grass.scale.set(W + .6, .04, H + .6); root.add(grass);
+  const tile = new THREE.PlaneGeometry(1, 1), t2 = toon('#d3efc0');
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { if ((x + y) % 2) continue; const t = new THREE.Mesh(tile, t2); t.rotation.x = -Math.PI / 2; t.position.set(x - W / 2 + .5, .025, y - H / 2 + .5); root.add(t); }
+}
+
+function signTexture(r) { // 房間招牌：白底粗描邊的牌子 + 徽章 + 名稱
+  const c = document.createElement('canvas'); c.width = 512; c.height = 176; const x = c.getContext('2d');
+  x.beginPath(); x.roundRect(8, 8, 496, 160, 36); x.fillStyle = '#fffdf8'; x.fill(); x.lineWidth = 10; x.strokeStyle = INK; x.stroke();
+  const b = document.createElement('canvas'); b.width = b.height = 128; const bx = b.getContext('2d'); badgeFrame(bx, r.color);
+  if (r.art) r.art(bx); else { bx.font = '900 56px "Zen Maru Gothic",sans-serif'; bx.textAlign = 'center'; bx.textBaseline = 'middle'; bx.lineJoin = 'round'; bx.lineWidth = 8; bx.strokeStyle = INK; bx.strokeText('?', 64, 68); bx.fillStyle = '#fff'; bx.fillText('?', 64, 68); }
+  x.drawImage(b, 24, 24, 128, 128);
+  x.font = '900 50px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = INK; x.fillText(r.title, 164, 90, 330);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+for (const r of ROOMS) { // 每間：底板 + 兩根門柱 + 橫樑 + 招牌
+  const cx = (r.x0 + r.x1) / 2, cy = (r.y0 + r.y1) / 2, w = r.x1 - r.x0, d = r.y1 - r.y0, col = r.soon ? '#e8dede' : r.color, g = new THREE.Group();
+  const pad = new THREE.Mesh(G.box, toon(r.soon ? '#f1e8e8' : col)); pad.scale.set(w, .12, d); pad.position.set(0, .06, 0); boxOutline(pad, w, .12, d); g.add(pad);
+  const inner = new THREE.Mesh(G.box, toon(r.soon ? '#faf5f5' : '#fffdf8')); inner.scale.set(w - .7, .02, d - .7); inner.position.set(0, .13, 0); g.add(inner);
+  for (const s of [-1, 1]) { const p = new THREE.Mesh(G.box, toon(col)); p.scale.set(.4, 1.5, .4); p.position.set(s * (w / 2 - .2), .8, -d / 2 + .2); boxOutline(p, .4, 1.5, .4); g.add(p); }
+  const beam = new THREE.Mesh(G.box, toon(col)); beam.scale.set(w, .3, .4); beam.position.set(0, 1.6, -d / 2 + .2); boxOutline(beam, w, .3, .4); g.add(beam);
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(r), transparent: true })); sign.scale.set(3.4, 1.17, 1); sign.position.set(0, 2.5, -d / 2 + .2); g.add(sign);
+  g.position.set(wx(cx), 0, wz(cy)); root.add(g);
+}
+
+/* ---------- 總積分看板：地墊顯示前 3 名；站上去跳出完整排行 ---------- */
+const BOARD = { x0: .6, x1: 4.6, y0: 8.6, y1: 11.25 }; // 地墊範圍，也是觸發區：站上去跳出完整排行
+let boardData = null;
+const boardCv = document.createElement('canvas'); boardCv.width = 512; boardCv.height = 340;
+const boardTex = new THREE.CanvasTexture(boardCv); boardTex.colorSpace = THREE.SRGBColorSpace;
+function drawBoard() {
+  const x = boardCv.getContext('2d'); x.clearRect(0, 0, 512, 340);
+  x.beginPath(); x.roundRect(8, 8, 496, 324, 34); x.fillStyle = '#fffdf8'; x.fill(); x.lineWidth = 10; x.strokeStyle = INK; x.stroke();
+  x.fillStyle = INK; x.textBaseline = 'middle'; x.font = '900 46px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'center'; x.fillText('總積分榜', 256, 58);
+  const top = boardData?.top?.slice(0, 3) || [], medal = ['#ffd24d', '#d9dde3', '#e6a06b'];
+  if (!top.length) { x.font = '700 30px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(boardData ? '還沒有連線成績' : '載入中…', 256, 190); }
+  top.forEach((p, i) => {
+    const y = 128 + i * 70; x.beginPath(); x.arc(56, y, 24, 0, Math.PI * 2); x.fillStyle = medal[i]; x.fill(); x.lineWidth = 5; x.strokeStyle = INK; x.stroke();
+    x.fillStyle = INK; x.textAlign = 'center'; x.font = '900 28px sans-serif'; x.fillText(String(i + 1), 56, y + 1);
+    x.textAlign = 'left'; x.font = '900 36px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(p.name, 98, y, 260);
+    x.textAlign = 'right'; x.fillText(`${p.points} 分`, 478, y);
+  });
+  boardTex.needsUpdate = true;
+}
+{ // 平鋪在地上的地墊：俯視看得清楚，也不會擋到後面的東西
+  const cxB = (BOARD.x0 + BOARD.x1) / 2, cyB = (BOARD.y0 + BOARD.y1) / 2, w = BOARD.x1 - BOARD.x0, d = BOARD.y1 - BOARD.y0;
+  const rim = new THREE.Mesh(new THREE.PlaneGeometry(w + .24, d + .24), new THREE.MeshBasicMaterial({ color: 0x3b2f2f })); rim.rotation.x = -Math.PI / 2; rim.position.set(wx(cxB), .045, wz(cyB)); root.add(rim);
+  const mat = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: boardTex, transparent: true })); mat.rotation.x = -Math.PI / 2; mat.position.set(wx(cxB), .05, wz(cyB)); root.add(mat);
+  drawBoard();
+}
+async function loadBoard() {
+  try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
+}
+/* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
+const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人都算' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' } };
+let boardTab = 'total', gamesData = null;
+async function loadGames() {
+  try { const r = await fetch('/board/games', { cache: 'no-store' }); if (r.ok) { gamesData = await r.json(); renderGames(); } } catch {}
+}
+function recList(rows, fmt) { return `<ol>${rows?.length ? rows.map(fmt).join('') : '<li>尚無紀錄</li>'}</ol>`; }
+function renderGames() {
+  const el = $('boardGames');
+  if (!gamesData) { el.innerHTML = '<ol><li>載入中…</li></ol>'; return; }
+  if (boardTab === 'kart') el.innerHTML = (gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>';
+  else if (boardTab === 'bubble') el.innerHTML = recList(gamesData.bubble?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
+}
+function setBoardTab(tab) {
+  if (!BOARD_TABS[tab]) return; boardTab = tab;
+  for (const b of $('boardTabs').children) b.classList.toggle('on', b.dataset.tab === tab);
+  $('boardTitle').textContent = BOARD_TABS[tab].title; $('boardNote').textContent = BOARD_TABS[tab].note;
+  $('boardList').hidden = tab !== 'total'; $('boardGames').hidden = tab === 'total';
+  if (tab !== 'total') { renderGames(); loadGames(); }
+}
+$('boardTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) setBoardTab(b.dataset.tab); });
+function renderBoardList() {
+  const top = boardData?.top || [];
+  $('boardList').innerHTML = top.length ? top.map(p => `<li><span>${p.rank}. ${esc(p.name)}<small>${p.games} 場・冠軍 ${p.wins}</small></span><b>${p.points} 分</b></li>`).join('') : '<li>還沒有連線成績，快去房間比一場</li>';
+}
+
+/* ---------- 相機：把整個大廳塞進狀態列與操作區之外的空間 ---------- */
+const CAM_DIR = new THREE.Vector3(0, .9, .44).normalize(), PTS = [];
+for (const x of [-1, 1]) for (const z of [-1, 1]) for (const y of [0, 3.2]) PTS.push(new THREE.Vector3(x * (W / 2 + .35), y, z * (H / 2 + .35)));
+function layout() {
+  const w = innerWidth, h = innerHeight, touch = document.body.classList.contains('touch');
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.clearViewOffset();
+  const rect = { l: 8, r: w - 8, t: 54, b: h - (touch ? 176 : 56) };
+  let d = 8; for (; d < 90; d += .5) {
+    camera.position.copy(CAM_DIR).multiplyScalar(d); camera.lookAt(0, 0, 0); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+    const ok = PTS.every(p => { const v = p.clone().project(camera), px = (v.x + 1) / 2 * w, py = (1 - v.y) / 2 * h; return px >= rect.l && px <= rect.r && py >= rect.t && py <= rect.b; });
+    if (ok) break;
+  }
+  // 讓大廳落在可用區域正中央
+  const cy = (rect.t + rect.b) / 2, v = new THREE.Vector3(0, 0, 0).project(camera), py = (1 - v.y) / 2 * h;
+  camera.setViewOffset(w, h, 0, py - cy, w, h);
+}
+if (matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch')) document.body.classList.add('touch');
+addEventListener('resize', layout);
+
+/* ---------- 操作：鍵盤 + 虛擬搖桿（任意方向） ---------- */
+const keys = new Set(), KEYMAP = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] };
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (KEYMAP[k]) { e.preventDefault(); keys.add(k); } else if (e.key === 'Enter' && zoneRoom && !$('zOnline').disabled) $('zOnline').click(); });
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => { keys.clear(); stickV = [0, 0]; });
+let stickV = [0, 0], stickId = null;
+const stick = $('stick'), knob = $('knob');
+function stickMove(e) {
+  const r = stick.getBoundingClientRect(), R = r.width / 2; let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const len = Math.hypot(dx, dy) || 1, k = Math.min(1, len / R);
+  dx = dx / len * k * R * .6; dy = dy / len * k * R * .6; knob.style.transform = `translate(${dx}px, ${dy}px)`; stickV = k < .2 ? [0, 0] : [dx / (R * .6), dy / (R * .6)];
+}
+stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
+stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) stickMove(e); });
+const stickEnd = e => { if (e.pointerId !== stickId) return; stickId = null; stickV = [0, 0]; knob.style.transform = ''; };
+stick.addEventListener('pointerup', stickEnd); stick.addEventListener('pointercancel', stickEnd);
+function inputDir() {
+  let x = 0, y = 0; for (const k of keys) { x += KEYMAP[k][0]; y += KEYMAP[k][1]; }
+  if (x || y) { const l = Math.hypot(x, y); return [x / l, y / l]; }
+  return stickV;
+}
+
+/* ---------- 角色 ---------- */
+const me = { x: W / 2, y: H - 1.8, f: 0, c: null, avatar: null, moving: false };
+const ring = new THREE.Mesh(new THREE.RingGeometry(.52, .7, 40), new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
+ring.rotation.x = -Math.PI / 2; ring.position.y = .04; root.add(ring);
+function spawn(avatar, name) { const c = makeCritter(avatar); if (name) addNameTag(c, name); root.add(c.root); return c; }
+function setMeAvatar(a) { me.avatar = a; if (me.c) root.remove(me.c.root); me.c = spawn(a); net.send({ t: 'look', color: a.color, ear: a.ear }); }
+
+const others = new Map(); // id -> { c, x, y, tx, ty, f }
+const net = { ws: null, tries: 0, me: null, lastX: 0, lastY: 0,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+function connect() {
+  const url = location.origin.replace(/^http/, 'ws') + '/lobby/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return; }
+  net.ws = ws; ws.onopen = () => { net.tries = 0; $('online').textContent = '連線中…'; if (me.avatar) net.send({ t: 'look', color: me.avatar.color, ear: me.avatar.ear }); };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws) return;
+    if (e.code === 4000) { $('online').textContent = '已在其他視窗開啟'; return; }
+    if (e.code === 4001) { // 閒置被請出大廳：清掉其他人，下一次操作再連回來
+      for (const o of others.values()) root.remove(o.c.root); others.clear(); $('online').textContent = '閒置離線，動一下回來';
+      const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); };
+      addEventListener('keydown', back); addEventListener('pointerdown', back); return;
+    }
+    net.tries++; if (net.tries >= 4) { $('online').textContent = '單機'; toast('大廳連不上，先自己逛逛'); return; }
+    setTimeout(connect, Math.min(5000, 500 * 2 ** net.tries));
+  };
+}
+// 在線玩家清單：預設展開，點右上角人數收合（記在這台裝置）。訪客的 id 以 g: 開頭
+let whoOpen = true; try { whoOpen = localStorage.getItem('ombw-who-open') !== '0'; } catch {}
+let lastWho = [];
+function renderWho(players = lastWho) {
+  lastWho = players; const el = $('who'); el.hidden = !whoOpen || !players.length; if (el.hidden) return;
+  const list = [...players].sort((a, b) => (b.id === net.me) - (a.id === net.me) || a.name.localeCompare(b.name));
+  el.innerHTML = list.map(p => `<div><i style="background:${esc(p.color)}"></i>${esc(p.name)}${p.id === net.me ? ' <small>（你）</small>' : ''}${String(p.id).startsWith('g:') ? ' <small>訪客</small>' : ''}</div>`).join('');
+}
+function onNet(m) {
+  if (m.t === 'hello') net.me = m.you;
+  else if (m.t === 'rooms') { const now = Date.now(); roomStatus = m.rooms || {}; for (const st of Object.values(roomStatus)) st.recv = now; }
+  else if (m.t === 'snap') {
+    const seen = new Set(); $('online').textContent = `在線 ${m.players.length} 人 ${whoOpen ? '▴' : '▾'}`; renderWho(m.players);
+    for (const p of m.players) {
+      if (p.id === net.me) continue; seen.add(p.id);
+      let o = others.get(p.id);
+      if (!o || o.key !== p.color + p.ear) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear }, p.name); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key: p.color + p.ear }; others.set(p.id, o); }
+      o.tx = p.x; o.ty = p.y; o.f = p.f;
+    }
+    for (const [id, o] of others) if (!seen.has(id)) { root.remove(o.c.root); others.delete(id); }
+  }
+}
+
+/* ---------- 房間觸發 ---------- */
+let zoneRoom = null, dwell = 0, ID = null, roomStatus = {};
+// 遊戲房間狀態（伺服器主動推送）：時間用伺服器時鐘換算，避免裝置時間不準
+function roomLine(r) {
+  const st = roomStatus[r.id]; if (!st) return '';
+  const now = Date.now() + (st.at - st.recv), sec = t => Math.max(0, Math.ceil((t - now) / 1000));
+  if (st.phase === 'play') return `比賽中・${st.players} 人在比，進去可以觀戰`;
+  if (st.phase === 'vote') return `選地圖中・${st.players} 人，${sec(st.startsAt)} 秒後開跑`;
+  if (st.phase === 'end') return `結算中，${sec(st.endsAt)} 秒後開下一場`;
+  if (!st.players) return '還沒有人，加入後等第 2 人';
+  return st.startsAt ? `等待中・${st.players}/${st.max} 人，${sec(st.startsAt)} 秒後開賽` : `等待中・${st.players}/${st.max} 人，再 ${Math.max(1, 2 - st.players)} 人開賽`;
+}
+function renderZoneStatus() {
+  if (!zoneRoom) return;
+  $('zStat').textContent = roomLine(zoneRoom);
+  $('zOnline').textContent = roomStatus[zoneRoom.id]?.phase === 'play' ? '進去觀戰' : '加入對戰';
+}
+const inRect = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
+function countIn(r) { let n = inRect(r, me.x, me.y) ? 1 : 0; for (const o of others.values()) if (inRect(r, o.x, o.y)) n++; return n; }
+function showZone(r) {
+  zoneRoom = r; $('zTitle').textContent = r.title; $('zInfo').textContent = r.blurb;
+  $('zOnline').disabled = false; $('zNote').textContent = !ID ? '按下會先請你用 Telegram 登入或訪客身分' : ID.guest ? '訪客：成績不計入總積分榜' : '';
+  $('zone').classList.add('show');
+}
+function hideZone() { zoneRoom = null; $('zone').classList.remove('show'); }
+$('zOnline').onclick = async () => {
+  const path = zoneRoom?.path; if (!path) return;
+  if (!ID) { ID = await openLogin({ soloLabel: '取消' }); if (!ID) return; renderAcct(); }
+  location.href = path + '?mode=online';
+};
+$('zSolo').onclick = () => { if (zoneRoom?.path) location.href = zoneRoom.path + '?mode=solo'; };
+
+let toastT = 0;
+function toast(t, ms = 1800) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), ms); }
+
+/* ---------- 主迴圈 ---------- */
+let last = performance.now(), sendAcc = 0;
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(.05, (now - last) / 1e3), t = now / 1e3; last = now;
+  const [dx, dy] = inputDir();
+  me.moving = !!(dx || dy);
+  if (me.moving) { me.x = Math.max(.5, Math.min(W - .5, me.x + dx * SPEED * dt)); me.y = Math.max(.5, Math.min(H - .5, me.y + dy * SPEED * dt)); me.f = Math.atan2(dx, dy); }
+  if (me.c) {
+    me.c.root.position.set(wx(me.x), 0, wz(me.y)); me.c.root.rotation.y += (((me.f - me.c.root.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 14);
+    animateCritter(me.c, dt, t, me.moving); ring.position.x = wx(me.x); ring.position.z = wz(me.y);
+  }
+  for (const o of others.values()) {
+    const ddx = o.tx - o.x, ddy = o.ty - o.y, mv = Math.hypot(ddx, ddy) > .03;
+    o.x += ddx * Math.min(1, dt * 12); o.y += ddy * Math.min(1, dt * 12);
+    o.c.root.position.set(wx(o.x), 0, wz(o.y)); if (mv) o.c.root.rotation.y += (((Math.atan2(ddx, ddy) - o.c.root.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 14);
+    animateCritter(o.c, dt, t, mv);
+  }
+  // 位置回報：有移動每 100ms 一次，沒動每 10 秒一次（保持連線）
+  sendAcc += dt; const moved = Math.abs(me.x - net.lastX) + Math.abs(me.y - net.lastY) > .01;
+  if (sendAcc >= (moved ? .1 : 10)) { sendAcc = 0; net.lastX = me.x; net.lastY = me.y; net.send({ t: 'pos', x: +me.x.toFixed(3), y: +me.y.toFixed(3), f: +me.f.toFixed(3) }); }
+  // 走進房間：停留半秒才跳出面板，避免路過誤觸
+  const r = ROOMS.find(r => !r.soon && inRect(r, me.x, me.y));
+  if (r) { dwell += dt; if (!zoneRoom && dwell > .5) showZone(r); renderZoneStatus(); }
+  else { dwell = 0; if (zoneRoom) hideZone(); }
+  const atBoard = inRect(BOARD, me.x, me.y), bEl = $('board');
+  if (atBoard && !bEl.classList.contains('show')) { bEl.classList.add('show'); loadBoard(); if (boardTab !== 'total') loadGames(); } else if (!atBoard && bEl.classList.contains('show')) bEl.classList.remove('show');
+  renderer.render(scene, camera);
+}
+
+/* ---------- 身分按鈕（右上角）：顯示目前身分，點開可改用 Telegram 登入、改用訪客或登出 ---------- */
+function renderAcct() {
+  const el = $('acctBtn');
+  el.textContent = !ID ? '登入' : ID.kind === 'app' ? ID.name : `${ID.name}・${ID.guest ? '訪客' : 'Telegram'}`;
+}
+$('acctBtn').onclick = async () => {
+  if (ID?.kind === 'app') return toast('在 Telegram 裡固定使用 Telegram 身分');
+  const next = await openLogin({ title: ID ? '切換身分' : '選擇身分', current: ID, soloLabel: '取消' });
+  if (next !== ID) location.reload(); // 身分變了：重新載入，用新身分重連大廳
+};
+
+/* ---------- 啟動：一般網頁先選身分（Telegram 或訪客），再選外觀 ---------- */
+$('avatarBtn').onclick = async () => { const a = await openAvatarPicker({ initial: me.avatar }); if (a) setMeAvatar(a); };
+(async () => {
+  layout();
+  // 邀請連結（startapp=<遊戲 id>）直接進該遊戲；外觀由遊戲頁面負責檢查
+  const start = TG?.initDataUnsafe?.start_param || new URLSearchParams(location.search).get('game');
+  const direct = ROOMS.find(r => r.id === start && r.path);
+  if (direct) { location.replace(direct.path + (identity() ? '?mode=online' : '')); return; }
+  const err = captureLogin(); if (err) toast(LOGIN_ERRORS[err] || `登入失敗（${err}）`, 2600);
+  ID = identity();
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '先自己逛逛' });
+  renderAcct();
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '所有遊戲都會用這個外觀，之後可以按右上角「外觀」更換。' });
+  setMeAvatar(a); requestAnimationFrame(tick);
+  loadBoard(); setInterval(loadBoard, 30000);
+  if (ID) connect(); else $('online').textContent = '單機';
+})();
+$('online').onclick = async () => {
+  if (!ID) return $('acctBtn').click();
+  whoOpen = !whoOpen; try { localStorage.setItem('ombw-who-open', whoOpen ? '1' : '0'); } catch {}
+  $('online').textContent = $('online').textContent.replace(/ [▴▾]$/, '') + (whoOpen ? ' ▴' : ' ▾'); renderWho();
+};
+</script>
+</body>
+</html>

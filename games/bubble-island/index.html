@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡碰碰島</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; } /* canvas 不會被 inset 撐開，高解析度螢幕要明確指定大小 */
+.btn[aria-pressed="true"] { background: var(--pink); color: #4a3b3b; }
+
+/* HUD */
+.hud { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
+.timer.hurry { background: var(--pink); color: #4a3b3b; }
+.timer { padding: 2px 16px; font-weight: 900; font-size: 20px; font-variant-numeric: tabular-nums; }
+.players { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: min(560px, 100%); }
+.pl { padding: 4px 6px; border-radius: 14px; font-size: 11px; line-height: 1.3; border-width: 2px; }
+.pl b { display: flex; align-items: center; gap: 4px; font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pl i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
+.pl.trapped { background: #d8f0ff; color: #4a3b3b; }
+.pl.dead { opacity: .45; }
+.pl .st { color: var(--ink-soft); }
+.pl.trapped .st { color: #4a3b3b; }
+
+/* 觸控 */
+.pad { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 0; right: 0; display: none; justify-content: space-between; align-items: flex-end; padding: 0 22px; pointer-events: none; }
+body.touch .pad { display: flex; }
+.stick { width: 140px; height: 140px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 70%, transparent); position: relative; pointer-events: auto; touch-action: none; }
+.knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: var(--pink); border: 3px solid var(--ink); }
+.acts { display: flex; flex-direction: column; gap: 12px; align-items: center; pointer-events: auto; }
+.act { border: 3px solid var(--ink); border-radius: 50%; font-weight: 900; box-shadow: var(--shadow); touch-action: none; }
+.act.bomb { width: 96px; height: 96px; background: var(--blue); font-size: 18px; color: #2c3a4a; }
+.keys { position: fixed; bottom: 12px; right: 12px; font-size: 12px; padding: 6px 12px; }
+body.touch .keys { display: none; }
+
+/* 畫面 */
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
+.screen[hidden] { display: none; }
+.screen .box { width: min(400px, calc(100% - 28px)); padding: 20px; text-align: center; max-height: calc(100% - 28px); overflow: auto; }
+.screen h1 { margin: 0; font-size: 30px; font-weight: 900; }
+.screen h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
+.screen p { margin: 6px 0 12px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.lbl { font-weight: 700; font-size: 13px; margin-top: 12px; }
+.sw { width: 30px; height: 30px; border-radius: 50%; border: 3px solid var(--ink); cursor: pointer; }
+.sw[aria-pressed="true"] { outline: 3px solid var(--pink-deep); outline-offset: 2px; }
+.go { margin-top: 16px; width: 100%; padding: 10px; font-size: 17px; }
+.back { display: inline-block; margin-top: 10px; text-decoration: none; color: var(--ink); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; text-align: left; font-size: 12.5px; margin-top: 10px; }
+.legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; background: var(--c); }
+.rank { text-align: left; margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.rank li { display: flex; justify-content: space-between; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.rank li:last-child { border: 0; }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 92px); transform: translate(-50%, 0) scale(.8); font-size: 15px; font-weight: 900; padding: 4px 16px; border-width: 2px; max-width: calc(100% - 24px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .2s, transform .3s cubic-bezier(.3,1.6,.6,1); pointer-events: none; z-index: 5; }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#endScreen { background: transparent; place-items: end center; pointer-events: none; }
+#endScreen .box { pointer-events: auto; margin-bottom: max(14px, env(safe-area-inset-bottom)); max-height: 46%; padding: 12px 16px; }
+#endScreen h2 { font-size: 20px; margin: 0; }
+#endScreen p { margin: 2px 0 6px; }
+#endScreen .rank { margin: 0; font-size: 13px; }
+#endScreen .rank li { padding: 3px 4px; }
+#endScreen .go { margin-top: 8px; padding: 7px; }
+.me-tag { position: fixed; transform: translate(-50%, -100%); pointer-events: none; background: var(--pink); color: #4a3b3b; border: 2px solid var(--ink); border-radius: 999px; padding: 0 10px; font-weight: 900; font-size: 13px; z-index: 4; }
+.me-tag[hidden] { display: none; }
+.mute { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 6; padding: 4px 10px; font-size: 12px; }
+.preview { width: 132px; height: 132px; margin: 4px auto 0; border-radius: 50%; background: radial-gradient(circle at 50% 62%, var(--chip) 0 55%, transparent 70%); }
+.preview canvas { width: 100%; height: 100%; display: block; }
+.slots i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; }
+.slots li.empty { color: var(--ink-soft); }
+/* 矮螢幕（手機橫放）：狀態欄改成左上直列，選單壓縮 */
+@media (max-height: 520px) and (orientation: landscape) {
+  .hud { left: max(10px, env(safe-area-inset-left)); right: auto; top: 8px; align-items: flex-start; width: 150px; }
+  .timer { font-size: 16px; padding: 0 12px; }
+  .players { grid-template-columns: 1fr; width: 150px; gap: 4px; }
+  .pl { padding: 2px 6px; }
+  .pad { padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); bottom: max(10px, env(safe-area-inset-bottom)); }
+  .stick { width: 120px; height: 120px; }
+  .act.bomb { width: 84px; height: 84px; }
+  .screen .box { width: min(560px, calc(100% - 20px)); max-height: calc(100% - 16px); padding: 12px 16px; }
+  .screen h1 { font-size: 22px; }
+  .screen h2 { font-size: 20px; }
+  .screen p, .legend { display: none; }
+  .preview { width: 84px; height: 84px; margin: 0 auto; }
+  .lbl { margin-top: 6px; }
+  .row { margin: 4px 0; }
+  .go { margin-top: 10px; padding: 7px; }
+  .toast { top: 8px; }
+  #endScreen .box { max-height: calc(100% - 16px); width: min(380px, calc(100% - 340px)); margin-bottom: 8px; }
+}
+/* 窄螢幕直放：狀態欄縮小 */
+@media (max-width: 380px) {
+  .pl { font-size: 10px; padding: 3px 5px; }
+  .pl b { font-size: 11px; }
+  .stick { width: 124px; height: 124px; }
+  .act.bomb { width: 86px; height: 86px; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div class="hud">
+  <div class="timer box" id="timer">3:00</div>
+  <div class="players" id="players"></div>
+</div>
+<button class="btn mute" id="mute">音效 開</button>
+
+<div class="pad">
+  <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
+  <div class="acts">
+    <button class="act bomb" id="bombBtn">水球</button>
+  </div>
+</div>
+<div class="keys box"><b>WASD / 方向鍵</b> 移動　<b>空白</b> 水球</div>
+
+<div class="toast box" id="toast"></div>
+<div class="me-tag" id="meTag" hidden>你</div>
+
+<section class="screen" id="startScreen">
+  <div class="box">
+    <h1>泡泡碰碰島</h1>
+    <p>放水球、炸開箱子、撿道具。被水柱噴到會被泡泡困住，被別人碰到就出局，撐到最後的小傢伙獲勝。</p>
+    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線對戰</button></div>
+    <div class="lbl">對手強度</div>
+    <div class="row" id="diffs"></div>
+    <div class="legend">
+      <span style="--c:#5ab8ff">水球 +1</span><span style="--c:#ffc23d">水柱 +1</span>
+      <span style="--c:#4cd68a">速度鞋：跑更快</span><span style="--c:#ff8a4c">踢鞋：走進水球把它踢走</span>
+      <span style="--c:#c86bff">超級水球：水柱 15 格</span>
+    </div>
+    <button class="btn primary go" id="startBtn">開始</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="rank" id="rank"></ul>
+    <button class="btn primary go" id="againBtn">再玩一局</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="lobbyScreen" hidden>
+  <div class="box">
+    <h1>泡泡碰碰島</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="rank slots" id="slots"></ul>
+    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button></div>
+    <button class="btn primary go" id="joinBtn">加入</button>
+    <button class="btn" id="soloBtn" style="margin-top:10px">先玩單人版</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './game-core.js';
+import { INK, ITEM_ART, badgeFrame } from '/shared/draw.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+watchUpdates(); // 有新版本時在畫面上方提醒重新整理
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, OUTLINE, G, M, withOutline, blob, boxOutline, makeCritter, addNameTag } from '/shared/three-kit.js';
+
+/* ================= 連線設定：部署 Worker 後改這一行 ================= */
+const WORKER_URL = location.origin; // 頁面由同一個 Worker 提供，WebSocket 連 wss://<同網域>/ws
+/* ================================================================== */
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- Telegram（沒有在 Telegram 裡開啟時全部略過） ---------- */
+const TG = window.Telegram?.WebApp;
+const inTelegram = !!(TG && TG.initData);
+const tgUser = inTelegram ? TG.initDataUnsafe?.user : null;
+if (inTelegram) {
+  try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {}
+  if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
+}
+const haptic = {
+  tap() { try { TG?.HapticFeedback?.impactOccurred('light'); } catch {} },
+  hit() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} },
+  win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} },
+};
+
+/* ---------- 音效 ---------- */
+let muted = store.get('bp-muted') === '1';
+let actx = null;
+function tone(freq, dur = .12, type = 'sine', vol = .15, slide = 0) {
+  if (muted) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch {}
+}
+const sfx = {
+  place: () => tone(520, .1, 'sine', .12, 1.6),
+  boom: () => { tone(180, .35, 'triangle', .2, .4); tone(900, .18, 'sine', .06, .5); },
+  item: () => { tone(880, .08, 'sine', .1); setTimeout(() => tone(1320, .12, 'sine', .1), 70); },
+  trap: () => tone(300, .5, 'sine', .14, 2.2),
+  pop: () => tone(1200, .15, 'square', .06, .3),
+};
+$('mute').textContent = muted ? '音效 關' : '音效 開';
+$('mute').addEventListener('click', () => { muted = !muted; store.set('bp-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+
+
+/* ---------- 常數（規則在 game-core.js） ---------- */
+const { COLS, ROWS, BOMB_TIME, FLAME_TIME, FLAME_FADE, BASE_SPEED, SPEED_STEP, SUPER_POWER, COLORS, EARS, DIFFS } = Core;
+// ?time=60 可縮短單人版一局秒數，方便測試
+const ROUND_TIME = Math.max(45, Number(new URLSearchParams(location.search).get('time')) || 180);
+// 道具外觀：顏色 + 繪製圖示徽章（永遠面向鏡頭）+ 地上光圈，一眼分得出來
+const ITEMS = {
+  bomb:  { color: '#5ab8ff', label: '水球+1', name: '水球 +1' },
+  power: { color: '#ffc23d', label: '水柱+1', name: '水柱 +1' },
+  speed: { color: '#4cd68a', label: '速度鞋', name: '速度鞋' },
+  kick:  { color: '#ff8a4c', label: '踢鞋', name: '踢鞋' },
+  super: { color: '#c86bff', label: '超級', name: '超級水球' },
+};
+const loginErr = captureLogin(); // Telegram 登入轉址回來時把憑證存起來
+let ID = identity();
+const ONLINE = !!ID && /^https?:\/\//.test(WORKER_URL);
+let mode = ONLINE ? 'online' : 'offline';
+
+/* ---------- three.js ---------- */
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, 1, .1, 200);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.position.set(6, 20, 10); scene.add(sun);
+
+/* ---------- 版面 ---------- */
+const wx = x => x - (COLS - 1) / 2, wz = y => y - (ROWS - 1) / 2;
+const boardRoot = new THREE.Group(); scene.add(boardRoot);
+const base = new THREE.Mesh(G.box, toon('#f3c9b0')); base.scale.set(COLS + .6, 1, ROWS + .6); base.position.y = -.5; boxOutline(base, COLS + .6, 1, ROWS + .6); boardRoot.add(base);
+const grass = new THREE.Mesh(G.box, toon('#e4f6d4')); grass.scale.set(COLS + .6, .04, ROWS + .6); grass.position.y = .0; boardRoot.add(grass);
+for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+  if ((x + y) % 2) continue;
+  const t = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), toon('#d3efc0')); t.rotation.x = -Math.PI / 2; t.position.set(wx(x), .025, wz(y)); boardRoot.add(t);
+}
+const SOFT_COLORS = ['#ffd0dc', '#ffe3b8', '#e2d6ff', '#cdeef9'];
+
+/* ---------- 畫面狀態（離線、連線共用：一律從 snapshot 畫） ---------- */
+let V = null;          // 目前畫面上的這一局
+let playing = false;   // 有一局正在進行（隱藏開始／大廳畫面）
+let local = null;      // 單人版：本機跑 game-core
+const buf = [];        // 連線版：收到的位置快照，用來內插
+const INTERP_MS = 100;
+let setup = {
+  color: COLORS[0], ear: 'be', // 載入後由 applyAppearance 設定
+  diff: store.get('bp-diff') || 'normal',
+};
+const myName = (ID?.name || tgUser?.first_name || store.get('bp-name') || '你').slice(0, 10);
+
+function makeHard(x, y, dropped) {
+  const m = new THREE.Mesh(G.box, toon(dropped ? '#ffb3c7' : '#b9a7e8')); m.scale.set(.92, .62, .92); m.position.set(wx(x), .31, wz(y)); boxOutline(m, .92, .62, .92);
+  const cap = new THREE.Mesh(G.box, toon(dropped ? '#ffd0dc' : '#d4c8f5')); cap.scale.set(.96, .12, .96); cap.position.set(0, .5, 0); m.add(cap);
+  boardRoot.add(m); return m;
+}
+function makeBomb(x, y) {
+  const mesh = new THREE.Group();
+  const ball = blob(G.sphere, M.balloon, .38, .36, .38, 1.06); ball.position.y = .4; mesh.add(ball);
+  const knot = blob(G.small, M.balloon, .08, .06, .08, 1.2); knot.position.y = .8; mesh.add(knot);
+  const hl = new THREE.Mesh(G.small, M.white); hl.scale.set(.07, .1, .04); hl.position.set(-.16, .55, .3); mesh.add(hl);
+  mesh.position.set(wx(x), 0, wz(y)); boardRoot.add(mesh);
+  return { mesh, ball, t: BOMB_TIME, tx: x, ty: y };
+}
+function makeFlame(x, y, center) {
+  const mesh = new THREE.Group();
+  const s = blob(G.cyl, M.splash, .44, .22, .44, 1.05); s.position.y = .12; mesh.add(s);
+  const core = new THREE.Mesh(G.cyl, M.splashCore); core.scale.set(.26, .24, .26); core.position.y = .14; mesh.add(core);
+  for (let i = 0; i < (center ? 5 : 2); i++) {
+    const d = blob(G.small, M.splash, .1, .12, .1, 1.15); d.position.set((Math.random() - .5) * .7, .35 + Math.random() * .4, (Math.random() - .5) * .7); mesh.add(d);
+  }
+  mesh.position.set(wx(x), 0, wz(y)); boardRoot.add(mesh);
+  return { mesh, t: FLAME_TIME };
+}
+const badgeTex = new Map();
+function itemBadge(kind) {
+  if (badgeTex.has(kind)) return badgeTex.get(kind);
+  const it = ITEMS[kind], c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  badgeFrame(x, it.color);
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.save(); (ITEM_ART[kind] || ITEM_ART.bomb)(x); x.restore();
+  x.font = '900 21px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillStyle = '#3b2f2f'; x.fillText(it.label, 64, 95);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; badgeTex.set(kind, t); return t;
+}
+function makeItem(x, y, kind) {
+  const it = ITEMS[kind] || ITEMS.bomb, mesh = new THREE.Group();
+  const baseDisc = blob(G.cyl, toon(it.color), .3, .06, .3, 1.08); baseDisc.position.y = .05; mesh.add(baseDisc);
+  const glow = new THREE.Mesh(G.disc, new THREE.MeshBasicMaterial({ color: it.color, transparent: true, opacity: .5, depthWrite: false, blending: THREE.AdditiveBlending }));
+  glow.rotation.x = -Math.PI / 2; glow.position.y = .03; glow.scale.setScalar(.48); mesh.add(glow);
+  const icon = new THREE.Sprite(new THREE.SpriteMaterial({ map: itemBadge(kind), transparent: true }));
+  icon.scale.setScalar(kind === 'super' ? 1.02 : .9); icon.position.y = .7; mesh.add(icon);
+  mesh.position.set(wx(x), 0, wz(y)); mesh.scale.setScalar(.01); boardRoot.add(mesh);
+  return { x, y, kind, mesh, icon, glow, pending: 0, age: 0 };
+}
+
+function buildView(s, myId) {
+  if (V) disposeView();
+  const v = V = { seed: s.seed, myId, grid: s.grid, soft: new Map(), hard: [], bombs: new Map(), flames: new Map(), items: new Map(), players: [], fx: [], over: false, shrinking: false, time: s.time };
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const c = s.grid[y * COLS + x];
+    if (c === '1') v.hard.push(makeHard(x, y, false)); else if (c === '2') v.soft.set(`${x},${y}`, makeSoft(x, y));
+  }
+  for (const d of s.players) {
+    const c = makeCritter(d); c.root.position.set(wx(d.x), 0, wz(d.y)); c.root.rotation.y = d.face; boardRoot.add(c.root);
+    if (d.id === myId) addMarker(c); else addNameTag(c, d.name);
+    v.players.push({ c, d });
+  }
+  $('meTag').hidden = true; $('timer').classList.remove('hurry');
+  buf.length = 0;
+  applySnap(s, []);
+}
+function disposeView() {
+  const v = V;
+  for (const m of v.hard) boardRoot.remove(m);
+  for (const m of v.soft.values()) boardRoot.remove(m);
+  for (const b of v.bombs.values()) boardRoot.remove(b.mesh);
+  for (const f of v.flames.values()) boardRoot.remove(f.mesh);
+  for (const it of v.items.values()) boardRoot.remove(it.mesh);
+  for (const p of v.players) boardRoot.remove(p.c.root);
+  for (const f of v.fx) boardRoot.remove(f.mesh);
+  V = null;
+}
+function applySnap(s, evs) {
+  const v = V;
+  for (let i = 0; i < s.grid.length; i++) {
+    const a = v.grid[i], b = s.grid[i]; if (a === b) continue;
+    const x = i % COLS, y = Math.floor(i / COLS), key = `${x},${y}`;
+    if (b === '1') { // 縮圈掉下來的方塊
+      const soft = v.soft.get(key); if (soft) { boardRoot.remove(soft); v.soft.delete(key); }
+      const m = makeHard(x, y, true); m.position.y = 6; v.hard.push(m);
+      v.fx.push({ mesh: m, t: 0, dur: .22, kind: 'drop' }); tone(240, .08, 'square', .05, .6);
+    } else if (a === '2') { const m = v.soft.get(key); v.soft.delete(key); if (m) v.fx.push({ mesh: m, t: 0, dur: .3, kind: 'crumble' }); }
+  }
+  v.grid = s.grid;
+  const seenB = new Set();
+  for (const [id, x, y, t, ox = 0, oy = 0] of s.bombs) { seenB.add(id); let b = v.bombs.get(id); if (!b) v.bombs.set(id, b = makeBomb(x, y)); b.t = t; b.tx = x + ox; b.ty = y + oy; }
+  for (const [id, b] of v.bombs) if (!seenB.has(id)) { boardRoot.remove(b.mesh); v.bombs.delete(id); }
+  const seenF = new Set();
+  for (const [id, x, y, t, c] of s.flames) { seenF.add(id); let f = v.flames.get(id); if (!f) v.flames.set(id, f = makeFlame(x, y, c)); f.t = t; }
+  for (const [id, f] of v.flames) if (!seenF.has(id)) { boardRoot.remove(f.mesh); v.flames.delete(id); }
+  const seenI = new Set();
+  for (const [x, y, kind, pending] of s.items) { const k = `${x},${y},${kind}`; seenI.add(k); let it = v.items.get(k); if (!it) v.items.set(k, it = makeItem(x, y, kind)); it.pending = pending; }
+  for (const [k, it] of v.items) if (!seenI.has(k)) { boardRoot.remove(it.mesh); v.items.delete(k); }
+  for (const d of s.players) {
+    const P = v.players[d.id]; if (!P) continue;
+    const was = P.d.state; P.d = d;
+    if (d.state === 'dead' && was !== 'dead') {
+      if (P.c.marker) { P.c.marker.arrow.visible = P.c.marker.ring.visible = false; $('meTag').hidden = true; }
+      if (P.c.nameTag) P.c.nameTag.visible = false;
+      v.fx.push({ mesh: P.c.root, t: 0, dur: 1, kind: 'ghost' });
+    }
+  }
+  v.time = s.time; v.over = s.over;
+  if (s.shrinking && !v.shrinking) { v.shrinking = true; $('timer').classList.add('hurry'); }
+  const sec = Math.ceil(s.time);
+  $('timer').textContent = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  for (const e of evs) onEvent(e);
+}
+function onEvent(e) {
+  const mine = V.myId != null && e.id === V.myId;
+  if (e.e === 'place' && mine) { sfx.place(); haptic.tap(); }
+  if (e.e === 'boom') sfx.boom();
+  if (e.e === 'item' && mine) { sfx.item(); haptic.tap(); toast(ITEMS[e.kind]?.name || '', 900); }
+  if (e.e === 'kick') tone(420, .12, 'triangle', .1, 1.8);
+  if (e.e === 'trap') { sfx.trap(); if (mine) haptic.hit(); }
+  if (e.e === 'kill') {
+    sfx.pop(); if (mine) haptic.hit();
+    const who = V.players[e.id]?.d.name || '', by = e.by != null ? V.players[e.by]?.d.name : null;
+    toast(mine ? (by ? `你被 ${by} 擊敗了，觀戰中` : '你出局了，觀戰中') : by ? `${by} 擊敗了 ${who}` : `${who} 出局`, 1800);
+  }
+  if (e.e === 'shrink') toast('縮圈了！', 1200);
+  if (e.e === 'end') showEnd(e.result);
+  renderHud();
+}
+// 標記玩家操作的角色：頭上箭頭 + 腳下光圈
+function addMarker(c) {
+  const arrow = new THREE.Group();
+  const tip = withOutline(new THREE.Mesh(new THREE.ConeGeometry(.3, .5, 16), toon('#ff8fab')), 1.12);
+  tip.rotation.x = Math.PI; arrow.add(tip);
+  const dot = blob(G.small, toon('#ff8fab'), .15, .15, .15, 1.15); dot.position.y = .42; arrow.add(dot);
+  arrow.position.y = 1.85; c.root.add(arrow);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(.52, .7, 40), new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .035; c.root.add(ring);
+  c.marker = { arrow, ring };
+}
+function makeSoft(x, y) {
+  const c = SOFT_COLORS[(x * 7 + y * 3) % SOFT_COLORS.length];
+  const m = new THREE.Mesh(G.box, toon(c)); m.scale.set(.84, .52, .84); m.position.set(wx(x), .26, wz(y)); boxOutline(m, .84, .52, .84);
+  const ribbon = new THREE.Mesh(G.box, toon('#ffffff')); ribbon.scale.set(1.02, 1.02, .18); m.add(ribbon);
+  const ribbon2 = new THREE.Mesh(G.box, toon('#ffffff')); ribbon2.scale.set(.18, 1.02, 1.02); m.add(ribbon2);
+  boardRoot.add(m); return m;
+}
+
+/* ---------- 輸入 ---------- */
+const dirKeys = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] };
+const held = [];
+let stickDir = [0, 0];
+function actBomb() { if (mode === 'online') net.send({ t: 'bomb' }); else if (local && playing) Core.placeBomb(local, local.players[0]); }
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (dirKeys[k]) { e.preventDefault(); if (!held.includes(k)) held.push(k); }
+  if (k === ' ' || k === 'j') { e.preventDefault(); if (!e.repeat) actBomb(); }
+});
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); const i = held.indexOf(k); if (i >= 0) held.splice(i, 1); });
+addEventListener('blur', () => { held.length = 0; stickDir = [0, 0]; });
+function humanDir() { return held.length ? dirKeys[held.at(-1)] : stickDir; }
+// ?touch=1 可在桌面瀏覽器強制顯示觸控按鈕，方便測試手機版面
+if (matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch')) document.body.classList.add('touch');
+const stick = $('stick'), knob = $('knob');
+let stickId = null;
+function stickMove(e) {
+  const r = stick.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const len = Math.hypot(dx, dy), max = r.width / 2 - 20;
+  if (len > max) { dx *= max / len; dy *= max / len; }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  stickDir = len < 14 ? [0, 0] : Math.abs(dx) > Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)];
+}
+stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
+stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) stickMove(e); });
+const stickEnd = e => { if (e.pointerId !== stickId) return; stickId = null; stickDir = [0, 0]; knob.style.transform = ''; };
+stick.addEventListener('pointerup', stickEnd); stick.addEventListener('pointercancel', stickEnd);
+$('bombBtn').addEventListener('pointerdown', e => { e.preventDefault(); actBomb(); });
+
+/* ---------- HUD ---------- */
+function renderHud() {
+  if (!V) return;
+  $('players').innerHTML = V.players.map(({ d: p }) => {
+    const st = p.state === 'dead' ? '出局' : p.state === 'trapped' ? `困住 ${p.trapT.toFixed(1)}s` : `球${p.maxBombs} 柱${p.power >= SUPER_POWER ? '超' : p.power} 速${Math.round((p.speed - BASE_SPEED) / SPEED_STEP) + 1}${p.kick ? ' 踢' : ''}`;
+    const tag = p.uid == null ? '' : !p.human && mode === 'online' ? ' 💤' : '';
+    return `<div class="pl box ${p.state}"><b><i style="background:${p.color}"></i>${esc(p.name)}${tag}</b><span class="st">${st}</span></div>`;
+  }).join('');
+  const me = V.myId != null ? V.players[V.myId]?.d : null;
+}
+let toastTimer = 0;
+function toast(text, ms = 1400) {
+  const t = $('toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+/* ---------- 開始畫面（外觀設定，單人版與大廳共用） ---------- */
+function renderSetup() {
+  $('diffs').innerHTML = Object.entries(DIFFS).map(([k, v]) => `<button class="btn" data-diff="${k}" aria-pressed="${k === setup.diff}">${v.label}</button>`).join('');
+}
+renderSetup();
+
+function onSetupClick(e) {
+  const d = e.target.closest('[data-diff]'); if (!d) return;
+  setup.diff = d.dataset.diff; store.set('bp-diff', setup.diff); renderSetup();
+}
+$('startScreen').addEventListener('click', onSetupClick);
+$('lobbyScreen').addEventListener('click', onSetupClick);
+
+/* ---------- 單人版 ---------- */
+function startOffline() {
+  $('startScreen').hidden = true; $('endScreen').hidden = true; $('lobbyScreen').hidden = true;
+  try { TG?.MainButton?.hide(); } catch {}
+  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], diff: setup.diff, roundTime: ROUND_TIME });
+  buildView(Core.snapshot(local), 0); playing = true;
+  toast('開始！', 900);
+  window.dispatchEvent(new CustomEvent('bubblepop:start', { detail: { difficulty: setup.diff, online: false } }));
+}
+function goOffline(why) {
+  mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null;
+  $('lobbyScreen').hidden = true; if (!playing) $('startScreen').hidden = false;
+  if (why) toast(why, 2200);
+}
+$('startBtn').addEventListener('click', startOffline);
+$('againBtn').addEventListener('click', () => {
+  if (mode === 'online') { $('endScreen').hidden = true; net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear }); showLobby(); }
+  else startOffline();
+});
+$('soloBtn').addEventListener('click', () => goOffline());
+
+function showEnd(r) {
+  playing = false;
+  const me = V.myId, winner = r.winner;
+  $('endTitle').textContent = winner ? (winner.id === me ? '你贏了！' : `${winner.name} 獲勝`) : '平手';
+  $('endSub').textContent = r.reason === 'time' ? '時間到，還站著的小傢伙平分勝利' : winner && winner.id === me ? '最後一隻站著的小傢伙' : me == null ? '觀戰結束，下一局一起玩' : '下次一定可以';
+  $('rank').innerHTML = r.players.map(p => `<li><span>${p.rank}. ${p.bot ? '🤖' : ''}${esc(p.name)}${p.id === me ? '（你）' : ''}</span><span>擊敗 ${p.kills}</span></li>`).join('');
+  $('againBtn').textContent = mode === 'online' ? '回大廳，再玩一局' : '再玩一局';
+  setTimeout(() => { $('endScreen').hidden = false; $('lobbyScreen').hidden = true; }, 900);
+  if (winner && winner.id === me) { haptic.win(); toast('勝利！', 1200); }
+  if (mode === 'online') net.wantIn = false;
+  const mine = r.players.find(p => p.id === me);
+  const result = { ...r, online: mode === 'online', humanWon: !!(winner && winner.id === me), difficulty: mode === 'online' ? 'normal' : setup.diff, me: mine ? { rank: mine.rank, kills: mine.kills } : null };
+  window.dispatchEvent(new CustomEvent('bubblepop:end', { detail: result }));
+  try { window.BubblePop?.onEnd?.(result); } catch (err) { console.error(err); }
+  if (inTelegram && mode === 'offline') { try { TG.MainButton.setText('再玩一局'); TG.MainButton.show(); } catch {} }
+}
+if (inTelegram) { try { TG.MainButton.onClick(() => { if (mode === 'offline') startOffline(); }); } catch {} }
+
+/* ---------- 連線版（Worker 房間） ---------- */
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0, lastDir: '0,0', lastDirAt: 0,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return goOffline('連不上遊戲伺服器，先玩單人版'); }
+  net.ws = ws;
+  ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws || mode !== 'online') return;
+    if (e.code === 4000) { lobbyStatus('你在其他視窗開了遊戲，這裡已斷線'); return; }
+    if (e.code === 4001) { // 閒置被請出房間：下一次操作再連回來
+      lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入');
+      const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); };
+      addEventListener('keydown', back); addEventListener('pointerdown', back); return;
+    }
+    net.tries++;
+    if (!net.opened && net.tries >= 3) return goOffline('連不上遊戲伺服器，先玩單人版');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function tryJoin() {
+  if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
+  const L = net.lobby; if (L && (L.phase === 'play' || L.players.length >= L.max)) return;
+  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear });
+}
+function onNet(m) {
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') {
+    buildView(m.s, m.me); playing = true;
+    $('lobbyScreen').hidden = true; $('endScreen').hidden = true; $('startScreen').hidden = true;
+    toast(m.me == null ? '觀戰中' : '開始！', 1000);
+    if (m.me != null) window.dispatchEvent(new CustomEvent('bubblepop:start', { detail: { difficulty: 'normal', online: true } }));
+  }
+  else if (m.t === 's') {
+    if (!V || V.seed !== m.s.seed) { buildView(m.s, null); playing = !m.s.over; }
+    buf.push({ at: performance.now(), ps: m.s.players.map(p => [p.x, p.y]) }); if (buf.length > 12) buf.shift();
+    applySnap(m.s, m.ev);
+  }
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function renderLobby() {
+  const L = net.lobby; if (!L) return;
+  const slots = [];
+  for (let i = 0; i < L.max; i++) {
+    const p = L.players[i];
+    slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>等待玩家</span></li>`);
+  }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(L.phase === 'play' ? `這局進行中（剩 ${L.time ?? '?'} 秒），結束後可加入` : L.phase === 'end' ? `上一局結算中，${L.endIn} 秒後開放新局` : L.players.length >= (L.min || 2) ? `${L.countdown} 秒後開局（滿 4 人立即開始）` : L.players.length ? `還差 ${(L.min || 2) - L.players.length} 人才開局` : `等待玩家加入（至少 ${L.min || 2} 人）`);
+  const joined = inLobby();
+  $('joinBtn').textContent = joined ? '離開' : '加入';
+  $('joinBtn').disabled = !joined && (L.phase === 'play' || L.players.length >= L.max);
+  if (!playing && $('endScreen').hidden) $('lobbyScreen').hidden = false;
+}
+$('joinBtn').addEventListener('click', () => {
+  if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); }
+  else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
+});
+function sendDir() {
+  if (mode !== 'online' || !playing || V?.myId == null) return;
+  const d = humanDir(), k = d.join(','), now = performance.now();
+  if (k !== net.lastDir || now - net.lastDirAt > 400) { net.lastDir = k; net.lastDirAt = now; net.send({ t: 'in', d }); }
+}
+
+window.BubblePop = { version: '0.2.0', start: startOffline, onEnd: null, get inTelegram() { return inTelegram; }, get online() { return mode === 'online'; } };
+
+/* ---------- 主迴圈 ---------- */
+document.addEventListener('visibilitychange', () => { if (document.hidden) { held.length = 0; stickDir = [0, 0]; } });
+// 把棋盤塞進狀態欄與操作按鈕之外的空間：先依投影結果調整距離，再用 view offset 對齊中心
+const CAM_DIR = new THREE.Vector3(0, .9, .44).normalize();
+const BOARD_PTS = [];
+for (const x of [-1, 1]) for (const z of [-1, 1]) for (const y of [0, 2.3]) BOARD_PTS.push(new THREE.Vector3(x * (COLS / 2 + .35), y, z * (ROWS / 2 + .35)));
+function freeRect(w, h) {
+  const r = { left: 8, right: w - 8, top: 8, bottom: h - 8 };
+  const hud = document.querySelector('.hud').getBoundingClientRect();
+  const touch = document.body.classList.contains('touch');
+  const short = h <= 520 && w > h;
+  if (short) {
+    r.left = Math.max(r.left, hud.right + 8);
+    if (touch) { const acts = document.querySelector('.acts').getBoundingClientRect(); r.right = Math.min(r.right, acts.left - 8); }
+    else r.right = Math.min(r.right, w - 12);
+  } else {
+    r.top = Math.max(r.top, hud.bottom + 8);
+    if (touch) r.bottom = Math.min(r.bottom, document.querySelector('.stick').getBoundingClientRect().top - 8);
+    else r.bottom = Math.min(r.bottom, document.querySelector('.keys').getBoundingClientRect().top - 6);
+  }
+  if (r.right - r.left < 120) { r.left = 6; r.right = w - 6; }
+  if (r.bottom - r.top < 120) { r.top = 6; r.bottom = h - 6; }
+  return r;
+}
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.clearViewOffset(); camera.updateProjectionMatrix();
+  const area = freeRect(w, h);
+  const aw = area.right - area.left, ah = area.bottom - area.top;
+  const tmpV = new THREE.Vector3();
+  let d = 30, box;
+  const measure = () => {
+    camera.position.copy(CAM_DIR).multiplyScalar(d); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const p of BOARD_PTS) {
+      tmpV.copy(p).project(camera);
+      const px = (tmpV.x + 1) / 2 * w, py = (1 - tmpV.y) / 2 * h;
+      x0 = Math.min(x0, px); x1 = Math.max(x1, px); y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+    }
+    return { x0, x1, y0, y1 };
+  };
+  for (let i = 0; i < 4; i++) { box = measure(); d *= Math.max((box.x1 - box.x0) / aw, (box.y1 - box.y0) / ah); }
+  box = measure();
+  const dx = (box.x0 + box.x1) / 2 - (area.left + area.right) / 2, dy = (box.y0 + box.y1) / 2 - (area.top + area.bottom) / 2;
+  camera.setViewOffset(w, h, dx, dy, w, h);
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+if (inTelegram) { try { TG.onEvent('viewportChanged', resize); } catch {} }
+document.fonts?.ready.then(resize);
+// 狀態欄高度會隨玩家清單變動，跟著重新對齊棋盤
+try { new ResizeObserver(() => resize()).observe(document.querySelector('.hud')); } catch {}
+const clock = new THREE.Clock();
+const tagPos = new THREE.Vector3();
+let hudTick = 0;
+
+// 連線版位置內插：畫 INTERP_MS 之前的狀態，夾在兩個快照之間
+function posOf(id, d) {
+  // 自己的角色直接用最新位置（不延遲 INTERP_MS），畫面才跟伺服器判定對得上
+  if (mode !== 'online' || buf.length < 2 || id === V.myId) return [d.x, d.y];
+  const rt = performance.now() - INTERP_MS;
+  let i = buf.length - 2; while (i > 0 && buf[i].at > rt) i--;
+  const a = buf[i], b = buf[i + 1]; if (!a.ps[id] || !b.ps[id]) return [d.x, d.y];
+  const k = Math.max(0, Math.min(1, (rt - a.at) / Math.max(1, b.at - a.at)));
+  return [a.ps[id][0] + (b.ps[id][0] - a.ps[id][0]) * k, a.ps[id][1] + (b.ps[id][1] - a.ps[id][1]) * k];
+}
+function animate(dt, t) {
+  const v = V;
+  for (const b of v.bombs.values()) {
+    b.t -= dt;
+    const pulse = 1 + Math.sin(t * (10 + (BOMB_TIME - b.t) * 8)) * .06 + (b.t < .6 ? .08 : 0);
+    b.ball.scale.set(.38 * pulse, .36 / pulse, .38 * pulse);
+    const kk = Math.min(1, dt * 18); // 被踢的水球滑動
+    b.mesh.position.x += (wx(b.tx) - b.mesh.position.x) * kk; b.mesh.position.z += (wz(b.ty) - b.mesh.position.z) * kk;
+  }
+  // 水柱：判定期間完整顯示，最後 FLAME_FADE 秒（已不判定）才縮掉
+  for (const f of v.flames.values()) {
+    f.t -= dt;
+    const k = f.t > FLAME_FADE ? 1 : Math.max(0, f.t) / FLAME_FADE, wob = k === 1 ? 1 + Math.sin(t * 28 + f.mesh.position.x) * .05 : 1;
+    f.mesh.scale.set((1 + (1 - k) * .2) * wob, Math.max(.02, k) * wob, (1 + (1 - k) * .2) * wob);
+    f.mesh.visible = f.t > 0;
+  }
+  for (const it of v.items.values()) {
+    if (it.pending > 0) { it.pending -= dt; continue; }
+    it.age += dt;
+    it.mesh.scale.setScalar(Math.min(1, it.age * 5));
+    it.icon.position.y = .7 + Math.sin(t * 3 + it.x) * .08;
+    it.glow.material.opacity = .35 + Math.sin(t * 4 + it.y) * .2; it.glow.scale.setScalar(.46 + Math.sin(t * 4 + it.y) * .05);
+    if (it.kind === 'super') it.icon.material.rotation = Math.sin(t * 5) * .15;
+  }
+  for (const f of [...v.fx]) {
+    f.t += dt; const k = Math.min(1, f.t / f.dur);
+    if (f.kind === 'crumble') { f.mesh.scale.set(.84 * (1 + k * .4), .52 * (1 - k), .84 * (1 + k * .4)); f.mesh.position.y = .26 * (1 - k); }
+    if (f.kind === 'ghost') { f.mesh.position.y = k * 2.2; f.mesh.scale.setScalar(.86 * (1 - k * .7)); f.mesh.rotation.y += dt * 6; }
+    if (f.kind === 'drop') { f.mesh.position.y = .31 + (1 - k * k) * 5.7; if (k >= 1) { v.fx.splice(v.fx.indexOf(f), 1); continue; } }
+    if (k >= 1) { boardRoot.remove(f.mesh); v.fx.splice(v.fx.indexOf(f), 1); }
+  }
+  for (const { c, d: p } of v.players) {
+    if (p.state === 'dead') continue;
+    const moving = !!p.mv, [px, py] = posOf(p.id, p);
+    c.root.position.x = wx(px); c.root.position.z = wz(py);
+    let d = p.face - c.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); c.root.rotation.y += d * Math.min(1, dt * 14);
+    const trapped = p.state === 'trapped';
+    const walk = moving && !trapped ? Math.abs(Math.sin(t * 13 + c.phase)) : 0;
+    const sq = 1 + (moving ? (walk - .5) * .1 : Math.sin(t * 2.2 + c.phase) * .035);
+    c.pivot.position.y = walk * .14 + (trapped ? .18 + Math.sin(t * 3) * .05 : 0);
+    c.pivot.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    c.bubble.visible = c.shine.visible = trapped;
+    if (c.marker) {
+      c.marker.arrow.position.y = (trapped ? 2.2 : 1.85) + c.pivot.position.y * .6 + Math.sin(t * 5) * .12;
+      c.marker.arrow.rotation.y = -c.root.rotation.y + t * 2;
+      const pulse = 1 + Math.sin(t * 4) * .08;
+      c.marker.ring.scale.setScalar(pulse); c.marker.ring.material.opacity = .55 + Math.sin(t * 4) * .25;
+      c.marker.arrow.getWorldPosition(tagPos); tagPos.y += .45; tagPos.project(camera);
+      const tag = $('meTag'); tag.hidden = !playing || tagPos.z > 1;
+      tag.style.left = (tagPos.x * .5 + .5) * innerWidth + 'px'; tag.style.top = (-tagPos.y * .5 + .5) * innerHeight + 'px';
+    }
+    if (trapped) { const w = 1 + Math.sin(t * 6) * .04; c.bubble.scale.set(.78 * w, .78 / w, .78 * w); c.bubble.position.y = .55 + c.pivot.position.y * .5; c.shine.position.y = .95 + c.pivot.position.y * .5; }
+    c.blinkAt -= dt;
+    const blink = c.blinkAt < 0 && c.blinkAt > -.12;
+    if (c.blinkAt < -.12) c.blinkAt = 2 + Math.random() * 4;
+    for (const e of c.eyes) e.scale.y = blink ? .008 : trapped ? .03 : .065;
+    for (const a of c.arms) { const s = a.userData.side; a.rotation.z = trapped ? s * (2.4 + Math.sin(t * 9 + s) * .3) : s * (.5 + (moving ? Math.sin(t * 13 + c.phase + s) * .35 : 0)); }
+  }
+  hudTick -= dt;
+  if (hudTick <= 0) { hudTick = .2; renderHud(); }
+}
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (mode === 'offline' && local && (playing || local.over) && V) {
+    if (local.players[0].human) Core.setInput(local, 0, local.over ? [0, 0] : humanDir());
+    const evs = Core.step(local, dt); applySnap(Core.snapshot(local), evs);
+  }
+  sendDir();
+  if (V && (playing || mode === 'offline' || V.over)) animate(dt, t);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+// 開始畫面時先擺一局當背景
+buildView(Core.snapshot(Core.createGame({ seed: 20261016 })), null);
+/* ---------- 外觀與進場：外觀由大廳設定；沒設定過（直接點連結或受邀進來）就先跳選擇視窗 ---------- */
+function applyAppearance(a) {
+  setup.color = a.color; setup.ear = a.ear;
+  if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear });
+}
+async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
+$('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
+// 連線對戰：沒有身分就先請玩家選 Telegram 登入或訪客
+async function goOnline() {
+  if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
+  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true;
+  $('startScreen').hidden = $('endScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
+}
+$('onlineBtn').addEventListener('click', goOnline);
+(async () => {
+  const want = new URLSearchParams(location.search).get('mode'); // solo：單人直接開始；online：直接進連線大廳
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  // 一般網頁沒有身分：先選身分（Telegram 或訪客），再設定外觀
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '先玩單人版' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a);
+  if (want === 'solo') { mode = 'offline'; startOffline(); }
+  else if (ID) goOnline();
+})();
+tick();
+</script>
+</body>
+</html>

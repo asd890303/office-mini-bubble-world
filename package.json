@@ -1,0 +1,12 @@
+{
+  "name": "office-mini-bubble-world",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "games/*", "packages/*"],
+  "scripts": {
+    "build": "node deploy/build.mjs",
+    "dev": "node apps/worker/dev.mjs",
+    "test": "node deploy/build.mjs && node --test games/*/test/*.test.mjs apps/*/test/*.test.mjs packages/*/test/*.test.mjs",
+    "deploy": "node deploy/build.mjs && cd deploy && npx wrangler deploy"
+  }
+}

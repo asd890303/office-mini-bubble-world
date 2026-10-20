@@ -1,0 +1,27 @@
+/* 共用美術風格：奶油底色、深褐粗描邊、圓角卡片、Zen Maru Gothic。入口頁與各遊戲都載入這份。 */
+@import url("https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap");
+:root {
+  --bg-top: #cfe9ff; --bg-bottom: #fff0f5;
+  --ink: #4a3b3b; --ink-soft: #8b7676;
+  --paper: #fffdf8; --chip: #fff4f7; --line: #f1dede;
+  --pink: #ffb3c7; --pink-deep: #ff8fab; --blue: #8fd3ff;
+  --shadow: 0 5px 0 rgba(74,59,59,.1), 0 10px 26px rgba(255,143,171,.2);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-top: #1d2347; --bg-bottom: #4a3560; --ink: #fdf1f4; --ink-soft: #c8b5c4;
+    --paper: #2c2640; --chip: #382f50; --line: #463c5e;
+    --shadow: 0 5px 0 rgba(0,0,0,.25), 0 10px 26px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"] {
+  --bg-top: #1d2347; --bg-bottom: #4a3560; --ink: #fdf1f4; --ink-soft: #c8b5c4;
+  --paper: #2c2640; --chip: #382f50; --line: #463c5e;
+  --shadow: 0 5px 0 rgba(0,0,0,.25), 0 10px 26px rgba(0,0,0,.35);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin: 0; background: linear-gradient(var(--bg-top), var(--bg-bottom)); color: var(--ink); font-family: "Zen Maru Gothic", "PingFang TC", system-ui, sans-serif; }
+button { font: inherit; color: var(--ink); }
+.box { background: var(--paper); border: 3px solid var(--ink); border-radius: 20px; box-shadow: var(--shadow); }
+.btn { border: 2px solid var(--ink); background: var(--chip); border-radius: 999px; padding: 6px 16px; font-weight: 700; cursor: pointer; }
+.btn.primary { background: var(--pink); color: #4a3b3b; }

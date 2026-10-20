@@ -1,0 +1,39 @@
+# Office Mini Bubble World：入口頁 + 各遊戲頁面 + 連線房間（Durable Object）。name 可改。
+name = "office-mini-bubble-world"
+main = "dist/worker.bundle.js"   # 已內嵌入口頁與各遊戲；改程式後先 npm run build
+compatibility_date = "2025-01-01"
+
+# 選填：[vars] GROUP_ID = "<Telegram 群組 id>" 與 secret BOT_TOKEN 都設了，對戰結束才會把名次貼到群組
+# 選填：[vars] ALLOWED_ORIGIN = "https://<你的網址>"：只允許這個網址連線
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[durable_objects.bindings]]
+name = "LOBBY_ROOM"
+class_name = "LobbyRoom"
+
+[[durable_objects.bindings]]
+name = "KART_ROOM"
+class_name = "KartRoom"
+
+[[durable_objects.bindings]]
+name = "ARTILLERY_ROOM"
+class_name = "ArtilleryRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LobbyRoom"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["KartRoom"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["ArtilleryRoom"]

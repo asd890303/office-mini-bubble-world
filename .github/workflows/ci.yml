@@ -1,0 +1,18 @@
+name: CI
+
+# dev 分支每次推送都先 build + 跑測試；部署用另一個手動按鈕（deploy.yml）
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test

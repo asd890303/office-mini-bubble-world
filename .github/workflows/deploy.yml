@@ -1,6 +1,6 @@
-name: Deploy
+name: Deploy Test
 
-# 手動按鈕：Actions → Deploy → Run workflow。只能在 dev 分支部署，且 build + 測試通過後才會部署。
+# 測試站手動按鈕：Actions → Deploy Test → Run workflow。只能在 dev 分支部署，且 build + 測試通過後才會部署。
 # 需要 repo secrets：CLOUDFLARE_API_TOKEN、CLOUDFLARE_ACCOUNT_ID（BOT_TOKEN 存在 Cloudflare Worker secret，不用放這裡）
 on:
   workflow_dispatch:
@@ -27,6 +27,7 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    environment: test # repo 首頁的 Deployments 區會列出測試站的部署紀錄
     permissions:
       contents: write # 只有這個 job 要推 tag
     steps:
@@ -45,14 +46,14 @@ jobs:
           workingDirectory: deploy
           wranglerVersion: "4.151.1"
           command: deploy
-      # 部署成功後在這個 commit 打 tag：deploy-日期時間-版本碼，版本碼就是線上 /version 回傳的那串；同一個版本碼已經有 tag 就略過
+      # 部署成功後在這個 commit 打 tag：deploy-test-日期時間-版本碼，版本碼就是線上 /version 回傳的那串；同一個版本碼已經有 tag 就略過
       - name: Tag the deployed commit
         env:
           BUILD_ID: ${{ steps.build.outputs.id }}
         run: |
           test -n "$BUILD_ID"
-          if git ls-remote --tags origin "refs/tags/deploy-*-$BUILD_ID" | grep -q .; then echo "tag for $BUILD_ID already exists"; exit 0; fi
-          tag="deploy-$(TZ=Asia/Taipei date +%Y%m%d-%H%M)-$BUILD_ID"
+          if git ls-remote --tags origin "refs/tags/deploy-test-*-$BUILD_ID" | grep -q .; then echo "tag for $BUILD_ID already exists"; exit 0; fi
+          tag="deploy-test-$(TZ=Asia/Taipei date +%Y%m%d-%H%M)-$BUILD_ID"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$tag" -m "deploy $BUILD_ID" "$GITHUB_SHA"

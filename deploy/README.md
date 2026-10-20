@@ -42,19 +42,21 @@
 
 Telegram 的 CloudStorage 依 bot 分開存。玩家換 bot 開啟時，外觀可能要重選一次。
 
-## GitHub 按鈕
+## GitHub 按鈕（測試站）
 
-狀態：部署步驟失敗，原因待查。先用上面的手動部署。
+下一步：打開 repo 的 Actions → Deploy Test → Run workflow，分支選 `dev`，約 2 分鐘。
 
 - `ci.yml`：推送或發 PR 到 `dev` 時，自動 build 並跑測試。
-- `deploy.yml`：Actions → Deploy → Run workflow。只能在 `dev` 分支執行，build 和測試通過才會部署。
+- `deploy.yml`（名稱 Deploy Test）：只能在 `dev` 分支執行，build 和測試通過才會部署。
+- 部署 job 掛在 GitHub Environment `test` 底下，repo 首頁右側的 Deployments 區會列出每次部署的時間與 commit。
+- 部署成功後自動在該 commit 打 tag `deploy-test-日期時間-版本碼`。版本碼就是線上 `/version` 回傳的那串，對照 tag 清單就知道線上跑哪個 commit。同一個版本碼不重複打 tag。
 - 需要兩個 repo secret：`CLOUDFLARE_API_TOKEN`（用「編輯 Cloudflare Workers」範本建立）和 `CLOUDFLARE_ACCOUNT_ID`。
 - `BOT_TOKEN` 不放在 GitHub。
 - workflow 檔案必須放在 `.github/workflows/`，所以不在 `deploy/` 裡。
 
 排查失敗（約 5 分鐘）：
 
-1. 打開失敗的 Deploy job，展開 `Run cloudflare/wrangler-action@v3`。
+1. 打開失敗的 Deploy Test job，展開 `Run cloudflare/wrangler-action@v3`。
 2. 找含 `ERROR` 或 `Authentication error` 的那幾行。
 3. 對照原因：`Authentication error [code: 10000]` 代表 token 權限不足，或 account ID 與 token 不同帳號。
 

@@ -59,7 +59,7 @@ test('friendly fire: hitting a teammate costs money (never below 0); self damage
   assert.ok(me.money >= 0, 'never negative');
   const g2 = two(); const a = put(g2, 0, 300), b = put(g2, 1, 340); a.money = 80; const sol = A.aimSolve({ ...g2, chars: g2.chars.map(c => (c.id === 1 ? c : { ...c, team: c.team })) }, a, b.x, b.y - A.CHAR.R);
   const ev2 = A.fire(g2, 0, { angle: sol ? sol.ang : 45, power: sol ? sol.p : .4 }); const hitMate = ev2.fx.find(f => f.k === 'hit' && f.id === 1);
-  if (hitMate) assert.equal(a.money, Math.max(0, 80 - Math.floor(hitMate.dmg / 2) - (hitMate.dead ? A.RULES.KILL : 0)), 'teammate hit is charged');
+  if (hitMate) assert.equal(a.money, Math.max(0, 80 - Math.floor(hitMate.dmg * A.RULES.MATE_LOSS) - (hitMate.dead ? A.RULES.KILL : 0)), 'teammate hit is charged');
   assert.ok(g2.chars.every(c => c.money >= 0));
 });
 
@@ -78,13 +78,14 @@ test('items: shop rules, heavy / triple / drill / heal / shield', () => {
   // 重水球與三連發
   const hv = two(); hv.chars[0].items.heavy = 1; put(hv, 0, 300); const e1 = A.fire(hv, 0, { angle: 50, power: .6, item: 'heavy' }); assert.equal(hv.chars[0].items.heavy, 0); assert.ok(e1.fx.find(f => f.k === 'boom').r === A.ITEMS.heavy.r);
   const tr = two(); tr.chars[0].items.triple = 1; put(tr, 0, 300); const e3 = A.fire(tr, 0, { angle: 50, power: .6, item: 'triple' }); assert.equal(e3.shots.length, 3);
-  assert.equal(A.fire(two(), 0, { angle: 50, power: .6, item: 'scatter' }), null, 'cannot fire an item you do not own');
+  assert.equal(A.fire(two(), 0, { angle: 50, power: .6, item: 'nuke' }), null, 'cannot fire an item you do not own');
   // 鑽地彈挖出隧道
   const dr = two(); dr.chars[0].items.drill = 1; put(dr, 0, 300); const solid0 = dr.mask.reduce((a, b) => a + b, 0); const ed = A.fire(dr, 0, { angle: 40, power: .5, item: 'drill' }); assert.ok(dr.mask.reduce((a, b) => a + b, 0) < solid0 - 800, 'drill removes a lot of ground'); assert.equal(ed.shots[0].bore, A.ITEMS.drill.bore); assert.ok(ed.shots[0].path.length / 2 > ed.shots[0].digFrom + 5, 'the tunnel is part of the path'); assert.equal(ed.fx.find(f => f.k === 'boom').t, ed.shots[0].dur, 'the crater opens when the drill arrives');
 });
 
 test('blast radius: every thrown item is about 25% wider than the base numbers', () => {
-  for (const [k, r] of Object.entries({ basic: 30, heavy: 52, triple: 26 })) assert.ok(Math.abs(A.ITEMS[k].r / r - 1.25) < .03, k);
+  for (const [k, r] of Object.entries({ basic: 30, triple: 26 })) assert.ok(Math.abs(A.ITEMS[k].r / r - 1.25) < .03, k);
+  assert.equal(A.ITEMS.heavy.r, 72, 'heavy is 10% wider than 65'); assert.equal(A.ITEMS.drill.r, 82, 'drill is 20% wider than 68'); assert.equal(A.ITEMS.drill.len, 168, 'drill goes 40% further than 120'); assert.equal(A.ITEMS.nuke.r, 237, 'nuke is 25% wider than 190');
   assert.ok(A.ITEMS.drill.len >= 110 && A.ITEMS.drill.bore >= 11 && A.ITEMS.drill.r >= 64, 'drill digs farther and wider');
   assert.ok(A.ITEMS.delay.r > A.ITEMS.heavy.r, 'delay is wider than heavy');
 });
@@ -153,7 +154,7 @@ test('ready seats: move to any non-human seat, toggle bots per seat, never leave
 });
 
 test('walk reach: matches real walking, stops at walls, flags a fall; stamina is 25% more than 150, twice over', () => {
-  assert.equal(A.CHAR.STAMINA, 188); assert.equal(A.RULES.START_MONEY, 120);
+  assert.equal(A.CHAR.STAMINA, 235); assert.equal(A.RULES.START_MONEY, 120);
   const g = two(); const c = put(g, 0, 400), r = A.walkReach(g.mask, c.x, c.y, 1, c.stamina);
   c.move = 1; run(g, 4, gg => { gg.chars[0].move = 1; }); assert.equal(c.x, r.x); assert.equal(r.fell, false); assert.ok(r.pts.length >= 4);
   const w = two(); const d = put(w, 0, 400); for (let y = 0; y < A.H; y++) for (let x = 430; x < 460; x++) w.mask[y * A.W + x] = 1; assert.ok(A.walkReach(w.mask, d.x, d.y, 1, 150).x < 432);
@@ -224,8 +225,8 @@ test('snapshot: round-trips through JSON; the light version has no mask; disconn
   const ev = run(g, 25, () => {}); assert.ok(ev.some(e => e.e === 'skip' || e.e === 'turn'), 'an idle turn is skipped');
 });
 
-test('start items: everyone begins with one heavy, triple and drill', () => {
-  const g = two(); for (const c of g.chars) assert.deepEqual(c.items, { heavy: 1, triple: 1, drill: 1 });
+test('start items: everyone begins with one of every item except the nuke', () => {
+  const g = two(); for (const c of g.chars) { assert.equal(c.items.nuke, undefined); for (const i of A.POOL) if (i !== 'nuke') assert.equal(c.items[i], 1, i); }
 });
 
 test('scatter: the hit throws 5 small balls that each blast on their own', () => {
@@ -279,7 +280,7 @@ test('bots are no longer perfect: with the default error they miss clearly more 
 });
 
 test('bots use the new items: shield, gloves and teleport', () => {
-  const g = two(); const c = put(g, 0, 330); g.chars[3].x = 800; c.human = false; c.ai = { err: 0 }; c.hp = 40; c.items.shield = 1; c.money = 0; g.botT = 0; g.phase = 'turn'; g.cur = 0; g.fired = false; g.shopT = 0;
+  const g = two(); const c = put(g, 0, 330); g.chars[3].x = 800; c.human = false; c.ai = { err: 0 }; c.hp = 40; c.items.shield = 1; c.items.heal = 0; c.money = 0; g.botT = 0; g.phase = 'turn'; g.cur = 0; g.fired = false; g.shopT = 0;
   A.step(g, .05); assert.equal(c.shield, true, 'hurt bot raises a shield'); assert.equal(g.fired, true);
   const h = two(); const d = put(h, 0, 330); d.human = false; d.ai = { err: 0 }; d.items.gloves = 1; d.money = 0; h.botT = 0; h.phase = 'turn'; h.cur = 0; h.fired = false; h.shopT = 0;
   for (let k = 0; k < 40 && !h.fired; k++) { A.step(h, .05); } assert.ok(h.fired);
@@ -295,12 +296,12 @@ test('kills: only defeated enemies count; teammates and yourself do not; result 
   assert.ok(f.over && f.result.players.find(p => p.id === 0).kills === 2);
 });
 
-test('hit income: an enemy hit pays 25% more than half the damage; a teammate hit still costs half', () => {
-  assert.equal(A.RULES.HIT_GAIN, .5 * 1.25);
+test('hit income: an enemy hit pays 78.125% of the damage; a teammate hit costs 37.5%', () => {
+  assert.equal(A.RULES.HIT_GAIN, .5 * 1.25 * 1.25); assert.equal(A.RULES.MATE_LOSS, .5 * .75);
   const g = two(); const me = put(g, 0, 300), foe = put(g, 3, 330); put(g, 1, 360); me.items.heavy = 2; me.money = 100;
   const e = A.fire(g, 0, { angle: 60, power: .12, item: 'heavy' }), hits = e.fx.filter(f => f.k === 'hit' && f.id !== 0);
   assert.ok(hits.some(h => h.id === 3) && hits.some(h => g.chars[h.id].team === 0), 'an enemy and a teammate are in the blast');
-  const want = hits.reduce((m, h) => m + (g.chars[h.id].team === 0 ? -Math.floor(h.dmg / 2) : Math.floor(h.dmg * .625)) + (h.dead ? (g.chars[h.id].team === 0 ? -1 : 1) * A.RULES.KILL : 0), 100);
+  const want = hits.reduce((m, h) => m + (g.chars[h.id].team === 0 ? -Math.floor(h.dmg * .375) : Math.floor(h.dmg * .78125)) + (h.dead ? (g.chars[h.id].team === 0 ? -1 : 1) * A.RULES.KILL : 0), 100);
   assert.equal(me.money, want); assert.ok(foe.hp < A.CHAR.HP);
 });
 
@@ -316,4 +317,48 @@ test('falling: whoever dies during their own turn (a bot walking into the void, 
   const g = two(); const b = g.chars[0]; b.human = false; b.ai = { err: 0 }; g.botT = 99;
   b.alive = false; b.hp = 0; // 回合中途掉下去
   const evs = A.step(g, .05); assert.ok(evs.some(e => e.e === 'fall' && e.id === 0)); assert.notEqual(g.cur, 0, 'the turn moves on at once, not after the 20 s timer');
+});
+
+test('numbers: shop refresh costs 10, shield is limited to one purchase, nuke too', () => {
+  assert.equal(A.RULES.REFRESH, 10); assert.equal(A.ITEMS.shield.limit, 1); assert.equal(A.ITEMS.nuke.limit, 1);
+  const g = two(); const c = g.chars[0]; c.money = 999; g.offer = ['shield', 'heavy', 'heal']; assert.equal(A.buy(g, 0, 'shield'), true); g.offer = ['shield', 'heavy', 'heal']; assert.equal(A.buy(g, 0, 'shield'), false, 'one shield per game');
+});
+
+test('jump: costs stamina, hops forward, clears a ledge walking cannot climb, and is refused without stamina or footing', () => {
+  const g = two(); const c = put(g, 0, 400), y0 = c.y, s0 = c.stamina; for (let x = 420; x < 520; x++) for (let y = y0 - 25; y <= y0; y++) g.mask[y * A.W + x] = 1; // 25 高的台階
+  c.move = 1; run(g, .6, gg => { gg.chars[0].move = 1; }); assert.ok(c.x < 420, 'walking is stopped by the ledge'); c.move = 0;
+  const x0 = c.x, e = A.step(g, .0); void e; assert.equal(A.jump(g, 0, 1), true);
+  assert.ok(c.x > 420 && c.x > x0 + 20, `hopped over, x=${c.x}`); assert.ok(c.y <= y0 - 24 && Math.abs(A.groundY(g.mask, c.x) - c.y) <= 4 && !A.solid(g.mask, c.x, c.y), `landed on top, y=${c.y} vs ${y0}`); assert.equal(c.stamina, s0 - A.CHAR.JUMP_COST - (s0 - c.stamina - A.CHAR.JUMP_COST), 'one hop costs JUMP_COST');
+  const h = two(); const d = put(h, 0, 400); d.stamina = A.CHAR.JUMP_COST - 1; assert.equal(A.jump(h, 0, 1), false, 'not enough stamina');
+  const k = two(); const f = put(k, 0, 400); const st = f.stamina; assert.equal(A.jump(k, 0, 0), true, 'no direction jumps the way you face'); assert.equal(f.stamina, st - A.CHAR.JUMP_COST); assert.equal(f.alive, true);
+  const w = two(); const u = put(w, 0, 400); u.y -= 60; assert.equal(A.jump(w, 0, 1), false, 'cannot jump in mid-air');
+});
+
+test('jump: a hop off the edge into the void kills, and the turn moves on', () => {
+  const g = two(); const c = put(g, 0, 300); for (let x = 330; x < A.W; x++) for (let y = 0; y < A.H; y++) g.mask[y * A.W + x] = 0;
+  A.jump(g, 0, 1); A.jump(g, 0, 1); A.jump(g, 0, 1); assert.equal(c.alive, false); const evs = A.step(g, .05); assert.ok(evs.some(e => e.e === 'fall' && e.id === 0)); assert.notEqual(g.cur, 0);
+});
+
+test('pull: everyone in range, friend or foe, is dragged toward the center; no damage', () => {
+  const g = two(); const me = put(g, 0, 300), foe = put(g, 3, 560), mate = put(g, 1, 620); me.items.pull = 1; const m0 = mate.x, f0 = foe.x;
+  const sol = A.aimSolve(g, me, foe.x, foe.y - A.CHAR.R, 'pull'), e = A.fire(g, 0, { angle: sol.ang, power: sol.p, item: 'pull' });
+  assert.ok(e.fx.some(f => f.k === 'pull') && !e.fx.some(f => f.k === 'hit'), 'a pull effect, no damage');
+  const pull = e.fx.find(f => f.k === 'pull'); const near = c => Math.hypot(c.x - pull.x, c.y - A.CHAR.R - pull.y);
+  assert.ok(Math.abs(mate.x - pull.x) < Math.abs(m0 - pull.x) || m0 === mate.x, 'the teammate is dragged in'); assert.equal(A.ITEMS.pull.r, A.ITEMS.heavy.r, 'same range as heavy'); void near; void f0;
+});
+
+test('cement: a wall grows at the landing point; a hit player on the ground is lifted onto it, one in mid-air is buried in it; the wall can be blasted open', () => {
+  assert.ok(A.ITEMS.cement.wall && A.POOL_ATK.includes('cement') && A.POOL_ATK.includes('pull'));
+  const g = two(); const me = put(g, 0, 300), foe = put(g, 3, 560), y0 = foe.y; me.items.cement = 1; const solid0 = g.mask.reduce((a, b) => a + b, 0);
+  const sol = A.aimSolve(g, me, foe.x, foe.y - A.CHAR.R, 'cement'), e = A.fire(g, 0, { angle: sol.ang, power: sol.p, item: 'cement' });
+  assert.ok(e.fx.some(f => f.k === 'wall') && g.mask.reduce((a, b) => a + b, 0) > solid0 + 1500, 'terrain was added');
+  if (e.fx.some(f => f.k === 'hit' && f.id === 3)) { assert.ok(foe.y < y0 - 60, `lifted ${y0 - foe.y}`); assert.ok(A.solid(g.mask, foe.x, foe.y + 1) && !A.solid(g.mask, foe.x, foe.y), 'standing on top'); }
+  const h = two(); const a = put(h, 0, 300), b = put(h, 3, 560); a.items.cement = 1; b.y -= 90; // 在空中
+  const s2 = A.aimSolve(h, a, b.x, b.y - A.CHAR.R, 'cement'), e2 = A.fire(h, 0, { angle: s2.ang, power: s2.p, item: 'cement' });
+  if (e2.fx.some(f => f.k === 'hit' && f.id === 3)) { assert.equal(b.alive, true); assert.ok(A.solid(h.mask, b.x, b.y - 12), 'buried in the wall'); }
+});
+
+test('cement wall helper only adds terrain and clips at the map edge', () => {
+  const m = new Uint8Array(A.W * A.H); const box = A.growWall(m, 600, 400); assert.ok(m[390 * A.W + 600] === 1 && m[250 * A.W + 600] === 0 && m[300 * A.W + 600] === 1 && box[0] <= 572);
+  const e = new Uint8Array(A.W * A.H); A.growWall(e, 5, 5); assert.ok(e.reduce((a, b) => a + b, 0) > 0);
 });

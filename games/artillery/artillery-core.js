@@ -6,28 +6,31 @@ export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#
 export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽' };
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓', '年糕', '銅鑼燒'];
 export const TEAMS = [{ name: '紅隊', color: '#ff8a8a' }, { name: '藍隊', color: '#7ab8ff' }];
-export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 188, STEP: 4, DROP: 8, HEAD: 22 };
-export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 120, INCOME: 20, CATCHUP: 15, KILL: 30, HIT_GAIN: .625, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 20, START_ITEMS: { heavy: 1, triple: 1, drill: 1 } };
+export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 235, STEP: 4, DROP: 8, HEAD: 22, JUMP_COST: 30, JUMP_VX: 70, JUMP_VY: 330 };
+export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 120, INCOME: 20, CATCHUP: 15, KILL: 30, HIT_GAIN: .78125, MATE_LOSS: .375, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 10, START_ITEMS: {} }; // 命中對手賺傷害的 78.125%，打到隊友扣 37.5%；START_ITEMS 在道具表之後填
 export const SHOT = { G: 900, V0: 132, V1: 968, DT: 1 / 120, MAX_STEPS: 1100, SAMPLE: 5 };
 export const ITEMS = {
   basic: { name: '水球', price: 0, r: 38, dmg: 26, desc: '傷害小' },
-  heavy: { name: '重水球', price: 40, r: 65, dmg: 58, desc: '範圍大、傷害高' },
+  heavy: { name: '重水球', price: 40, r: 72, dmg: 58, desc: '範圍大、傷害高' },
   triple: { name: '三連發', price: 45, r: 33, dmg: 26, spread: 7, desc: '一次射 3 顆' },
   scatter: { name: '散射水球', price: 50, r: 40, dmg: 30, minis: 5, miniR: 28, miniDmg: 16, desc: '命中後再彈出 5 顆小水球' },
-  drill: { name: '鑽地彈', price: 35, r: 68, dmg: 34, len: 120, bore: 12, desc: '鑽進去再炸' },
+  drill: { name: '鑽地彈', price: 35, r: 82, dmg: 34, len: 168, bore: 12, desc: '鑽進去再炸' },
   delay: { name: '延遲水球', price: 45, r: 82, dmg: 55, desc: '下回合才炸，範圍最大' },
-  nuke: { name: '核彈', price: 180, r: 190, dmg: 110, limit: 1, desc: '超大範圍、超高傷害，每場限買 1 次' },
+  nuke: { name: '核彈', price: 180, r: 237, dmg: 110, limit: 1, desc: '超大範圍、超高傷害，每場限買 1 次' },
+  pull: { name: '牽引水球', price: 45, r: 72, dmg: 0, pull: true, desc: '命中後把範圍內所有人拉向中心' },
+  cement: { name: '水泥球', price: 40, r: 36, dmg: 10, wall: true, desc: '命中長出可破壞的土牆，把人往上推' },
   heal: { name: '治療泡泡', price: 30, desc: '自己 +30 血' },
   teleport: { name: '瞬間移動', price: 50, desc: '自己選地點傳送' },
   shoes: { name: '跑鞋', price: 30, desc: '這回合可走的距離 +100%' },
   gloves: { name: '手套', price: 40, desc: '下一次攻擊重複一次' },
-  shield: { name: '泡泡護盾', price: 30, r: 120, desc: '自己和附近隊友擋下一次傷害' },
+  shield: { name: '泡泡護盾', price: 30, r: 120, limit: 1, desc: '自己和附近隊友擋下一次傷害，每場限買 1 次' },
   freeze: { name: '凍結水球', price: 40, r: 40, dmg: 12, freeze: true, desc: '低傷害，命中的人下一回合不能移動' },
 };
-export const POOL_ATK = ['heavy', 'triple', 'drill', 'scatter', 'freeze', 'delay', 'nuke']; // 丟出去的攻擊道具，每回合只能發射一次
+export const POOL_ATK = ['heavy', 'triple', 'drill', 'scatter', 'freeze', 'delay', 'pull', 'cement', 'nuke']; // 丟出去的攻擊道具，每回合只能發射一次
 export const POOL_SUP = ['heal', 'shield', 'teleport', 'shoes', 'gloves']; // 支援道具，每回合可用一個，和發射分開計算
 export const POOL = [...POOL_ATK, ...POOL_SUP];
 export const SHOTS = ['basic', ...POOL_ATK]; // 需要發射的道具；heal 是立即使用，不佔發射次數
+for (const i of POOL) if (i !== 'nuke') RULES.START_ITEMS[i] = 1; // 開場每種道具各 1 個，核彈除外
 
 export function rngFrom(seed) { // mulberry32
   let a = (seed >>> 0) || 1;
@@ -226,12 +229,57 @@ export function walk(g, c, dir, dist) {
   }
   return moved;
 }
+// 跳：花 JUMP_COST 點體力，往 dir 方向拋出一小段弧線（沒方向就朝面向的那邊），撞到牆就不再往前、撞到頭頂就開始下落，落在第一個站得住的地方；掉出地圖算死亡。回傳弧線的點給畫面播動畫
+export function jump(g, id, dir) {
+  const c = g.chars[id]; if (!c || g.over || g.phase !== 'turn' || g.cur !== id || g.fired || !c.alive || c.stamina < CHAR.JUMP_COST || !supported(g.mask, c)) return false;
+  dir = clamp(Math.round(Number(dir) || 0), -1, 1) || c.face || 1; const m = g.mask, dt = 1 / 60;
+  let x = c.x, y = c.y, vx = dir * CHAR.JUMP_VX, vy = -CHAR.JUMP_VY; const path = [r1(x), r1(y)];
+  for (let i = 1; i <= 120; i++) {
+    vy += SHOT.G * dt; let nx = clamp(x + vx * dt, 8, W - 8), ny = y + vy * dt;
+    if (solid(m, nx, ny - 12) || solid(m, nx, ny - CHAR.HEAD)) { nx = x; if (solid(m, nx, ny - 12) || solid(m, nx, ny - CHAR.HEAD)) { vy = Math.max(vy, 0); ny = y; } } // 前面是牆或頭上是地
+    x = nx; y = ny; if (i % 3 === 0) path.push(r1(x), r1(y));
+    if (vy > 0 && supported(m, { x, y })) { y = Math.floor(y); break; }
+    if (y >= H) break;
+  }
+  c.stamina -= CHAR.JUMP_COST; c.x = x; c.y = y; c.face = dir; c.acc = 0;
+  path.push(r1(x), r1(y)); if (c.y >= H) { c.alive = false; c.hp = 0; c.y = H + 30; }
+  ev(g, { e: 'jump', id, dir, path, stamina: Math.round(c.stamina) }); return true;
+}
 // 用剩下的體力往 dir 一直走，能走到哪裡；不改遊戲狀態。pts 每隔約 6 點取一個落腳點，fell = 會走下懸崖掉進虛空
 export function walkReach(m, x, y, dir, stamina) {
   const c = { x, y, alive: true, stamina, face: dir }, g = { mask: m }, pts = [x, y];
   while (c.stamina > 0 && c.alive && walk(g, c, dir, 1)) if (c.alive && Math.abs(c.x - pts[pts.length - 2]) >= 6) pts.push(c.x, c.y);
   if (c.alive && pts[pts.length - 2] !== c.x) pts.push(c.x, c.y);
   return { x: c.alive ? c.x : pts[pts.length - 2], y: c.alive ? c.y : pts[pts.length - 1], fell: !c.alive, pts };
+}
+// 水泥牆：寬 WALL.W、從落點往上長 WALL.H（往下也埋進地裡一點），上面兩角是圓的。只補地形，不挖；回傳範圍 [x0, y0, x1, y1] 給畫面局部更新
+export const WALL = { W: 56, H: 110, SINK: 24, ROUND: 14 };
+export function growWall(m, cx, cy) {
+  const hw = WALL.W / 2, top = cy - WALL.H, x0 = Math.max(0, Math.floor(cx - hw)), x1 = Math.min(W - 1, Math.ceil(cx + hw)), y0 = Math.max(0, Math.floor(top)), y1 = Math.min(H - 1, Math.ceil(cy + WALL.SINK));
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const dx = Math.abs(x - cx); if (dx > hw) continue;
+    if (y < top + WALL.ROUND) { const k = WALL.ROUND - (y - top); if (dx > hw - WALL.ROUND + Math.sqrt(Math.max(0, WALL.ROUND * WALL.ROUND - k * k))) continue; }
+    m[y * W + x] = 1;
+  }
+  return [x0, y0, x1, y1];
+}
+// 水泥球命中後長出土牆：命中前站得住的人被牆往上頂到牆頂；沒有立足點（例如在空中被打中）的人被包在牆裡，要炸開牆才出得來
+function wallUp(g, x, y, t, fx, wasOn) {
+  growWall(g.mask, x, y); fx.push({ t, k: 'wall', x: r1(x), y: r1(y) });
+  for (const c of g.chars) {
+    if (!c.alive || !(solid(g.mask, c.x, c.y) || solid(g.mask, c.x, c.y - 12))) continue;
+    if (wasOn.get(c.id)) for (let k = 0; k < WALL.H + WALL.SINK + 30 && solid(g.mask, c.x, c.y); k++) c.y--;
+  }
+}
+// 牽引水球：範圍內所有活著的角色（含隊友與自己）往中心拉近 85%，拉到地裡的往上浮出來，之後由 settleAll 處理掉下去的
+const PULL = .85;
+function pullAll(g, x, y, r, t, fx) {
+  fx.push({ t, k: 'pull', x: r1(x), y: r1(y), r });
+  for (const c of g.chars) {
+    if (!c.alive || Math.hypot(c.x - x, c.y - CHAR.R - y) >= r + CHAR.R) continue;
+    const nx = clamp(c.x + (x - c.x) * PULL, 8, W - 8); let ny = c.y; for (let k = 0; k < 40 && solid(g.mask, nx, ny); k++) ny--;
+    if (!solid(g.mask, nx, ny)) { c.x = nx; c.y = ny; }
+  }
 }
 // 爆炸後角色被推開一點（不穿進地裡）
 function push(m, c, fx, dist) {
@@ -252,7 +300,7 @@ function explode(g, shooter, x, y, r, dmg, carveR, t, fx, freeze = false) {
       c.hp = Math.max(0, c.hp - dealt); const killed = c.hp <= 0; if (killed) { c.alive = false; if (shooter && c.team !== shooter.team) shooter.kills++; } // 只算擊敗對手，不算隊友與自己
       fx.push({ t, k: 'hit', id: c.id, dmg: dealt, hp: c.hp, dead: killed });
       if (freeze && !killed) { c.frozen = true; fx.push({ t, k: 'freeze', id: c.id }); }
-      if (shooter && c.id !== shooter.id) { const mate = c.team === shooter.team, base = mate ? Math.floor(dealt / 2) : Math.floor(dealt * RULES.HIT_GAIN), delta = (mate ? -1 : 1) * (base + (killed ? RULES.KILL : 0)), me = money(g, shooter, delta); if (me) fx.push({ t, k: 'money', ...me, delta }); }
+      if (shooter && c.id !== shooter.id) { const mate = c.team === shooter.team, base = Math.floor(dealt * (mate ? RULES.MATE_LOSS : RULES.HIT_GAIN)), delta = (mate ? -1 : 1) * (base + (killed ? RULES.KILL : 0)), me = money(g, shooter, delta); if (me) fx.push({ t, k: 'money', ...me, delta }); }
       if (!killed) push(g.mask, c, Math.sign(c.x - x) || (g.rng() < .5 ? -1 : 1), Math.round(14 * (1 - d / reach)));
     }
   }
@@ -330,7 +378,10 @@ export function fire(g, id, { angle, power, item = 'basic' } = {}) {
       let x = s.x, y = s.y; for (let d = 6; d <= spec.len; d += 6) { x = s.x + ux * d; y = s.y + uy * d; carve(g.mask, x, y, spec.bore, 0); shot.path.push(r1(x), r1(y)); }
       const dig = Math.round(spec.len / spd * 1000); shot.dur = fl + dig; explode(g, c, x, y, spec.r, spec.dmg, Math.round(spec.r * .9), off + shot.dur, fx); tEnd = Math.max(tEnd, off + shot.dur); continue;
     }
-    explode(g, c, s.x, s.y, spec.r, spec.dmg, Math.round(spec.r * .9), dur, fx, !!spec.freeze);
+    const wasOn = spec.wall ? new Map(g.chars.map(o => [o.id, o.alive && supported(g.mask, o)])) : null; // 水泥球：命中前誰站得住
+    explode(g, c, s.x, s.y, spec.r, spec.dmg, Math.round(spec.r * (spec.pull ? .45 : spec.wall ? 0 : .9)), dur, fx, !!spec.freeze);
+    if (spec.pull) pullAll(g, s.x, s.y, spec.r, dur, fx);
+    if (spec.wall) wallUp(g, s.x, s.y, dur, fx, wasOn);
     if (item === 'scatter') tEnd = Math.max(tEnd, scatter(g, c, s.x, s.y, dur, fx, spec));
   }
   settleAll(g, before, fx, tEnd + 350);

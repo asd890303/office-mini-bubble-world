@@ -227,7 +227,7 @@ test('artillery room: seats, map vote, turns, team-only pings, bot takeover on d
   await R.msg(c, { t: 'join', team: 1, seat: 2 }); await R.msg(c, { t: 'leave' });
   assert.ok(a.out.findLast(m => m.t === 'lobby').players.every(p => 'team' in p && 'seat' in p), 'lobby shows seats');
   R.adv(20500); R.tick(); assert.equal(R.room.phase, 'vote');
-  const v = a.out.findLast(m => m.t === 'lobby').vote; assert.deepEqual(Object.keys(v.counts), ['plains', 'twin', 'canyon', 'gen']); assert.equal(v.gen.id, 'gen');
+  const v = a.out.findLast(m => m.t === 'lobby').vote; assert.deepEqual(Object.keys(v.counts), ['plains', 'twin', 'canyon']); assert.equal(v.gen, undefined, 'no generated map');
   await R.msg(a, { t: 'vote', map: 'twin' }); await R.msg(b, { t: 'vote', map: 'twin' });
   R.tick(); assert.equal(R.room.phase, 'play'); assert.equal(R.room.game.recipe.id, 'twin');
   const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.ok(Array.isArray(st.s.mask), 'start carries the full terrain');
@@ -248,7 +248,7 @@ test('artillery room: seats, map vote, turns, team-only pings, bot takeover on d
   // 輪到 Alice：買、瞄準、發射；Bob 不能代打
   assert.equal(g.cur, 0); g.chars[0].money = 200;
   await R.msg(b, { t: 'fire', angle: 45, power: .5 }); assert.equal(g.fired, false, 'not your turn');
-  await R.msg(a, { t: 'buy', item: g.offer[0] }); assert.equal(g.chars[0].items[g.offer[0]], (['heavy', 'triple', 'drill'].includes(g.offer[0]) ? 2 : 1));
+  await R.msg(a, { t: 'buy', item: g.offer[0] }); assert.equal(g.chars[0].items[g.offer[0]], (g.offer[0] === 'nuke' ? 1 : 2));
   await R.msg(a, { t: 'aim', angle: 50, power: .4, item: 'basic' }); assert.equal(g.aim.angle, 50);
   await R.msg(a, { t: 'fire', angle: 50, power: .6, item: 'basic' }); assert.equal(g.fired, true);
   R.tick(); assert.ok(a.out.some(m => m.t === 's' && m.ev.some(e => e.e === 'shot' && e.id === 0)), 'shot broadcast');
@@ -277,25 +277,6 @@ test('artillery room: 6 players start at once; 7th is told the room is full', as
   assert.ok(ws[6].out.some(m => m.t === 'note' && /人滿了（6 人）/.test(m.text)));
   assert.deepEqual(R.room.lobby.map(p => `${p.team}${p.seat}`).sort(), ['00', '01', '02', '10', '11', '12'], 'auto seats fill both teams');
   R.tick(); assert.equal(R.room.phase, 'vote');
-});
-
-test('artillery room: AI recipe replaces the generated map during the vote; failures keep the fallback', async () => {
-  const R = fakeRoom(ArtilleryRoom, { ANTHROPIC_API_KEY: 'k' }), a = R.connect('1', 'A'), b = R.connect('2', 'B');
-  const calls = [];
-  globalThis.fetch = async (url, o) => { calls.push({ url: String(url), headers: o.headers, body: JSON.parse(o.body) }); return { ok: true, status: 200, json: async () => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ name: '棉花糖群島', tag: '三座小島', type: 'islands', base: 380, amp: 30, waves: 2, rough: 3, caves: 1, floats: 2, theme: 'candy', gapWidth: 999, gapCenter: 600, valley: 100 }) }] }) }; };
-  await R.msg(a, { t: 'join' }); await R.msg(b, { t: 'join' }); R.adv(20500); R.tick(); assert.equal(R.room.phase, 'vote');
-  await new Promise(r => setTimeout(r, 0)); await new Promise(r => setTimeout(r, 0));
-  assert.equal(calls.length, 1); assert.equal(calls[0].url, 'https://api.anthropic.com/v1/messages'); assert.equal(calls[0].headers['x-api-key'], 'k');
-  assert.equal(calls[0].body.model, 'claude-haiku-5-5'); assert.equal(calls[0].body.output_config.format.type, 'json_schema');
-  const gen = a.out.findLast(m => m.t === 'lobby').vote.gen; assert.equal(gen.name, '棉花糖群島'); assert.equal(gen.type, 'islands');
-  assert.ok(gen.gap[1] - gen.gap[0] <= 230, 'out-of-range numbers are clamped');
-  await R.msg(a, { t: 'vote', map: 'gen' }); await R.msg(b, { t: 'vote', map: 'gen' }); R.tick();
-  assert.equal(R.room.game.recipe.name, '棉花糖群島');
-  // 失敗：保留程式隨機的配方，不會卡住投票
-  const R2 = fakeRoom(ArtilleryRoom, { ANTHROPIC_API_KEY: 'k' }), p = R2.connect('1', 'A'), q = R2.connect('2', 'B');
-  globalThis.fetch = async () => ({ ok: false, status: 529 });
-  await R2.msg(p, { t: 'join' }); await R2.msg(q, { t: 'join' }); R2.adv(20500); R2.tick();
-  const fallback = R2.room.gen; await new Promise(r => setTimeout(r, 0)); assert.equal(R2.room.gen, fallback); assert.equal(fallback.id, 'gen');
 });
 
 test('bundle serves the artillery page and its rules file', async () => {

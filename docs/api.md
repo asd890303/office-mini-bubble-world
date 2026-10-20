@@ -13,7 +13,7 @@
 | 單人紀錄 | 6 | 三款遊戲各一組領票與送成績 |
 | 公開唯讀 | 4 | 看板、版本碼、健康檢查 |
 | 靜態頁面與檔案 | 14 | 大廳、三款遊戲、共用程式與樣式 |
-| 往外呼叫的第三方服務 | 3 | Anthropic、Telegram Bot、Telegram 登入 |
+| 往外呼叫的第三方服務 | 2 | Telegram Bot、Telegram 登入 |
 | 頁面載入的外部資源 | 3 | three.js、Google Fonts、Telegram Web App |
 
 ## 身分
@@ -57,7 +57,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 |---|---|
 | 泡泡碰碰島 | `in`（方向輸入，欄位 `d`）、`bomb`（放水球） |
 | 泡泡賽車 | `vote`（選地圖）、`in`（`steer`、`drift`、`gas`、`brake`）、`item`（用道具） |
-| 泡泡砲戰 | `vote`（`gen` 是隨機新地圖）、`ready`、`seat`（`slot`）、`bot`（`slot`）、`move`（`dir`）、`aim`（`angle`、`power`、`item`、`charging`）、`buy`（`item`）、`refresh`、`use`（`item`，瞬間移動另帶 `x`、`y`）、`fire`（`angle`、`power`、`item`）、`mark`（`kind`、`x`、`y`）、`say`（`msg`） |
+| 泡泡砲戰 | `vote`（`plains`、`twin`、`canyon`）、`ready`、`seat`（`slot`）、`bot`（`slot`）、`move`（`dir`）、`jump`（`dir`，-1 左、1 右、0 朝面向的方向）、`aim`（`angle`、`power`、`item`、`charging`）、`buy`（`item`）、`refresh`、`use`（`item`，瞬間移動另帶 `x`、`y`）、`fire`（`angle`、`power`、`item`）、`mark`（`kind`、`x`、`y`）、`say`（`msg`） |
 
 砲戰的標記與快捷訊息只轉發給同隊，每人每回合各最多 3 則。標記種類是 `attack`、`danger`、`heal`，快捷訊息編號 0 到 5。
 
@@ -158,11 +158,8 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 | 服務 | 端點 | 用途 | 觸發時機 | 需要的設定 |
 |---|---|---|---|---|
-| Anthropic Messages API | POST `https://api.anthropic.com/v1/messages` | 請 Haiku 設計砲戰的隨機新地圖配方 | 連線砲戰每次進入選地圖階段呼叫一次，逾時 8 秒或格式不對就用程式隨機的版本 | secret `ANTHROPIC_API_KEY`（沒設就不呼叫） |
 | Telegram Bot API | POST `https://api.telegram.org/bot<token>/sendMessage` | 對戰結束把名次貼到群組，靜音發送 | 每場有真人的連線對戰結束 | secret `BOT_TOKEN`、變數 `GROUP_ID`（兩者都要有） |
 | Telegram 登入 | `https://oauth.telegram.org`：`/auth`、`/token`、`/.well-known/jwks.json` | 網頁版 Telegram 登入（OIDC，授權碼加 PKCE），驗證回傳的 id_token 簽章 | 玩家按「用 Telegram 登入」；公鑰清單快取 1 小時 | secret `TG_LOGIN_CLIENT_ID`、`TG_LOGIN_SECRET`、`BOT_TOKEN` |
-
-Anthropic 呼叫使用模型 `claude-haiku-5-5`，輸出限定為結構化 JSON，送出前程式會把內容限制在安全範圍內，再檢查地圖公平性。設定方式見 `deploy/README.md`。
 
 ## 頁面載入的外部資源
 
@@ -191,7 +188,6 @@ Anthropic 呼叫使用模型 `claude-haiku-5-5`，輸出限定為結構化 JSON�
 |---|---|---|
 | `BOT_TOKEN` | secret | Telegram bot token，可用逗號放多個；第一個用來簽訪客與登入憑證、貼群組訊息 |
 | `TG_LOGIN_CLIENT_ID`、`TG_LOGIN_SECRET` | secret | 網頁版 Telegram 登入 |
-| `ANTHROPIC_API_KEY` | secret | 砲戰 AI 地圖 |
 | `GROUP_ID` | 變數 | 貼名次的 Telegram 群組 |
 | `ALLOWED_ORIGIN` | 變數 | 限制 WebSocket、POST 與 CORS 的來源網址 |
 

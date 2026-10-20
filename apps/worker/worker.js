@@ -24,7 +24,6 @@ const KILL_SOLO = { bubble: { max: 3, perKill: 5, ttl: 15 * 60 * 1000 }, artille
 // 泡泡砲戰：每人每回合最多送幾個標記、幾句快捷訊息
 const AR_PINGS = ['attack', 'danger', 'heal'], AR_SAYS = 6, AR_PER_TURN = 3;
 // 泡泡砲戰的 AI 地圖：投票開始時呼叫一次，逾時或失敗就用程式隨機的配方
-const AI_MODEL = 'claude-haiku-5-5', AI_TIMEOUT_MS = 8000;
 const enc = new TextEncoder();
 const ASSETS = null; // build.mjs 會把入口頁、共用 UI、各遊戲頁面內嵌在這裡，讓同一個 Worker 直接提供頁面
 const BUILD_ID = null; // build.mjs 會填入整包內容的雜湊；頁面用它判斷有沒有新版本（/version）
@@ -452,33 +451,19 @@ export class KartRoom extends GameRoom {
   }
 }
 
-/* ---------- 泡泡砲戰房間：選隊伍與座位、斷線由電腦接手、地圖投票（3 張手作 + 1 張生成） ---------- */
+/* ---------- 泡泡砲戰房間：選隊伍與座位、斷線由電腦接手、地圖投票（3 張手作地圖） ---------- */
 const randU32 = () => crypto.getRandomValues(new Uint32Array(1))[0] || 1;
-const AR_RECIPE_SCHEMA = {
-  type: 'object', additionalProperties: false,
-  required: ['name', 'tag', 'type', 'base', 'amp', 'waves', 'rough', 'caves', 'floats', 'theme', 'gapWidth', 'gapCenter', 'valley'],
-  properties: {
-    name: { type: 'string', description: '地圖名稱，2 到 6 個中文字' }, tag: { type: 'string', description: '一句話描述地形特色，最多 16 個中文字' },
-    type: { type: 'string', enum: ['hills', 'islands', 'canyon'] }, theme: { type: 'string', enum: ArtilleryCore.THEME_NAMES },
-    base: { type: 'number', description: '地面基準高度 320 到 420，越大地面越低' }, amp: { type: 'number', description: '起伏幅度 10 到 70' },
-    waves: { type: 'number', description: '起伏的波數 1 到 3.4' }, rough: { type: 'number', description: '表面粗糙度 0 到 10' },
-    caves: { type: 'integer', description: '地底洞穴數 0 到 4' }, floats: { type: 'integer', description: '空中平台數 0 到 4' },
-    gapWidth: { type: 'number', description: 'islands 專用：中間深谷寬度 120 到 230' }, gapCenter: { type: 'number', description: 'islands 專用：深谷中心 560 到 640' },
-    valley: { type: 'number', description: 'canyon 專用：谷底深度 60 到 170' },
-  },
-};
-const AR_SYSTEM = '你替 2D 回合制砲擊遊戲設計一張地圖的配方。地圖寬 1200、高 600，兩隊分站左右兩側。只輸出配方，程式會依配方生成地形並檢查公平性。每次給出風格不同的組合，名稱要有畫面感，用繁體中文。';
 export class ArtilleryRoom extends GameRoom {
-  constructor(ctx, env) { super(ctx, env); this.core = ArtilleryCore; this.gameId = 'artillery'; this.votes = new Map(); this.voteEndsAt = 0; this.recipe = ArtilleryCore.RECIPES[0]; this.gen = null; this.lost = new Set(); this.chat = new Map(); }
+  constructor(ctx, env) { super(ctx, env); this.core = ArtilleryCore; this.gameId = 'artillery'; this.votes = new Map(); this.voteEndsAt = 0; this.recipe = ArtilleryCore.RECIPES[0]; this.lost = new Set(); this.chat = new Map(); }
   gamePlayers() { return this.game?.chars.filter(c => c.uid != null) || []; }
   gamePlayer(uid) { return this.lost.has(uid) ? null : super.gamePlayer(uid); } // 斷線超過寬限期的人回來只能觀戰
   newGame(seed) { return this.core.createGame({ seed, recipe: this.recipe, humans: this.lobby, waitReady: true }); }
   frame() { return this.core.snapshot(this.game, { mask: false }); } // 地形只在開局與晚加入時整張送，之後靠爆炸事件更新
-  mapIds() { return [...this.core.RECIPES.map(r => r.id), 'gen']; }
+  mapIds() { return this.core.RECIPES.map(r => r.id); }
   voteCounts() { const c = {}; for (const id of this.mapIds()) c[id] = 0; for (const p of this.lobby) { const v = this.votes.get(p.uid); if (v in c) c[v]++; } return c; }
   lobbyMsg() {
     const m = super.lobbyMsg(); m.players = this.lobby.map(p => ({ uid: p.uid, name: p.name, color: p.color, team: p.team, seat: p.seat }));
-    if (this.phase === 'vote') m.vote = { endsIn: Math.max(0, Math.ceil((this.voteEndsAt - this.now()) / 1000)), counts: this.voteCounts(), gen: this.gen };
+    if (this.phase === 'vote') m.vote = { endsIn: Math.max(0, Math.ceil((this.voteEndsAt - this.now()) / 1000)), counts: this.voteCounts() };
     return m;
   }
   // 指定的座位空著就坐下；沒指定或被占走，就坐到人少那隊的第一個空位
@@ -503,26 +488,13 @@ export class ArtilleryRoom extends GameRoom {
   startGame() { // 大廳倒數結束先投票 VOTE_MS，投完或時間到才開打
     if (this.phase !== 'vote') {
       this.phase = 'vote'; this.voteEndsAt = this.now() + VOTE_MS; this.votes.clear();
-      this.gen = this.core.buildTerrain(this.core.recipeFromSeed(randU32())).recipe; this.broadcast(this.lobbyMsg());
-      this.aiRecipe(this.voteEndsAt).catch(e => console.error('ai recipe', e));
+      this.broadcast(this.lobbyMsg());
       return;
     }
     const c = this.voteCounts(), max = Math.max(...Object.values(c)), top = Object.keys(c).filter(k => c[k] === max), pick = top[Math.floor(randU32() / 2 ** 32 * top.length)];
-    this.recipe = pick === 'gen' ? this.gen : this.core.recipeById(pick); this.lost.clear(); this.chat.clear();
+    this.recipe = this.core.recipeById(pick); this.lost.clear(); this.chat.clear();
     super.startGame();
     for (const uid of this.gone.keys()) { const p = this.gamePlayer(uid); if (p) this.stopPlayer(p); } // 開局時不在線的人先交給電腦
-  }
-  // 請 AI 挑一份配方，換掉投票裡的「新地圖」；超過時間或格式不對就保留程式隨機的那份
-  async aiRecipe(round) {
-    const key = this.env.ANTHROPIC_API_KEY; if (!key) return;
-    const res = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', signal: AbortSignal.timeout(AI_TIMEOUT_MS),
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: AI_MODEL, max_tokens: 2000, system: AR_SYSTEM, output_config: { effort: 'low', format: { type: 'json_schema', schema: AR_RECIPE_SCHEMA } },
-        messages: [{ role: 'user', content: `設計一張新地圖。靈感編號 ${randU32() % 10000}。` }] }) });
-    if (!res.ok) { console.error('ai recipe http', res.status); return; }
-    const j = await res.json(), text = j.stop_reason === 'end_turn' ? j.content?.find(b => b.type === 'text')?.text : null; if (!text) return;
-    if (this.phase !== 'vote' || this.voteEndsAt !== round) return; // 投票已經結束
-    this.gen = this.core.buildTerrain(this.core.sanitizeRecipe({ ...JSON.parse(text), seed: this.gen.seed })).recipe; this.broadcast(this.lobbyMsg());
   }
   tick() {
     if (this.phase !== 'vote') return super.tick();
@@ -552,6 +524,7 @@ export class ArtilleryRoom extends GameRoom {
     else if (m.t === 'seat') C.moveSeat(g, p.id, Number(m.slot));
     else if (m.t === 'bot') C.toggleBot(g, Number(m.slot));
     else if (m.t === 'move') C.setMove(g, p.id, m.dir);
+    else if (m.t === 'jump') C.jump(g, p.id, m.dir);
     else if (m.t === 'aim') C.setAim(g, p.id, { angle: m.angle, power: m.power, item, charging: m.charging });
     else if (m.t === 'buy') C.buy(g, p.id, item);
     else if (m.t === 'refresh') C.refresh(g, p.id);

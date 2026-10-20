@@ -18,7 +18,7 @@
 3. 回根目錄執行 `npm run deploy`。
 4. 照下一節設定 BotFather。
 
-部署會依 `wrangler.toml` 建立四個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）。泡泡砲戰的 AI 地圖要用 secret `ANTHROPIC_API_KEY`，沒設定就只用程式隨機的地圖。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
+部署會依 `wrangler.toml` 建立四個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
 
 ## 開啟網頁版 Telegram 登入（約 5 分鐘）
 

@@ -36,21 +36,24 @@ body.touch .zone.show { transform: translate(0, 0); }
 .who div { display: flex; align-items: center; gap: 6px; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
 .who small { color: var(--ink-soft); }
-.board { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%); width: min(340px, calc(100% - 24px)); max-height: 42%; overflow: auto; padding: 12px 16px; z-index: 6; transition: transform .22s; }
-.board.show { transform: translate(-50%, 0); }
-body.touch .board { bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; width: min(250px, calc(100% - 190px)); transform: translate(0, 300%); }
+.board { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(460px, calc(100% - 28px)); max-height: calc(100% - 150px); overflow: auto; padding: 16px 20px; z-index: 6; transition: transform .22s; }
+.board.show { transform: translate(0, 0); }
+body.touch .board { top: auto; bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; width: min(300px, calc(100% - 190px)); max-height: 42%; transform: translate(0, 300%); }
 body.touch .board.show { transform: translate(0, 0); }
-.board h2 { margin: 0; font-size: 22px; font-weight: 900; text-align: center; }
-.board p { margin: 2px 0 8px; font-size: 12px; color: var(--ink-soft); text-align: center; }
-.board ol { list-style: none; margin: 0; padding: 0; font-size: 14px; }
-.board li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.board h2 { margin: 0; font-size: 26px; font-weight: 900; text-align: center; }
+.board p { margin: 4px 0 10px; font-size: 14px; color: var(--ink-soft); text-align: center; }
+.board ol { list-style: none; margin: 0; padding: 0; font-size: 17px; }
+.board li { display: flex; justify-content: space-between; gap: 8px; padding: 7px 4px; border-bottom: 1px dashed var(--line); }
 .board li:last-child { border: 0; }
 .board li b { font-variant-numeric: tabular-nums; }
 .board li span small { color: var(--ink-soft); margin-left: 6px; }
-.board .tabs { display: flex; gap: 6px; justify-content: center; margin: 8px 0 4px; }
-.board .tabs button { flex: 1; min-width: 0; padding: 5px 4px; font: inherit; font-size: 13px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.board .tabs { display: flex; gap: 6px; justify-content: center; margin: 10px 0 6px; }
+.board .tabs button { flex: 1; min-width: 0; padding: 7px 4px; font: inherit; font-size: 15px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
 .board .tabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
-.board h3 { margin: 8px 0 2px; font-size: 14px; font-weight: 900; }
+.board h3 { margin: 10px 0 2px; font-size: 17px; font-weight: 900; }
+.board .subtabs { display: flex; gap: 6px; justify-content: center; margin: 4px 0 8px; }
+.board .subtabs button { padding: 4px 18px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.board .subtabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
 .board h3:first-child { margin-top: 0; }
 .toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 14px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
 .toast.show { opacity: 1; }
@@ -71,7 +74,7 @@ body.touch .board.show { transform: translate(0, 0); }
   <small id="zNote"></small>
 </div>
 <div class="who box" id="who" hidden></div>
-<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="karthard">賽車困難</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
+<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
 <div class="toast box" id="toast"></div>
 
 <script type="importmap">
@@ -166,8 +169,8 @@ async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
 }
 /* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
-const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人普通電腦都算' }, karthard: { title: '賽車困難紀錄', note: '單人對困難電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
-let boardTab = 'total', gamesData = null;
+const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人普通電腦都算' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
+let boardTab = 'total', gamesData = null, kartDiff = 'normal'; // 賽車分頁裡可以切換電腦難度，各自一份榜
 async function loadGames() {
   try { const r = await fetch('/board/games', { cache: 'no-store' }); if (r.ok) { gamesData = await r.json(); renderGames(); } } catch {}
 }
@@ -175,7 +178,12 @@ function recList(rows, fmt) { return `<ol>${rows?.length ? rows.map(fmt).join(''
 function renderGames() {
   const el = $('boardGames');
   if (!gamesData) { el.innerHTML = '<ol><li>載入中…</li></ol>'; return; }
-  if (boardTab === 'kart' || boardTab === 'karthard') el.innerHTML = (gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(boardTab === 'karthard' ? t.hard : t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>';
+  if (boardTab === 'kart') {
+    const hard = kartDiff === 'hard';
+    el.innerHTML = `<div class="subtabs"><button data-kd="normal" class="${hard ? '' : 'on'}">普通</button><button data-kd="hard" class="${hard ? 'on' : ''}">困難</button></div>` +
+      ((gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(hard ? t.hard : t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>');
+    $('boardNote').textContent = hard ? '單人對困難電腦，每條賽道最快完賽前 3 名' : BOARD_TABS.kart.note;
+  }
   else if (boardTab === 'bubble') el.innerHTML = recList(gamesData.bubble?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
   else if (boardTab === 'artillery') el.innerHTML = recList(gamesData.artillery?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
 }
@@ -186,6 +194,7 @@ function setBoardTab(tab) {
   $('boardList').hidden = tab !== 'total'; $('boardGames').hidden = tab === 'total';
   if (tab !== 'total') { renderGames(); loadGames(); }
 }
+$('boardGames').addEventListener('click', e => { const b = e.target.closest('button[data-kd]'); if (!b) return; kartDiff = b.dataset.kd; renderGames(); });
 $('boardTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) setBoardTab(b.dataset.tab); });
 function renderBoardList() {
   const top = boardData?.top || [];

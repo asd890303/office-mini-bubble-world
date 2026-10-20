@@ -41,7 +41,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 | 方向 | 訊息 | 內容 |
 |---|---|---|
-| 客戶端送出 | `{t:'join', color, ear, eye, body, blush, ...}` | 加入等待區；砲戰可帶 `team`、`seat` |
+| 客戶端送出 | `{t:'join', color, ear, eye, body, blush, ...}` | 加入等待區；砲戰可帶 `team`、`seat`；賽車可帶 `shape`（車子造型）、`rperk`（競速能力）、`iperk`（道具能力），不合法的值不採用，沒帶就沿用上次 |
 | 客戶端送出 | `{t:'leave'}` | 離開等待區 |
 | 客戶端送出 | `{t:'ping', at}` | 保活，伺服器回 `pong` |
 | 伺服器送出 | `{t:'hello', you, name, phase, me, result}` | 連上後第一則 |
@@ -95,7 +95,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 路徑 | body | 說明 |
 |---|---|---|
 | `/kart/solo` | `id`、`track`、`diff`（選填，`hard` 為困難，其他值視為普通）、`mode`（選填，`speed` 為競速賽，其他值視為道具賽） | 領票，票綁定賽道、難度與模式，10 分鐘有效 |
-| `/kart/record` | `id`、`ticket`、`time` | 送完賽秒數，檢查最短時間與票的經過時間；競速賽的最短時間用氮氣倍率 ×1.8 算 |
+| `/kart/record` | `id`、`ticket`、`time` | 送完賽秒數，檢查最短時間與票的經過時間；競速賽的最短時間用氮氣倍率 ×1.8 算，兩種模式都再乘上「極速」能力的 ×1.02 |
 | `/bubble/solo` | `id` | 領票，15 分鐘有效 |
 | `/bubble/record` | `id`、`ticket`、`kills` | 送擊敗數，1 到 3，每擊敗 1 人至少 5 秒 |
 | `/artillery/solo` | `id` | 領票，40 分鐘有效 |

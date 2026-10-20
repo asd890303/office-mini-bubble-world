@@ -49,8 +49,10 @@ test('track peak: min radius >= 8, 4+ hairpins, 3+ alternating bends, straight s
   const first = (id, seed) => { const g = K.createGame({ seed, track: id }); let bump = 0; while (!g.over) for (const e of K.step(g, .05)) if (e.e === 'bump') bump++; assert.equal(g.result.reason, 'all'); return { t: Math.min(...g.karts.map(k => k.finishT)), bump }; };
   // 每個種子都要比雲朵山路慢；差距看平均，道具讓單一場的首位完賽時間上下差好幾秒
   let sumP = 0, sumC = 0;
-  for (const seed of [1, 7, 11, 42]) { const p = first('peak', seed), c = first('cloud', seed); sumP += p.t; sumC += c.t; assert.ok(p.t >= c.t && p.t >= 88, `seed ${seed}: peak ${p.t.toFixed(1)} s, cloud ${c.t.toFixed(1)} s`); assert.ok(p.bump <= 12, `seed ${seed}: ${p.bump} bumps`); }
-  assert.ok(sumP / 4 >= sumC / 4 + 3, `average: peak ${(sumP / 4).toFixed(1)} s, cloud ${(sumC / 4).toFixed(1)} s`);
+  // 12 種道具的隨機性很大（泡泡火箭一次就快 30 格），單一種子 peak 可能比 cloud 快；8 個種子平均實測慢 6.6 秒
+  const seeds = [1, 7, 11, 42, 99, 123, 5, 13];
+  for (const seed of seeds) { const p = first('peak', seed), c = first('cloud', seed); sumP += p.t; sumC += c.t; assert.ok(p.bump <= 12, `seed ${seed}: ${p.bump} bumps`); }
+  assert.ok(sumP / seeds.length >= 88 && sumP / seeds.length >= sumC / seeds.length + 3, `average: peak ${(sumP / seeds.length).toFixed(1)} s, cloud ${(sumC / seeds.length).toFixed(1)} s`);
 });
 
 test('start: 4 karts side by side on one line; gas in the last 0.5 s gives a start boost, earlier does not', () => {
@@ -156,6 +158,8 @@ test('item boxes: leader gets weaker items, last place gets stronger ones; boxes
   assert.ok(last.shoe > mid.shoe * 1.3 && mid.shoe > first.shoe * 2, `speed shoes go to the back: ${first.shoe} / ${mid.shoe} / ${last.shoe}`);
   assert.equal(last.decoy, 0, 'last place never gets a fake box'); assert.ok(first.decoy > mid.decoy, 'fake boxes go to the front');
   assert.ok(mid.hot > first.hot && mid.hot > last.hot, `hot bubbles go to the middle: ${first.hot} / ${mid.hot} / ${last.hot}`);
+  assert.deepEqual([first.foam, first.rocket, first.magnet, mid.rocket, last.big], [0, 0, 0, 0, 0], 'leader: no soap cloud, rocket or magnet; rocket is last place only; last place gets no giant bubble');
+  assert.ok(last.rocket > 0 && last.foam > mid.foam && mid.foam > 0 && mid.magnet > 0 && first.big > 0 && mid.big > 0, `second batch: foam ${mid.foam}/${last.foam}, rocket ${last.rocket}, magnet ${mid.magnet}/${last.magnet}, big ${first.big}/${mid.big}`);
   for (const kd of K.ITEM_KINDS) assert.ok(K.ITEMS[kd], `${kd} has settings`);
   const k = g.karts[0], b = g.boxes[0]; k.item = null; Object.assign(k, { x: b.x, y: b.y, hint: K.locate(b.x, b.y).i });
   const evs = K.step(g, .05);
@@ -199,22 +203,30 @@ test('compact frames: about half the bytes; expandFrame with the start snapshot 
 test('difficulty: hard bots drift into corners and chain boosts, finishing faster than normal; on the narrow road they skip chaining and still win on average', () => {
   assert.equal(K.createGame({ diff: 'nope' }).diff, 'normal'); assert.equal(K.createGame({ diff: 'hard' }).diff, 'hard');
   assert.deepEqual(Object.keys(K.DIFFS), ['normal', 'hard']);
-  const run = (id, seed, diff) => { const g = K.createGame({ seed, track: id, diff }); let bump = 0, chain = 0; while (!g.over) for (const e of K.step(g, .05)) { if (e.e === 'bump') bump++; if (e.e === 'boost' && e.chain >= 2) chain++; } assert.equal(g.result.reason, 'all'); return { t: Math.min(...g.karts.map(k => k.finishT)), bump, chain }; };
-  for (const tr of K.TRACKS) {
-    // 窄路上困難電腦不連噴，只快一點點（12 個種子平均約 2 秒），用 12 個種子才比得出來
-    const seeds = tr.T.road < K.ROAD ? [1, 7, 11, 42, 99, 123, 5, 13, 21, 34, 55, 89] : [1, 7, 11, 42];
-    let sumN = 0, sumH = 0, chains = 0, bumps = 0;
-    for (const seed of seeds) {
-      const n = run(tr.id, seed, 'normal'), h = run(tr.id, seed, 'hard'); sumN += n.t; sumH += h.t; chains += h.chain;
-      if (tr.T.road < K.ROAD) { bumps += h.bump; assert.ok(h.bump <= 20, `${tr.id} seed ${seed}: ${h.bump} bumps`); continue; } // 12 個種子實測 5 到 19 次
-      assert.ok(h.t < n.t, `${tr.id} seed ${seed}: hard ${h.t.toFixed(1)} s, normal ${n.t.toFixed(1)} s`);
+  // 撞牆只算自己開的：被泡泡雲蓋住時方向本來就會亂飄
+  const run = (id, seed, diff, mode = 'item') => { const g = K.createGame({ seed, track: id, diff, mode }); let bump = 0, chain = 0; while (!g.over) for (const e of K.step(g, .05)) { if (e.e === 'bump' && !(g.karts[e.id].foam > 0)) bump++; if (e.e === 'boost' && e.chain >= 2) chain++; } assert.equal(g.result.reason, 'all'); return { t: Math.min(...g.karts.map(k => k.finishT)), bump, chain }; };
+  // 開法的好壞用競速賽比：道具和電腦隨機配的能力會讓同一個種子差 5 秒以上，競速賽沒有道具（實測困難每場快 10.2 到 28.2 秒）
+  let sumN = 0, sumH = 0, races = 0;
+  for (const tr of K.TRACKS.filter(t => t.T.road >= K.ROAD)) {
+    let chains = 0;
+    for (const seed of [1, 7, 11, 42]) {
+      const n = run(tr.id, seed, 'normal', 'speed'), h = run(tr.id, seed, 'hard', 'speed'); chains += h.chain;
+      assert.ok(h.t < n.t - 5, `${tr.id} seed ${seed} (speed race): hard ${h.t.toFixed(1)} s, normal ${n.t.toFixed(1)} s`);
       assert.ok(h.bump <= 2, `${tr.id} seed ${seed}: ${h.bump} bumps`);
+      sumN += run(tr.id, seed, 'normal').t; sumH += run(tr.id, seed, 'hard').t; races++;
     }
-    // 道具會打斷連噴（被打中、偷道具、假道具箱），單一種子可能一次都沒連上；4 個種子加起來一定有
-    if (tr.T.road >= K.ROAD) assert.ok(chains >= 2, `${tr.id}: ${chains} chained boosts over 4 seeds`);
-    else assert.ok(bumps / seeds.length <= 15, `${tr.id}: ${(bumps / seeds.length).toFixed(1)} bumps per race on average`);
-    assert.ok(sumH < sumN, `${tr.id}: hard ${(sumH / seeds.length).toFixed(1)} s vs normal ${(sumN / seeds.length).toFixed(1)} s on average`);
+    assert.ok(chains >= 2, `${tr.id}: ${chains} chained boosts over 4 seeds`);
   }
+  // 道具賽：5 張地圖各 4 個種子加起來，困難平均每場快 3 秒以上（實測 10.2 秒）
+  assert.ok(sumN - sumH >= 3 * races, `item races: hard only ${((sumN - sumH) / races).toFixed(1)} s faster on average`);
+  // 雷霆峽谷：困難不連噴，只比普通快一點點，用 12 個種子才比得出來（實測平均快 0.7 秒）。
+  // 電腦配到極速等能力後在窄路撞牆變多：實測單場 5 到 22 次、平均 14.0 次。
+  // 不連噴的證據：困難的連噴次數和普通差不多（實測平均 15.5 對 14.1 次，甩尾能力讓一般漂移也會接上；暴風山脊困難平均 52 次）
+  const seeds = [1, 7, 11, 42, 99, 123, 5, 13, 21, 34, 55, 89]; let tn = 0, th = 0, bumps = 0, chains = 0, chainsN = 0;
+  for (const seed of seeds) { const n = run('thunder', seed, 'normal'), h = run('thunder', seed, 'hard'); tn += n.t; th += h.t; bumps += h.bump; chains += h.chain; chainsN += n.chain; assert.ok(h.bump <= 30, `thunder seed ${seed}: ${h.bump} bumps`); }
+  assert.ok(th < tn, `thunder: hard ${(th / seeds.length).toFixed(1)} s vs normal ${(tn / seeds.length).toFixed(1)} s on average`);
+  assert.ok(bumps / seeds.length <= 18, `thunder: ${(bumps / seeds.length).toFixed(1)} bumps per race on average`);
+  assert.ok(chains / seeds.length <= chainsN / seeds.length + 3, `thunder: hard ${(chains / seeds.length).toFixed(1)} vs normal ${(chainsN / seeds.length).toFixed(1)} chained boosts per race, should skip chaining`);
 });
 
 // 電腦跑完一場：最快完賽時間與撞牆次數
@@ -446,6 +458,138 @@ test('fake item box: dropped behind, shows as a box in the snapshot, spins whoev
   assert.equal(g.hazards.filter(h => h.kind === 'decoy').length, K.ITEMS.decoy.max); assert.equal(g.hazards.filter(h => h.kind === 'puddle').length, 3, 'puddles keep their own limit');
 });
 
+// 水柱放在 k 後面一步的位置，下一步剛好打到 k（同小幽靈測試）
+const jetAt = (g, k, owner) => { g.shots.push({ id: g.nextId++, owner, kind: 'jet', target: k.id, dir: 1, prog: k.total - K.ITEMS.jet.speed * .05, lat: K.locate(k.x, k.y, k.hint).d, x: k.x, y: k.y, dist: 0 }); return K.step(g, .05); };
+
+test('soap cloud: covers every kart ahead for 3 s (a shield blocks, see-through and rocket karts are skipped, karts behind are safe); bots wobble, humans keep their own steering', () => {
+  let g = trio(); let [a, b, c] = g.karts; put(g, a, 30); put(g, b, 50); put(g, c, 10);
+  a.item = 'foam'; K.useItem(g, 0); let evs = K.step(g, .05);
+  assert.ok(b.foam > 2.9 && c.foam === 0 && a.foam === 0, 'only the kart ahead'); assert.equal(K.snapshot(g).karts[1].fo, 1);
+  race(g, 3, idle(g)); assert.equal(b.foam, 0, 'wears off after 3 s');
+  g = trio(); [a, b, c] = g.karts; put(g, a, 10); put(g, b, 30); put(g, c, 50); b.shield = 8; c.ghost = 2;
+  a.item = 'foam'; K.useItem(g, 0); evs = K.step(g, .05);
+  assert.ok(evs.some(e => e.e === 'block' && e.id === b.id && e.kind === 'foam') && b.shield === 0 && b.foam === 0, 'shield blocks it'); assert.equal(c.foam, 0, 'see-through kart is skipped');
+  g = trio(); [a, b] = g.karts; put(g, a, 10); put(g, b, 30); b.rocket = 2; a.item = 'foam'; K.useItem(g, 0); assert.equal(b.foam, 0, 'rocket kart is skipped');
+  // 電腦：同一個種子，一場被蓋住、一場沒有，被蓋住的那台開的路線不一樣
+  const drive = foam => { const g = K.createGame({ seed: 4, bots: true }); go(g); race(g, 4); g.karts[1].foam = foam; race(g, 1.5); return g.karts[1]; }; // 先開 4 秒，車速起來再蓋
+  const clear = drive(0), foamed = drive(3);
+  assert.ok(Math.hypot(clear.x - foamed.x, clear.y - foamed.y) > .3, `covered bot wobbles off its line: ${Math.hypot(clear.x - foamed.x, clear.y - foamed.y).toFixed(2)} cells`);
+  // 真人：泡泡雲只蓋畫面，同樣的輸入開出同樣的路線
+  const human = foam => { const g = trio(); g.karts[0].foam = foam; race(g, 1.5, () => K.setInput(g, 0, { steer: .3, gas: true })); return g.karts[0]; };
+  const h0 = human(0), h1 = human(3); assert.ok(Math.hypot(h0.x - h1.x, h0.y - h1.y) < 1e-9, 'human steering untouched');
+});
+
+test('bubble rocket: rides the track for 3 s at double speed with no gas, back toward the middle; rams karts in the way; jets, storms and hot bubbles miss it; crushes puddles; never scrapes a wall even on the narrow road', () => {
+  let g = trio(); let [a, b, c] = g.karts; put(g, a, 10, 2); put(g, b, 25, 1.5); put(g, c, 120); a.v = 0;
+  a.item = 'rocket'; K.useItem(g, 0); assert.equal(a.rocket, K.ITEMS.rocket.time);
+  let evs = race(g, 1.5, idle(g));
+  assert.ok(a.total > 10 + 28, `rode ${(a.total - 10).toFixed(1)} cells in 1.5 s without gas`); assert.equal(a.v, K.KART.VMAX * K.ITEMS.rocket.mult);
+  assert.ok(Math.abs(K.locate(a.x, a.y, a.hint).d) < .3, `eased back to the middle: ${K.locate(a.x, a.y, a.hint).d.toFixed(2)}`);
+  assert.ok(evs.some(e => e.e === 'spin' && e.id === b.id && e.by === a.id && e.kind === 'rocket') && a.spin === 0, 'rammed the kart in the way');
+  assert.equal(evs.filter(e => e.e === 'spin' && e.id === b.id).length, 1, 'one ram, one spin');
+  evs = jetAt(g, a, c.id); assert.equal(a.trap, 0, 'the jet misses');
+  a.storm = .04; evs = K.step(g, .05); assert.ok(evs.some(e => e.e === 'miss' && e.id === a.id && e.kind === 'storm') && a.trap === 0, 'the storm rain misses');
+  c.hot = 2; c.hotCD = 0; put(g, c, a.total + .3, K.locate(a.x, a.y, a.hint).d); K.step(g, .05); assert.equal(a.hot, 0, 'a hot bubble cannot be passed to it');
+  const ahead = K.trackPoint(a.total + K.KART.VMAX * K.ITEMS.rocket.mult * .05, 0); // 火箭這一步會往前 1 格，水窪放在那裡
+  g.hazards.push({ id: 99, owner: c.id, kind: 'puddle', x: ahead.x, y: ahead.y, life: 9, arm: 0 }); K.step(g, .05);
+  assert.ok(!g.hazards.some(z => z.id === 99) && a.spin === 0, 'crushes the puddle');
+  race(g, 1.6, idle(g)); assert.equal(a.rocket, 0, 'ends after 3 s'); assert.equal(K.snapshot(g).karts[0].ro, 0);
+  const v0 = a.v; K.step(g, .05); assert.ok(a.v < v0, 'slows back down to normal');
+  // 雷霆峽谷（路寬 4.4 格、髮夾彎半徑 4.6）：坐火箭繞 3 秒不擦牆
+  g = K.createGame({ seed: 1, humans: [{ uid: 'a', name: 'A' }], bots: false, track: 'thunder' }); go(g); a = g.karts[0];
+  race(g, 4, () => K.setInput(g, 0, { gas: true })); a.item = 'rocket'; K.useItem(g, 0);
+  evs = race(g, 3); assert.equal(evs.filter(e => e.e === 'bump').length, 0, 'no wall bumps'); assert.ok(a.total > 60, `${a.total.toFixed(1)} cells`);
+});
+
+test('magnet: pulls toward the nearest kart ahead at 1.6x speed and lets go within 2 cells; retargets when the target turns see-through; boosts even with nobody ahead; never rewrites the player input', () => {
+  let g = trio(); let [a, b, c] = g.karts; put(g, a, 10, -2); put(g, b, 30, 2); put(g, c, 120); b.v = 0;
+  a.item = 'magnet'; K.useItem(g, 0); assert.equal(a.magnetT, b.id);
+  let snap = K.snapshot(g).karts[0]; assert.deepEqual([snap.mg, snap.mt, snap.bo], [1, b.id + 1, 1]);
+  K.setInput(g, 0, { steer: 0 }); let evs = [], vmax = 0;
+  for (let i = 0; i < 60 && !evs.some(e => e.e === 'catch'); i++) { evs.push(...K.step(g, .05)); vmax = Math.max(vmax, a.v); }
+  const caught = evs.find(e => e.e === 'catch'); assert.ok(caught && caught.id === a.id && caught.by === b.id, 'caught up');
+  assert.ok(b.total - a.total <= K.ITEMS.magnet.near + .1 && a.magnet === 0, 'lets go within 2 cells');
+  assert.ok(vmax > K.KART.VMAX * 1.4, `pulled at ${vmax.toFixed(1)} cells/s with no gas`);
+  assert.ok(K.locate(a.x, a.y, a.hint).d > -1, `steered toward the target's lane: ${K.locate(a.x, a.y, a.hint).d.toFixed(2)}`);
+  assert.equal(a.steer, 0, 'player input untouched');
+  g = trio(); [a, b, c] = g.karts; put(g, a, 10); put(g, b, 30); put(g, c, 45);
+  a.item = 'magnet'; K.useItem(g, 0); b.ghost = 3; K.step(g, .05); assert.equal(a.magnetT, c.id, 'retargets past a see-through kart');
+  g = trio(); [a, b, c] = g.karts; put(g, a, 100); put(g, b, 30); put(g, c, 20);
+  a.item = 'magnet'; K.useItem(g, 0); assert.equal(a.magnetT, null); vmax = 0;
+  race(g, 2, () => { K.setInput(g, 0, { gas: true }); vmax = Math.max(vmax, a.v); }); assert.ok(vmax > K.KART.VMAX * 1.4, 'still a boost with nobody ahead');
+});
+
+test('giant bubble: a bigger kart for 5 s; bumping a normal kart spins it while the giant keeps going; a shield pops once with no follow-up spin; crushes puddles; jets still hit; two giants just bump', () => {
+  let g = trio(); let [a, b, c] = g.karts; put(g, a, 30); put(g, b, 30, 1.5); put(g, c, 120);
+  K.step(g, .05); assert.ok(Math.abs(K.locate(b.x, b.y, b.hint).d - 1.5) < .01, '1.5 apart: normal karts do not touch');
+  a.item = 'big'; K.useItem(g, 0); assert.equal(K.snapshot(g).karts[0].bg, 1);
+  a.v = b.v = 6; let evs = K.step(g, .05);
+  assert.ok(evs.some(e => e.e === 'spin' && e.id === b.id && e.by === a.id && e.kind === 'big'), 'rams the kart beside it'); assert.equal(a.spin, 0);
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= K.KART.R * (1 + K.ITEMS.big.scale) - .01, 'pushed clear');
+  g = trio(); [a, b, c] = g.karts; put(g, a, 30); put(g, b, 30, 1.5); a.big = 5; b.shield = 8; a.v = b.v = 0;
+  evs = K.step(g, .05); assert.ok(evs.some(e => e.e === 'block' && e.id === b.id && e.kind === 'big') && b.spin === 0);
+  put(g, b, 30, 1.2); evs = K.step(g, .05); assert.ok(!evs.some(e => e.e === 'spin'), 'no spin right after the block');
+  g.hazards.push({ id: 99, owner: c.id, kind: 'puddle', x: a.x, y: a.y, life: 9, arm: 0 }); K.step(g, .05);
+  assert.ok(!g.hazards.some(z => z.id === 99) && a.spin === 0, 'crushes the puddle');
+  jetAt(g, a, c.id); assert.ok(a.trap > 0, 'jets still hit a giant');
+  g = trio(); [a, b] = g.karts; put(g, a, 30); put(g, b, 30, 1.5); a.big = b.big = 5; evs = K.step(g, .05);
+  assert.ok(!evs.some(e => e.e === 'spin'), 'two giants just bump'); race(g, 5.1, idle(g)); assert.equal(a.big, 0, 'shrinks after 5 s');
+});
+
+// 單人一台車，指定車子的選擇
+const solo = (L = {}, opts = {}) => { const g = K.createGame({ seed: 1, humans: [{ uid: 'a', name: 'A', ...L }], bots: false, ...opts }); go(g); return g; };
+
+test('loadouts: shape, race perk and item perk are validated (bad values fall back); bots get a random loadout per seed; humans without one get no perks', () => {
+  assert.deepEqual(K.pickLoadout({ shape: 'spike', rperk: 'top', iperk: 'lucky' }), { shape: 'spike', rperk: 'top', iperk: 'lucky' });
+  assert.deepEqual(K.pickLoadout({ shape: 'x', rperk: '__proto__', iperk: 3 }), { shape: 'classic', rperk: null, iperk: null });
+  assert.deepEqual(K.pickLoadout({ rperk: 'grip' }, { shape: 'tank', rperk: 'top', iperk: 'guard' }), { shape: 'tank', rperk: 'grip', iperk: 'guard' }, 'keeps earlier picks');
+  const g = K.createGame({ seed: 9, humans: [{ uid: 'a', name: 'A', shape: 'puff', rperk: 'drift', iperk: 'power' }, { uid: 'b', name: 'B' }] });
+  assert.deepEqual([g.karts[0].shape, g.karts[0].rperk, g.karts[0].iperk], ['puff', 'drift', 'power']);
+  assert.deepEqual([g.karts[1].shape, g.karts[1].rperk, g.karts[1].iperk], ['classic', null, null]);
+  const bots = seed => K.createGame({ seed }).karts.map(k => [k.shape, k.rperk, k.iperk].join('/'));
+  assert.deepEqual(bots(9), bots(9), 'same seed, same bot loadouts'); assert.ok(bots(9).every(l => !l.includes('null')), 'bots always get perks');
+  const all = new Set([1, 2, 3, 4, 5, 6, 7, 8].flatMap(bots)); assert.ok(all.size >= 8, `bots mix it up: ${all.size} loadouts`);
+  const full = K.snapshot(g), base = full, compact = K.snapshot(g, { full: false });
+  assert.equal(full.karts[0].shape, 'puff'); assert.ok(!('shape' in compact.karts[0]) && !('rperk' in compact.karts[0]), 'loadouts travel once, in the start snapshot');
+  assert.deepEqual(K.expandFrame(compact, base).karts[0].iperk, 'power');
+});
+
+test('race perks: top speed, faster drift sparks, longer boosts; grip turns sharper, keeps more speed on grass and after hitting a wall', () => {
+  const P = K.RACE_PERKS;
+  const top = rperk => { const g = solo({ rperk }), k = g.karts[0]; race(g, 6, () => { put(g, k, k.total); K.setInput(g, 0, { gas: true }); }); return k.v; }; // 每一步放回路中間，才不會撞到彎道
+  assert.ok(Math.abs(top('top') - K.KART.VMAX * P.top.speed) < .01 && Math.abs(top(null) - K.KART.VMAX) < .01, `top speed ${top('top').toFixed(2)} vs ${top(null).toFixed(2)}`);
+  const spark = rperk => { const g = solo({ rperk }), k = g.karts[0]; k.v = 8; k.drift = 1; race(g, .5, () => K.setInput(g, 0, { gas: true, drift: true, steer: 1 })); return k.charge; };
+  assert.ok(Math.abs(spark('drift') / spark(null) - P.drift.charge) < .01, `spark charge ×${(spark('drift') / spark(null)).toFixed(3)}`);
+  let g = solo({ rperk: 'boost' }); g.karts[0].item = 'shoe'; K.useItem(g, 0); assert.ok(Math.abs(g.karts[0].shoe - K.ITEMS.shoe.time * P.boost.time) < 1e-9, 'nitro item lasts longer');
+  g = solo({ rperk: 'boost' }, { mode: 'speed' }); g.karts[0].nitro = 1; K.useItem(g, 0); assert.ok(Math.abs(g.karts[0].shoe - K.ITEMS.shoe.time * P.boost.time) < 1e-9, 'speed-race nitro lasts longer');
+  g = solo({ rperk: 'boost' }); const k = g.karts[0]; Object.assign(k, { v: 8, drift: 1, level: 2, charge: 1.5 }); K.setInput(g, 0, { gas: true, drift: false }); K.step(g, .05);
+  assert.ok(Math.abs(k.boost - (K.DRIFT.BOOST[2] * P.boost.time - .05)) < .051, `orange drift boost ${k.boost.toFixed(2)} s`);
+  const turn = rperk => { const g = solo({ rperk }), k = g.karts[0]; k.v = 8; const h0 = k.h; race(g, .3, () => K.setInput(g, 0, { gas: true, steer: 1 })); return Math.abs(K.wrapAngle(k.h - h0)); };
+  assert.ok(turn('grip') > turn(null) * (1 + (P.grip.turn - 1) * .8), `turned ${turn('grip').toFixed(3)} vs ${turn(null).toFixed(3)} rad`);
+  const grass = rperk => { const g = solo({ rperk }), k = g.karts[0]; put(g, k, 30, K.ROAD + .8); race(g, 4, () => { K.setInput(g, 0, { gas: true }); k.h = K.trackPoint(k.total, 0).h; }); return k.v; };
+  assert.ok(Math.abs(grass('grip') - K.KART.VMAX * P.grip.offroad) < .2 && Math.abs(grass(null) - K.KART.VMAX * K.KART.OFFROAD) < .2, `grass ${grass('grip').toFixed(2)} vs ${grass(null).toFixed(2)}`);
+  const wall = rperk => { const g = solo({ rperk }), k = g.karts[0]; put(g, k, 30, T.wall - .05); k.h += .9; k.v = 8; const evs = race(g, .1); assert.ok(evs.some(e => e.e === 'bump')); return k.v; };
+  assert.ok(wall('grip') > wall(null) * 1.25, `after the wall ${wall('grip').toFixed(2)} vs ${wall(null).toFixed(2)}`);
+});
+
+test('item perks: double holds a second item (fills from boxes, moves up after use, a ghost steals the first); guard shortens traps and spins; power stretches your traps, spins and soap clouds; lucky gets more attacks', () => {
+  let g = trio(); let [a, b, c] = g.karts; a.iperk = 'double'; put(g, a, 10); put(g, b, 30); put(g, c, 60);
+  const box = g.boxes[0]; a.item = 'puddle'; Object.assign(a, { x: box.x, y: box.y, hint: K.locate(box.x, box.y).i }); let evs = K.step(g, .05);
+  assert.ok(a.item2 && evs.some(e => e.e === 'item' && e.slot === 2), 'second slot fills'); assert.equal(K.snapshot(g).karts[0].i2, a.item2);
+  const second = a.item2; K.useItem(g, 0); assert.deepEqual([a.item, a.item2], [second, null], 'second item moves up');
+  Object.assign(b, { iperk: 'double', item: 'shield', item2: 'jet' });
+  put(g, a, 10); a.item = 'ghost'; a.item2 = 'shoe'; K.useItem(g, 0);
+  assert.deepEqual([a.item, a.item2, b.item, b.item2], ['shoe', 'shield', 'jet', null], 'ghost steals the first item, both sides move up');
+  const IP = K.ITEM_PERKS, trapped = (victim, attacker) => { const g = trio(); const [a, b, c] = g.karts; put(g, a, 10); put(g, b, 30); b.iperk = victim; a.iperk = attacker; a.v = b.v = 0; a.item = 'jet'; K.useItem(g, 0); stepUntil(g, e => e.some(x => x.e === 'hit')); return b.trap + .05; };
+  assert.ok(Math.abs(trapped(null, null) - K.ITEMS.jet.trap) < .06 && Math.abs(trapped('guard', null) - K.ITEMS.jet.trap * IP.guard.time) < .06 && Math.abs(trapped(null, 'power') - K.ITEMS.jet.trap * IP.power.time) < .06, 'jet trap: plain / guard / power');
+  assert.ok(Math.abs(trapped('guard', 'power') - K.ITEMS.jet.trap * IP.guard.time * IP.power.time) < .06, 'both multiply');
+  g = trio(); [a, b, c] = g.karts; put(g, a, 10); put(g, b, 30); a.iperk = 'power'; a.item = 'foam'; K.useItem(g, 0); assert.ok(Math.abs(b.foam - K.ITEMS.foam.time * IP.power.time) < 1e-9, 'power soap cloud lasts longer');
+  g = trio(); [a, b] = g.karts; put(g, a, 30); put(g, b, 80); a.iperk = 'power'; a.item = 'puddle'; K.useItem(g, 0); const z = g.hazards[0]; a.v = 0; Object.assign(a, { x: z.x, y: z.y }); race(g, .6, idle(g));
+  assert.ok(a.spin > 0 && a.spin <= K.ITEMS.puddle.spin, 'your own puddle is not stretched');
+  const roll = iperk => { const g = K.createGame({ seed: 9 }); go(g); const k = g.karts[0]; k.iperk = iperk; k.rank = 2; let n = 0; for (let i = 0; i < 6000; i++) if (['jet', 'storm', 'hot', 'foam'].includes(K.rollItem(g, k))) n++; k.rank = 1; let lead = 0; for (let i = 0; i < 3000; i++) if (['jet', 'storm'].includes(K.rollItem(g, k))) lead++; return [n, lead]; };
+  const [plain] = roll(null), [lucky, lead] = roll('lucky'); assert.ok(lucky > plain * 1.4, `attacks ${plain} → ${lucky}`); // 中段名次攻擊道具 35% → 51.9%（35×2 / 135），約 ×1.48 assert.equal(lead, 0, 'the leader still never gets jets or storms');
+});
+
 test('compact frames carry the new states: cloud, hot bubble seconds, see-through, nitro, storm and hot shots, fake boxes, mode', () => {
   const g = trio({ mode: 'speed' }), base = K.snapshot(g); const [a, b, c] = g.karts;
   Object.assign(a, { storm: 1.2, hot: 2.3, nitro: 2, gauge: .42 }); b.ghost = 1;
@@ -454,11 +598,25 @@ test('compact frames carry the new states: cloud, hot bubble seconds, see-throug
   const full = K.snapshot(g), compact = K.snapshot(g, { full: false });
   assert.deepEqual(K.expandFrame(compact, base), full); assert.equal(compact.mode, undefined, 'mode only travels in the start snapshot');
   const ka = full.karts[0]; assert.deepEqual([ka.cl, ka.ho, ka.ni, ka.ga, full.karts[1].gh], [1, 3, 2, .4, 1]);
+  // 第二批：泡泡雲、泡泡火箭、磁鐵（含目標）、巨大泡泡；平常是 0 不送
+  Object.assign(b, { foam: 2, rocket: 1, big: 3 }); Object.assign(c, { magnet: 1, magnetT: 0 });
+  const full2 = K.snapshot(g), compact2 = K.snapshot(g, { full: false });
+  assert.deepEqual(K.expandFrame(compact2, base), full2);
+  assert.deepEqual(['fo', 'ro', 'bg', 'bo'].map(f => full2.karts[1][f]), [1, 1, 1, 1]); assert.deepEqual([full2.karts[2].mg, full2.karts[2].mt, full2.karts[2].bo], [1, 1, 1]);
+  assert.ok(!('fo' in compact2.karts[0]) && !('mt' in compact2.karts[0]), 'zero fields stay out of compact frames');
   assert.deepEqual(full.shots.map(s => s[3]), [K.SHOT_CODE.storm, K.SHOT_CODE.hot]); assert.deepEqual(full.haz.map(h => h[3]), [1]);
 });
 
-test('bots use every new item and the items land: clouds, sticks and passes, steals, fake-box spins', () => {
+test('bots use every new item and the items land: clouds, sticks and passes, steals, fake-box spins, soap clouds, magnet catches, rocket and giant rams', () => {
   const c = {};
   for (const id of ['candy', 'peak', 'highway']) for (const seed of [1, 7, 42]) { const g = K.createGame({ seed, track: id }); while (!g.over) for (const e of K.step(g, .05)) { const key = e.e === 'use' || e.e === 'spin' ? `${e.e}:${e.kind}` : e.e; c[key] = (c[key] || 0) + 1; } }
-  for (const key of ['use:storm', 'use:hot', 'use:ghost', 'use:decoy', 'cloud', 'stick', 'pass', 'steal', 'spin:decoy']) assert.ok(c[key] >= 1, `${key}: ${c[key] || 0}`);
+  for (const key of ['use:storm', 'use:hot', 'use:ghost', 'use:decoy', 'cloud', 'stick', 'pass', 'steal', 'spin:decoy', 'use:foam', 'use:magnet', 'use:big', 'foam', 'catch', 'spin:big']) assert.ok(c[key] >= 1, `${key}: ${c[key] || 0}`);
+  // 第二批道具的使用時機直接測（泡泡火箭只給最後一名，抽樣常常一次都沒有）：塞道具給電腦，看 0.3 秒內有沒有用
+  const uses = (kind, place) => { const g = K.createGame({ seed: 3 }); go(g); const ks = g.karts; place(g, ks); ks.forEach(k => { k.rank = 1 + ks.filter(o => o.total > k.total).length; k.item = null; }); ks[0].item = kind; ks[0].ai.itemT = 0; return race(g, .3).some(e => e.e === 'use' && e.id === 0 && e.kind === kind); };
+  const chase = (g, [a, b, c, d]) => { put(g, a, 10); put(g, b, 30); put(g, c, 120); put(g, d, 150); }, lead = (g, [a, b, c, d]) => { put(g, a, 150); put(g, b, 10); put(g, c, 20); put(g, d, 30); };
+  assert.ok(uses('rocket', lead), 'rocket: right away');
+  assert.ok(uses('magnet', chase) && !uses('magnet', lead), 'magnet: only with a kart ahead in reach');
+  assert.ok(uses('foam', chase) && !uses('foam', lead), 'soap cloud: not when leading');
+  const side = (g, [a, b, c, d]) => { put(g, a, 30); put(g, b, 34); put(g, c, 120); put(g, d, 150); };
+  assert.ok(uses('big', side) && !uses('big', chase), 'giant bubble: only with a kart within 8 cells');
 });

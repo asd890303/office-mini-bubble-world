@@ -24,12 +24,15 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .mute { padding: 3px 10px; font-size: 12px; pointer-events: auto; }
 .itembox { position: fixed; left: 10px; top: calc(max(10px, env(safe-area-inset-top)) + 64px); display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-width: 2px; border-radius: 16px; max-width: min(260px, calc(100% - 140px)); pointer-events: none; }
 .itembox canvas { width: 52px; height: 52px; flex: none; }
+.itembox .slots { position: relative; flex: none; }
+.itembox canvas#slot2 { position: absolute; right: -6px; bottom: -6px; width: 26px; height: 26px; } /* 雙槽：第 2 個道具 */
+.itembox canvas#slot2[hidden] { display: none; }
 .itembox b { display: block; font-size: 15px; font-weight: 900; }
 .itembox span { display: block; font-size: 12px; color: var(--ink-soft); line-height: 1.35; }
 .itembox.has { animation: pop .25s; }
 @keyframes pop { 50% { transform: scale(1.08); } }
 #map { position: fixed; right: 10px; top: calc(max(10px, env(safe-area-inset-top)) + 64px); width: 112px; height: 112px; pointer-events: none; }
-#speedo { position: fixed; left: 10px; bottom: max(12px, env(safe-area-inset-bottom)); width: 120px; height: 120px; pointer-events: none; }
+#speedo { position: fixed; left: 10px; bottom: max(12px, env(safe-area-inset-bottom)); width: 120px; height: 120px; pointer-events: none; filter: drop-shadow(0 0 6px rgba(94,242,255,.35)); }
 /* 觸控：時速表放在搖桿正上方，跟著搖桿大小移動，不會壓到右邊的按鈕 */
 body.touch #speedo { left: calc(var(--pad-x) + 4px); bottom: calc(max(18px, env(safe-area-inset-bottom)) + var(--stick) + 14px); width: 96px; height: 96px; }
 #speedo[hidden] { display: none; }
@@ -41,6 +44,12 @@ body.touch #speedo { left: calc(var(--pad-x) + 4px); bottom: calc(max(18px, env(
 .speedfx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .25s; background: repeating-conic-gradient(from 0deg at 50% 55%, rgba(255,255,255,.55) 0deg 1.2deg, transparent 1.2deg 9deg); -webkit-mask: radial-gradient(circle at 50% 55%, transparent 32%, #000 75%); mask: radial-gradient(circle at 50% 55%, transparent 32%, #000 75%); }
 body.boosting .speedfx { opacity: 1; animation: whoosh .3s linear infinite; }
 @keyframes whoosh { 50% { transform: scale(1.04); } }
+.foamfx { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; overflow: hidden; } /* 泡泡雲：畫面中間被肥皂泡蓋住，邊緣還看得到一點；放在 HUD 前面，圈數、道具格還看得到 */
+.foamfx i { position: absolute; left: var(--x); top: var(--y); width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2); border-radius: 50%; border: 3px solid rgba(74,59,59,.3); background: radial-gradient(circle at 32% 30%, #fff 0 10%, rgba(240,248,255,.97) 16% 58%, rgba(214,226,255,.95) 86%); }
+body.foamed .foamfx { opacity: 1; }
+body.foamed .foamfx i { animation: foamwob 1.4s ease-in-out infinite alternate; }
+.foamfx i:nth-child(even) { animation-delay: -.7s !important; }
+@keyframes foamwob { to { transform: translate(6px, -8px) scale(1.06); } }
 .count { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); font-size: 96px; font-weight: 900; color: #fffdf8; -webkit-text-stroke: 6px #4a3b3b; paint-order: stroke fill; pointer-events: none; }
 .count[hidden] { display: none; }
 .wrongway { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 900; padding: 6px 20px; color: #d0456b; pointer-events: none; white-space: nowrap; animation: ww .5s ease-in-out infinite alternate; }
@@ -98,6 +107,22 @@ body.touch .keys { display: none; }
 .mapcard small { display: block; font-size: 11px; color: var(--ink-soft); line-height: 1.3; }
 .mapcard .best { display: block; font-size: 11px; font-weight: 900; font-style: normal; color: var(--pink-deep); }
 .diffs b { align-self: center; font-size: 13px; }
+.loadline { margin: -2px 0 0; font-size: 12px; color: var(--ink-soft); }
+/* 選車：造型卡片 + 兩排能力 */
+#garageScreen .box { width: min(480px, calc(100% - 20px)); }
+.glabel { display: block; text-align: left; font-size: 14px; font-weight: 900; margin: 10px 0 4px; }
+.glabel small { font-weight: 700; color: var(--ink-soft); }
+.shapes { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.shapes button, .perks button { border: 3px solid var(--ink); border-radius: 14px; background: var(--chip); color: var(--ink); font: inherit; cursor: pointer; padding: 4px; }
+.shapes canvas { width: 100%; aspect-ratio: 8 / 5; display: block; }
+.shapes b { display: block; font-size: 13px; font-weight: 900; }
+.perks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.perks button { text-align: left; padding: 6px 10px; }
+.perks b { display: block; font-size: 14px; font-weight: 900; }
+.perks small { display: block; font-size: 11.5px; line-height: 1.35; color: var(--ink-soft); }
+.shapes button[aria-pressed="true"], .perks button[aria-pressed="true"] { background: var(--pink); color: #4a3b3b; outline: 3px solid var(--pink-deep); outline-offset: 1px; } /* 深色主題下粉紅底也用深色字，和 .btn 一樣 */
+.perks button[aria-pressed="true"] small { color: #6b5555; }
+@media (max-width: 460px) { .shapes { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .mapcard[aria-pressed="true"] { background: var(--pink); outline: 3px solid var(--pink-deep); outline-offset: 2px; }
 .mapcard .votes { position: absolute; top: 4px; right: 6px; font-size: 12px; font-weight: 900; background: var(--paper); border: 2px solid var(--ink); border-radius: 999px; padding: 0 7px; }
 .mapcard .votes:empty { display: none; }
@@ -120,6 +145,7 @@ body.touch .keys { display: none; }
 </head>
 <body>
 <canvas id="scene"></canvas>
+<div class="foamfx"><i style="--x:50%;--y:48%;--s:46vmin"></i><i style="--x:28%;--y:40%;--s:34vmin"></i><i style="--x:72%;--y:42%;--s:36vmin"></i><i style="--x:40%;--y:66%;--s:32vmin"></i><i style="--x:62%;--y:68%;--s:34vmin"></i><i style="--x:18%;--y:62%;--s:24vmin"></i><i style="--x:83%;--y:62%;--s:26vmin"></i><i style="--x:50%;--y:24%;--s:26vmin"></i></div>
 <canvas id="map" width="224" height="224"></canvas>
 <canvas id="speedo" width="240" height="240" hidden></canvas>
 
@@ -128,7 +154,7 @@ body.touch .keys { display: none; }
   <div class="box mid"><div id="lap">第 1/3 圈</div><b id="time">0:00.0</b></div>
   <button class="btn mute" id="mute">音效 開</button>
 </div>
-<div class="box itembox"><canvas id="slot" width="128" height="128"></canvas><div><b id="itemName">沒有道具</b><span id="itemDesc">撞問號箱拿道具</span></div></div>
+<div class="box itembox"><span class="slots"><canvas id="slot" width="128" height="128"></canvas><canvas id="slot2" width="64" height="64" hidden></canvas></span><div><b id="itemName">沒有道具</b><span id="itemDesc">撞問號箱拿道具</span></div></div>
 <div class="count" id="count" hidden></div>
 <div class="wrongway box" id="wrongWay" hidden>逆向行駛，請迴轉</div>
 <div class="speedfx"></div>
@@ -150,7 +176,7 @@ body.touch .keys { display: none; }
     <h1>泡泡賽車</h1>
     <p>3 圈。按住油門（W）前進，S 煞車。按住漂移轉彎累積火花，放開就加速；加速中再漂移，火花集得更快，可以一路連噴。倒數最後一刻才踩油門，可以起跑加速。道具賽撿問號箱拿道具；競速賽沒有道具，漂移集滿氮氣槽得到氮氣。</p>
     <div class="legend">
-      <span style="--c:#4cd68a">加速鞋：衝刺 2 秒</span>
+      <span style="--c:#4cd68a">氮氣：衝刺 2 秒</span>
       <span style="--c:#9edcff">水窪：在車後丟一排 3 個，踩到會打滑</span>
       <span style="--c:#ffd6ec">泡泡盾：8 秒內擋下一次攻擊</span>
       <span style="--c:#3fb6ff">超級水柱：追著前一名噴，打中困住 2.5 秒</span>
@@ -158,8 +184,13 @@ body.touch .keys { display: none; }
       <span style="--c:#ff8a4c">燙手泡泡：黏到前面的車上，5 秒後爆炸，撞別人就傳出去</span>
       <span style="--c:#fffdf8">小幽靈：偷前面一台車的道具，透明 3 秒</span>
       <span style="--c:#ffb3c7">假道具箱：丟在車後，撞到會打滑</span>
+      <span style="--c:#bfe3ff">泡泡雲：前面所有人的畫面被肥皂泡蓋住 3 秒</span>
+      <span style="--c:#ff8fab">泡泡火箭：自動衝刺 3 秒，撞開路上的車，不會被打中</span>
+      <span style="--c:#ff6b6b">磁鐵：被前一台車吸過去並加速，追到旁邊就放開</span>
+      <span style="--c:#c9b6ff">巨大泡泡：車子變大 5 秒，撞到的車會打滑，壓破水窪</span>
     </div>
-    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線對戰</button></div>
+    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="garageBtn">選車</button><button class="btn" id="onlineBtn">連線對戰</button></div>
+    <p class="loadline" id="loadLine"></p>
     <button class="btn primary go" id="startBtn">開始（對 3 台電腦）</button>
     <a class="btn back" href="/">回遊戲大廳</a>
   </div>
@@ -181,10 +212,25 @@ body.touch .keys { display: none; }
     <h1>泡泡賽車</h1>
     <p id="lobbyStatus">連線中…</p>
     <ul class="list" id="slots"></ul>
-    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button></div>
+    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button><button class="btn" id="lGarageBtn">選車</button></div>
+    <p class="loadline" id="lLoadLine"></p>
     <button class="btn primary go" id="joinBtn">加入</button>
     <button class="btn" id="soloBtn" style="margin-top:10px">先玩單人版</button>
     <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="garageScreen" hidden>
+  <div class="box">
+    <h2>選車</h2>
+    <p>造型只是外觀。競速能力兩種模式都有效，道具能力只在道具賽有效。選好會記住，連線時其他人也看得到你的車。</p>
+    <b class="glabel">造型</b>
+    <div class="shapes" id="gShapes"></div>
+    <b class="glabel">競速能力</b>
+    <div class="perks" id="gRace"></div>
+    <b class="glabel">道具能力 <small>只在道具賽有效</small></b>
+    <div class="perks" id="gItem"></div>
+    <button class="btn primary go" id="garageDone">好了</button>
   </div>
 </section>
 
@@ -358,12 +404,8 @@ function makeHouse(x, y, rng, th, n) {
 /* ---------- 物件：車、道具箱、飛行道具、水窪 ---------- */
 function makeKart(d) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body); root.rotation.order = 'YXZ'; // 先轉朝向再俯仰，上下匝道時車頭跟著坡度
-  const chassis = new THREE.Mesh(G.box, toon(d.color)); chassis.scale.set(.95, .3, 1.3); chassis.position.y = .32; boxOutline(chassis, .95, .3, 1.3); body.add(chassis);
-  const nose = new THREE.Mesh(G.box, toon('#fffdf8')); nose.scale.set(.8, .18, .3); nose.position.set(0, .3, .72); boxOutline(nose, .8, .18, .3); body.add(nose);
-  const seat = new THREE.Mesh(G.box, toon(d.color)); seat.scale.set(.7, .38, .16); seat.position.set(0, .62, -.5); boxOutline(seat, .7, .38, .16); body.add(seat);
-  const tire = toon('#4a3b3b');
-  for (const [x, z] of [[-.52, .42], [.52, .42], [-.52, -.45], [.52, -.45]]) { const w = blob(G.cyl, tire, .2, .12, .2, 1.15); w.rotation.z = Math.PI / 2; w.position.set(x, .2, z); body.add(w); }
-  const critter = makeCritter({ color: d.color, ear: d.ear, eye: d.eye, body: d.body, blush: d.blush }); critter.root.scale.setScalar(.6); critter.root.position.set(0, .42, -.12); body.add(critter.root);
+  const sitY = buildBody(body, d.shape, d.color);
+  const critter = makeCritter({ color: d.color, ear: d.ear, eye: d.eye, body: d.body, blush: d.blush }); critter.root.scale.setScalar(.6); critter.root.position.set(0, sitY, -.12); body.add(critter.root);
   if (d.name) { addNameTag(critter, d.name); critter.nameTag.scale.set(3.4, .85, 1); critter.nameTag.position.y = 2.7; } // 車上的角色縮小過，名字放大回來
   const sparks = [];
   for (const s of [-1, 1]) { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0x5ab8ff })); m.scale.setScalar(.14); m.position.set(s * .52, .15, -.75); m.visible = false; body.add(m); sparks.push(m); }
@@ -374,8 +416,57 @@ function makeKart(d) {
   const rain = []; for (let i = 0; i < 4; i++) { const m = new THREE.Mesh(G.small, M.splash); m.scale.set(.06, .12, .06); m.position.set((i - 1.5) * .3, 2, (i % 2 - .5) * .3); cloud.add(m); rain.push(m); }
   const hot = makeHotBubble(); hot.position.set(0, 1.15, -.55); hot.visible = false; root.add(hot);
   const hotNum = new THREE.Sprite(new THREE.SpriteMaterial({ map: numTex(5), transparent: true, depthTest: false })); hotNum.scale.set(.7, .7, 1); hotNum.position.y = .75; hotNum.renderOrder = 11; hot.add(hotNum);
+  // 泡泡雲：頭上一圈肥皂泡；泡泡火箭：車底一枚粉色火箭（尖頭朝前、尾焰朝後）；磁鐵：車頭上方的 U 形磁鐵，開口朝前，另外一條線連到被吸的車
+  const foam = new THREE.Group(); foam.position.y = 1.15; foam.visible = false; root.add(foam);
+  for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2, m = new THREE.Mesh(G.small, FOAM_MAT); m.scale.setScalar(.2 + (i % 2) * .08); m.position.set(Math.cos(a) * .42, (i % 3) * .1, Math.sin(a) * .42); foam.add(m); }
+  const rocket = new THREE.Group(); rocket.visible = false; body.add(rocket);
+  const hull = blob(G.sphere, ROCKET_MAT, .55, .32, 1.2); hull.position.set(0, .2, .1); rocket.add(hull);
+  const tip = blob(G.cone, M.white, 2.4, 2.2, 2.4); tip.rotation.x = Math.PI / 2; tip.position.set(0, .2, 1.45); rocket.add(tip);
+  for (const sx of [-1, 1]) { const fin = new THREE.Mesh(G.box, toon('#5ab8ff')); fin.scale.set(.45, .07, .35); fin.position.set(sx * .62, .25, -.85); boxOutline(fin, .45, .07, .35); rocket.add(fin); }
+  const flame = blob(G.cone, FLAME_MAT, 2.2, 3.4, 2.2); flame.rotation.x = -Math.PI / 2; flame.position.set(0, .2, -1.55); rocket.add(flame);
+  const magnet = new THREE.Group(); magnet.position.set(0, .8, .75); magnet.visible = false; body.add(magnet);
+  const horse = withOutline(new THREE.Mesh(MAGNET_GEO, toon('#ff6b6b')), 1.12); horse.rotation.x = -Math.PI / 2; magnet.add(horse);
+  for (const sx of [-1, 1]) { const end = new THREE.Mesh(G.box, toon('#e8edf5')); end.scale.set(.16, .16, .14); end.position.set(sx * .25, 0, .05); boxOutline(end, .16, .16, .14); magnet.add(end); }
+  const beam = new THREE.Group(); beam.visible = false; scene.add(beam); // 一串紅白小球，從被吸的車流向自己（線材在 WebGL 只有 1 像素寬，看不到）
+  for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(G.small, i % 2 ? M.white : BEAM_MAT); m.scale.setScalar(.11); beam.add(m); }
   scene.add(root);
-  return { root, body, critter, sparks, trail, shield, cloud, rain, hot, hotNum, spin: 0 };
+  return { root, body, critter, sparks, trail, shield, cloud, rain, hot, hotNum, foam, rocket, flame, magnet, beam, spin: 0, scl: 1 };
+}
+const FOAM_MAT = new THREE.MeshToonMaterial({ color: '#e8f4ff', gradientMap: grad, transparent: true, opacity: .85 }), ROCKET_MAT = toon('#ff8fab'), BEAM_MAT = toon('#ff6b6b');
+const MAGNET_GEO = new THREE.TorusGeometry(.25, .08, 8, 16, Math.PI); // 半圈環，轉向後就是 U 形磁鐵
+// 車身依造型組裝（只是外觀，碰撞一律是半徑 0.65 的圓），回傳小傢伙坐的高度
+const TIRE_MAT = toon('#4a3b3b'), TRIM_MAT = toon('#fffdf8'), PLATE_MAT = toon('#c9ced8');
+const box3 = (parent, mat, w, h, dd, x, y, z) => { const m = new THREE.Mesh(G.box, mat); m.scale.set(w, h, dd); m.position.set(x, y, z); boxOutline(m, w, h, dd); parent.add(m); return m; };
+function tires(parent, r, wd, x, zs) { for (const z of zs) for (const sx of [-1, 1]) { const w = blob(G.cyl, TIRE_MAT, r, wd, r, 1.15); w.rotation.z = Math.PI / 2; w.position.set(sx * x, r, z); parent.add(w); } }
+function buildBody(body, shape, color) {
+  const paint = toon(color);
+  if (shape === 'spike') { // 閃電：低矮、尖頭朝前、後擾流板
+    box3(body, paint, .85, .22, 1.3, 0, .28, -.05);
+    const nose = blob(G.cone, paint, 2.6, 2.4, 1.2); nose.rotation.x = Math.PI / 2; nose.position.set(0, .28, .85); body.add(nose);
+    for (const sx of [-1, 1]) box3(body, TRIM_MAT, .06, .26, .06, sx * .3, .52, -.62);
+    box3(body, TRIM_MAT, 1.05, .06, .24, 0, .66, -.64); box3(body, paint, .62, .3, .14, 0, .52, -.48);
+    tires(body, .19, .12, .5, [.45, -.42]); return .36;
+  }
+  if (shape === 'puff') { // 軟糖：一顆圓滾滾的車身、大輪子
+    const shell = blob(G.sphere, paint, .6, .32, .8); shell.position.y = .42; body.add(shell);
+    const bump = blob(G.sphere, TRIM_MAT, .3, .14, .16); bump.position.set(0, .34, .74); body.add(bump);
+    tires(body, .25, .14, .5, [.42, -.45]); return .5;
+  }
+  if (shape === 'tank') { // 鐵甲：方正厚重，兩側鐵板和螺絲
+    box3(body, paint, 1.05, .42, 1.3, 0, .4, 0); box3(body, PLATE_MAT, .9, .16, .1, 0, .34, .68);
+    for (const sx of [-1, 1]) { box3(body, PLATE_MAT, .06, .24, 1.1, sx * .55, .4, 0); for (const z of [-.4, 0, .4]) { const b = new THREE.Mesh(G.small, M.black); b.scale.setScalar(.035); b.position.set(sx * .59, .4, z); body.add(b); } }
+    box3(body, paint, .74, .3, .16, 0, .74, -.5);
+    tires(body, .23, .17, .56, [.42, -.45]); return .58;
+  }
+  if (shape === 'long') { // 飛梭：長車身、低底盤、兩片尾翼
+    box3(body, paint, .8, .2, 1.7, 0, .26, 0);
+    const nose = blob(G.sphere, TRIM_MAT, .4, .12, .32); nose.position.set(0, .26, .86); body.add(nose);
+    for (const sx of [-1, 1]) box3(body, TRIM_MAT, .06, .34, .32, sx * .3, .5, -.72);
+    tires(body, .16, .1, .48, [.6, -.6]); return .34;
+  }
+  // 泡泡：原本的圓角小車
+  box3(body, paint, .95, .3, 1.3, 0, .32, 0); box3(body, TRIM_MAT, .8, .18, .3, 0, .3, .72); box3(body, paint, .7, .38, .16, 0, .62, -.5);
+  tires(body, .2, .12, .52, [.42, -.45]); return .42;
 }
 const CLOUD_MAT = toon('#c9d3e6'), HOT_MAT = toon('#ff8a4c'), FLAME_MAT = toon('#ffd23f');
 function makeCloud(s) {
@@ -428,12 +519,14 @@ function drawMap(karts, me) {
   for (const k of [...karts].sort((a, b) => (a.id === me) - (b.id === me))) { const [x, y] = mp(k.x, k.y); mapX.beginPath(); mapX.arc(x, y, k.id === me ? 9 : 6.5, 0, Math.PI * 2); mapX.fillStyle = k.color; mapX.fill(); mapX.lineWidth = 3; mapX.strokeStyle = INK; mapX.stroke(); }
 }
 const ITEM_ICON = {
-  shoe: ['#4cd68a', ITEM_ART.speed, '加速鞋', '立刻衝刺 2 秒'], puddle: ['#9edcff', ITEM_ART.puddle, '水窪', '在車後丟一排 3 個，踩到的人會打滑'],
+  shoe: ['#4cd68a', ITEM_ART.nitro, '氮氣', '立刻衝刺 2 秒'], puddle: ['#9edcff', ITEM_ART.puddle, '水窪', '在車後丟一排 3 個，踩到的人會打滑'],
   shield: ['#ffb3d9', ITEM_ART.shield, '泡泡盾', '8 秒內擋下一次攻擊'], jet: ['#3fb6ff', ITEM_ART.power, '超級水柱', '沿賽道追著前一名噴，打中困住 2.5 秒'],
   storm: ['#c9d3e6', ITEM_ART.storm, '雷雨雲', '飛到第一名頭上，2 秒後下雨困住他 1.5 秒'], hot: ['#ff8a4c', ITEM_ART.hot, '燙手泡泡', '黏到前面最近的車上，5 秒後爆炸；撞到別人就黏過去'],
   ghost: ['#e2d6ff', ITEM_ART.ghost, '小幽靈', '偷前面最近一台車的道具，自己透明 3 秒'], decoy: ['#ffe08a', ITEM_ART.decoy, '假道具箱', '丟在車後，長得像道具箱，撞到的人會打滑'],
+  foam: ['#bfe3ff', ITEM_ART.foam, '泡泡雲', '前面所有還在跑的人，畫面被肥皂泡蓋住 3 秒'], rocket: ['#ff8fab', ITEM_ART.rocket, '泡泡火箭', '自動沿賽道衝刺 3 秒，撞開路上的車，期間不會被打中'],
+  magnet: ['#ff6b6b', ITEM_ART.magnet, '磁鐵', '被前方最近的車吸過去並加速，追到旁邊就放開'], big: ['#c9b6ff', ITEM_ART.big, '巨大泡泡', '車子變大 5 秒，撞到別人會讓對方打滑，壓過水窪不會滑'],
 };
-const ITEM_NAME = { jet: '水柱', puddle: '水窪', storm: '雷雨雲', hot: '燙手泡泡', decoy: '假道具箱' };
+const ITEM_NAME = { jet: '水柱', puddle: '水窪', storm: '雷雨雲', hot: '燙手泡泡', decoy: '假道具箱', foam: '泡泡雲', rocket: '泡泡火箭', big: '巨大泡泡' };
 const useHint = () => document.body.classList.contains('touch') ? '按「道具」使用' : '按空白鍵使用';
 const slotX = $('slot').getContext('2d'); let slotKind = '-';
 function drawSlot(kind) {
@@ -443,6 +536,12 @@ function drawSlot(kind) {
   $('itemName').textContent = it ? it[2] : '沒有道具';
   $('itemDesc').textContent = it ? `${it[3]}。${useHint()}` : '撞問號箱拿道具';
   const box = $('slot').parentElement; box.classList.remove('has'); if (it) { void box.offsetWidth; box.classList.add('has'); }
+}
+// 雙槽的第 2 個道具：道具格右下角的小徽章（沒有就藏起來）
+const slot2X = $('slot2').getContext('2d'); let slot2Kind = '-';
+function drawSlot2(kind) {
+  if (kind === slot2Kind) return; slot2Kind = kind; const it = ITEM_ICON[kind]; $('slot2').hidden = !it; if (!it) return;
+  slot2X.clearRect(0, 0, 64, 64); slot2X.save(); slot2X.scale(.5, .5); badgeFrame(slot2X, it[0]); it[1](slot2X); slot2X.restore();
 }
 // 競速賽的道具格：氮氣瓶（沒有氮氣時變淡）、外圈橘色弧線是氮氣槽、右下角是存了幾個
 let slotNitro = 0;
@@ -459,26 +558,43 @@ function drawNitro(n, ga) {
 drawSlot(null);
 setTrack(Core.TRACKS[0].id);
 
-/* ---------- 時速表：車速（格/秒）× 12 換成 km/h，一般最高 120，漂移加速約 186，加速鞋約 216 ---------- */
-// 漂移時外圈顯示火花段數（藍、橘、粉），手機上車尾的火花太小，看時速表就知道何時放開
-const spX = $('speedo').getContext('2d'), SP_MAX = 220, SP_A0 = Math.PI * .75, SP_SWEEP = Math.PI * 1.5, SP_SPARK = ['', '#5ab8ff', '#ffa63d', '#ff6fa8'];
+/* ---------- 時速表：科幻儀表。車速（格/秒）× 12 換成 km/h：一般最高 120，漂移加速約 186，氮氣約 216，泡泡火箭 240 ---------- */
+// 深藍玻璃底盤 + 青色外框；36 格分段光條從青色漸變到黃、洋紅，加速時整條變粉紅；中間是三位數的數字，前面補暗色的 0。
+// 漂移時最外圈亮起火花顏色（藍、橘、粉），手機上車尾的火花太小，看時速表就知道何時放開
+const spX = $('speedo').getContext('2d'), SP_MAX = 260, SP_A0 = Math.PI * .75, SP_SWEEP = Math.PI * 1.5, SP_SEG = 36, SP_SPARK = ['', '#5ab8ff', '#ffa63d', '#ff6fa8'];
+const SP_FONT = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', SP_CYAN = '#5ef2ff';
+const SP_STOPS = [[0, [94, 242, 255]], [.65, [255, 224, 102]], [1, [255, 95, 143]]];
+function segColor(u) { // 光條顏色：青 → 黃 → 洋紅
+  const i = u <= SP_STOPS[1][0] ? 0 : 1, [u0, a] = SP_STOPS[i], [u1, b] = SP_STOPS[i + 1], f = (u - u0) / (u1 - u0);
+  return `rgb(${a.map((v, j) => Math.round(v + (b[j] - v) * f)).join(',')})`;
+}
 let spKey = '';
 function drawSpeedo(v, boost, level = 0) {
   const kmh = Math.round(Math.abs(v) * 12), key = `${kmh},${boost ? 1 : 0},${v < 0 ? 1 : 0},${level}`; if (key === spKey) return; spKey = key;
-  const x = spX, c = 120, r = 92, a = SP_A0 + SP_SWEEP * Math.min(1, kmh / SP_MAX);
-  x.clearRect(0, 0, 240, 240);
-  x.beginPath(); x.arc(c, c, 112, 0, Math.PI * 2); x.fillStyle = 'rgba(255,253,248,.92)'; x.fill(); x.lineWidth = 6; x.strokeStyle = INK; x.stroke();
-  if (level) { x.beginPath(); x.arc(c, c, 105, 0, Math.PI * 2); x.lineWidth = 9; x.strokeStyle = SP_SPARK[level]; x.stroke(); }
-  x.lineCap = 'round';
-  x.beginPath(); x.arc(c, c, r, SP_A0, SP_A0 + SP_SWEEP); x.lineWidth = 18; x.strokeStyle = '#efe4dc'; x.stroke();
-  if (kmh > 0) { x.beginPath(); x.arc(c, c, r, SP_A0, a); x.lineWidth = 18; x.strokeStyle = boost ? '#ff8fab' : '#7fd6b0'; x.stroke(); }
-  x.lineCap = 'butt'; x.lineWidth = 4; x.strokeStyle = INK;
-  for (let k = 0; k <= 6; k++) { const t = SP_A0 + SP_SWEEP * k / 6, i = k % 2 ? 62 : 56; x.beginPath(); x.moveTo(c + Math.cos(t) * i, c + Math.sin(t) * i); x.lineTo(c + Math.cos(t) * 70, c + Math.sin(t) * 70); x.stroke(); }
-  x.lineCap = 'round'; x.lineWidth = 6; x.beginPath(); x.moveTo(c, c); x.lineTo(c + Math.cos(a) * 66, c + Math.sin(a) * 66); x.strokeStyle = boost ? '#d0456b' : INK; x.stroke();
-  x.beginPath(); x.arc(c, c, 9, 0, Math.PI * 2); x.fillStyle = INK; x.fill();
-  x.fillStyle = INK; x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.font = '900 46px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(String(kmh), c, c + 52);
-  x.font = '700 18px "Zen Maru Gothic",sans-serif'; x.fillText(v < 0 ? '倒車 km/h' : 'km/h', c, c + 84);
+  const x = spX, c = 120, lit = Math.round(SP_SEG * Math.min(1, kmh / SP_MAX));
+  x.clearRect(0, 0, 240, 240); x.save();
+  const bg = x.createRadialGradient(c, c, 10, c, c, 112); bg.addColorStop(0, 'rgba(20,44,70,.96)'); bg.addColorStop(1, 'rgba(6,12,26,.94)');
+  x.beginPath(); x.arc(c, c, 112, 0, Math.PI * 2); x.fillStyle = bg; x.fill();
+  x.shadowColor = SP_CYAN; x.shadowBlur = 12; x.lineWidth = 3; x.strokeStyle = 'rgba(94,242,255,.9)'; x.stroke();
+  if (level) { x.beginPath(); x.arc(c, c, 105, 0, Math.PI * 2); x.lineWidth = 6; x.strokeStyle = x.shadowColor = SP_SPARK[level]; x.shadowBlur = 16; x.stroke(); }
+  x.shadowBlur = 0;
+  for (let i = 0; i <= 60; i++) { // 刻度：每 10 格一條長的
+    const a = SP_A0 + SP_SWEEP * i / 60, big = i % 10 === 0, r0 = big ? 64 : 68;
+    x.beginPath(); x.moveTo(c + Math.cos(a) * r0, c + Math.sin(a) * r0); x.lineTo(c + Math.cos(a) * 73, c + Math.sin(a) * 73); x.lineWidth = big ? 3 : 1.5; x.strokeStyle = big ? 'rgba(94,242,255,.85)' : 'rgba(94,242,255,.3)'; x.stroke();
+  }
+  x.lineCap = 'butt';
+  for (let i = 0; i < SP_SEG; i++) { // 分段光條
+    const a0 = SP_A0 + SP_SWEEP * i / SP_SEG + .02, a1 = SP_A0 + SP_SWEEP * (i + 1) / SP_SEG - .02, on = i < lit, col = boost ? '#ff5fd2' : segColor(i / (SP_SEG - 1));
+    x.beginPath(); x.arc(c, c, 88, a0, a1); x.lineWidth = 16; x.strokeStyle = on ? col : 'rgba(40,82,112,.5)'; x.shadowColor = col; x.shadowBlur = on ? 10 : 0; x.stroke();
+  }
+  if (lit) { const a = SP_A0 + SP_SWEEP * lit / SP_SEG; x.beginPath(); x.moveTo(c + Math.cos(a) * 100, c + Math.sin(a) * 100); x.lineTo(c + Math.cos(a - .07) * 108, c + Math.sin(a - .07) * 108); x.lineTo(c + Math.cos(a + .07) * 108, c + Math.sin(a + .07) * 108); x.closePath(); x.fillStyle = '#eafcff'; x.shadowColor = SP_CYAN; x.shadowBlur = 8; x.fill(); } // 光條末端的小三角
+  const digits = String(Math.min(999, kmh)).padStart(3, '0'), dimN = 3 - String(Math.min(999, kmh)).length;
+  x.font = `700 50px ${SP_FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle';
+  for (let i = 0; i < 3; i++) { const dim = i < dimN; x.fillStyle = dim ? 'rgba(94,242,255,.16)' : '#eafcff'; x.shadowColor = boost ? '#ff5fd2' : SP_CYAN; x.shadowBlur = dim ? 0 : 12; x.fillText(digits[i], c + (i - 1) * 31, c + 6); }
+  x.shadowBlur = 0; x.font = `700 15px ${SP_FONT}`; x.fillStyle = boost ? '#ff9be6' : 'rgba(94,242,255,.85)';
+  x.fillText(v < 0 ? '倒車 KM/H' : 'KM/H', c, c + 44);
+  if (boost) { x.font = `900 14px ${SP_FONT}`; x.fillText('BOOST', c, c - 36); }
+  x.restore();
 }
 
 /* ---------- 操作 ---------- */
@@ -518,7 +634,7 @@ let toastT = 0;
 function toast(t, ms = 1400) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove('show'), ms); }
 function disposeView() {
   if (!V) return;
-  for (const k of V.karts.values()) scene.remove(k.root);
+  for (const k of V.karts.values()) { scene.remove(k.root); scene.remove(k.beam); }
   for (const b of V.boxes) scene.remove(b); for (const m of V.shots.values()) scene.remove(m); for (const m of V.haz.values()) scene.remove(m);
   V = null;
 }
@@ -555,12 +671,14 @@ function onEvent(e) {
   if (e.e === 'spin' && V?.karts.get(e.id)) V.karts.get(e.id).spin = 1;
   if (e.e === 'go') { sfx.go(); showCount('GO!'); setTimeout(() => $('count').hidden = true, 700); }
   else if (e.e === 'item' && mine) { sfx.item(); haptic.tap(); }
-  else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了加速鞋', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告
+  else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了氮氣', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈', rocket: '坐上泡泡火箭', magnet: '拿出磁鐵', big: '變成巨大泡泡' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告；泡泡雲在 foam 事件公告蓋住誰
   else if (e.e === 'nitro' && mine) { sfx.item(); toast(`氮氣 +1（${e.n}/${Core.NITRO.max}）`, 800); }
   else if (e.e === 'crash' && (e.a === me || e.b === me)) { sfx.bump(); haptic.tap(); }
   else if (e.e === 'hit') { feed(e.kind === 'hot' ? `${who(e.by)} 的燙手泡泡在 ${who(e.id)} 身上爆炸` : e.kind === 'storm' ? `${who(e.by)} 的雷雨雲淋到 ${who(e.id)}` : `${who(e.by)} 的${ITEM_NAME[e.kind] || '道具'}打中 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.hit(); haptic.hit(); } }
   else if (e.e === 'block') { feed(`${who(e.id)} 的泡泡盾擋下 ${who(e.by)} 的${ITEM_NAME[e.kind] || '攻擊'}`, e.id, e.by); if (mine) { sfx.block(); haptic.tap(); } }
-  else if (e.e === 'spin') { const what = ITEM_NAME[e.kind] || '水窪', verb = e.kind === 'decoy' ? '撞到' : '踩到'; feed(e.by === e.id ? `${who(e.id)} ${verb}自己的${what}` : `${who(e.id)} ${verb} ${who(e.by)} 的${what}`, e.id, e.by); if (mine) { sfx.hit(); haptic.hit(); } }
+  else if (e.e === 'spin') { const what = ITEM_NAME[e.kind] || '水窪', verb = e.kind === 'decoy' ? '撞到' : '踩到', ram = e.kind === 'rocket' || e.kind === 'big'; feed(ram ? `${who(e.id)} 被 ${who(e.by)} 的${what}撞開` : e.by === e.id ? `${who(e.id)} ${verb}自己的${what}` : `${who(e.id)} ${verb} ${who(e.by)} 的${what}`, e.id, e.by); if (mine) { sfx.hit(); haptic.hit(); } }
+  else if (e.e === 'foam') { feed(`${who(e.id)} 的泡泡雲蓋住 ${e.hit.map(who).join('、')}`, e.id, ...e.hit); if (e.hit.includes(me)) { sfx.hit(); haptic.hit(); toast('被泡泡雲蓋住了！3 秒後散掉', 1400); } }
+  else if (e.e === 'catch' && mine) toast(`磁鐵吸到 ${who(e.by)} 旁邊了`, 900);
   else if (e.e === 'cloud') { feed(`${who(e.by)} 的雷雨雲飄到 ${who(e.id)} 頭上`, e.by, e.id); if (mine) { sfx.beep(); toast('頭上有雷雨雲！2 秒後下雨，泡泡盾擋得掉', 1800); } }
   else if (e.e === 'stick') { feed(`${who(e.by)} 的燙手泡泡黏到 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.beep(); haptic.tap(); toast('燙手泡泡黏上來了！撞別人就能傳出去', 1800); } }
   else if (e.e === 'pass') { feed(`${who(e.by)} 把燙手泡泡傳給 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.beep(); haptic.tap(); toast('燙手泡泡傳到你身上了！', 1400); } else if (e.by === me) toast('傳出去了！', 900); }
@@ -641,16 +759,27 @@ function renderKarts(poses, dt, t) {
     k.shield.visible = !!d.sh; if (d.sh) k.shield.rotation.y = t * 1.5;
     k.cloud.visible = !!d.cl; if (d.cl) k.rain.forEach((m, i) => { m.position.y = -.35 - ((t * 2.2 + i * .27) % 1) * 1.6; });
     k.hot.visible = !!d.ho; if (d.ho) { k.hot.scale.setScalar(1 + .12 * Math.sin(t * (8 + (6 - d.ho) * 3))); if (k.hotNum.material.map !== numTex(d.ho)) k.hotNum.material.map = numTex(d.ho); } // 越接近爆炸跳得越快
+    k.foam.visible = !!d.fo; if (d.fo) { k.foam.rotation.y = t * 1.2; k.foam.position.y = 1.15 + Math.sin(t * 4) * .05; }
+    k.rocket.visible = !!d.ro; if (d.ro) k.flame.scale.set(2.2, 3.4 * (1 + .25 * Math.sin(t * 40)), 2.2);
+    k.magnet.visible = !!d.mg;
+    k.scl += ((d.bg ? Core.ITEMS.big.scale : 1) - k.scl) * (1 - Math.exp(-dt * 8)); k.root.scale.setScalar(k.scl); // 巨大泡泡：慢慢變大、變回來
     animateCritter(k.critter, dt, t, false);
     for (const sp of k.sparks) { sp.visible = d.dr !== 0 && d.dl > 0 && Math.sin(t * 40 + sp.position.x) > -.3; sp.material.color.setHex(SPARK[d.dl] || SPARK[1]); }
     k.trail.forEach((m, i) => { m.visible = !!d.bo; if (d.bo) m.scale.setScalar((.26 - i * .04) * (1 + .35 * Math.sin(t * 30 + i))); });
+  }
+  // 磁鐵的線：等每台車的位置都更新完，再從吸的人連到被吸的人
+  for (const d of poses) {
+    const k = V.karts.get(d.id), o = d.mt ? V.karts.get(d.mt - 1) : null; if (!k) continue;
+    k.beam.visible = !!(d.mg && o); if (!k.beam.visible) continue;
+    const a = k.root.position, b = o.root.position, n = k.beam.children.length;
+    k.beam.children.forEach((m, i) => { const u = ((i + t * 3) % n) / n; m.position.set(b.x + (a.x - b.x) * u, b.y + .6 * o.scl + (a.y + .8 * k.scl - b.y - .6 * o.scl) * u, b.z + (a.z - b.z) * u); });
   }
 }
 function followCam(d, dt) {
   const h = d ? d.h : 0;
   V.camH = V.camH == null ? h : lerpA(V.camH, h, 1 - Math.exp(-dt * 5));
-  const fx = Math.cos(V.camH), fy = Math.sin(V.camH), tx = d ? d.x : cx, ty = d ? d.y : cy, z = (d && V.karts.get(d.id)?.z) || 0;
-  const want = W(tx - fx * 5.2, ty - fy * 5.2, 3.1 + z);
+  const fx = Math.cos(V.camH), fy = Math.sin(V.camH), tx = d ? d.x : cx, ty = d ? d.y : cy, z = (d && V.karts.get(d.id)?.z) || 0, sc = (d && V.karts.get(d.id)?.scl) || 1; // 巨大泡泡：鏡頭跟著拉遠拉高
+  const want = W(tx - fx * 5.2 * sc, ty - fy * 5.2 * sc, 3.1 * sc + z);
   if (!V.camPos) V.camPos = want.clone(); else V.camPos.lerp(want, 1 - Math.exp(-dt * 8));
   camera.position.copy(V.camPos); camera.lookAt(W(tx + fx * 3, ty + fy * 3, .6 + z));
   const fov = d?.bo ? 72 : 58; if (Math.abs(camera.fov - fov) > .1) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 6)); camera.updateProjectionMatrix(); }
@@ -664,7 +793,7 @@ function updateHud(s, me) {
   $('rank').innerHTML = k ? `${k.rank}<small> / ${n}</small>` : '<small>觀戰中</small>';
   $('lap').textContent = k ? (k.done ? `完賽 第 ${k.place} 名` : `第 ${k.lap}/${s.laps} 圈`) : `${s.laps} 圈`;
   $('time').textContent = fmtTime(s.time);
-  if (s.mode === 'speed') drawNitro(k?.ni || 0, k?.ga || 0); else drawSlot(k?.item || null);
+  if (s.mode === 'speed') { drawNitro(k?.ni || 0, k?.ga || 0); drawSlot2(null); } else { drawSlot(k?.item || null); drawSlot2(k?.i2 || null); }
   if (s.phase === 'countdown') { const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); sfx.beep(); } }
 }
 
@@ -683,13 +812,59 @@ $('modes').addEventListener('click', e => {
   renderModes(mode === 'online' ? net.lobby?.vote?.modes : null); renderMaps(mode === 'online' ? net.lobby?.vote?.counts : null); // 卡片上的個人最佳跟著模式換
 });
 renderModes(null);
+// 車子：造型與能力在選車畫面挑，記在瀏覽器；單人開賽和連線加入時一起送出（伺服器會再檢查一次）
+const PICK0 = { shape: 'classic', rperk: Object.keys(Core.RACE_PERKS)[0], iperk: Object.keys(Core.ITEM_PERKS)[0] };
+let kartPick = (() => { try { return Core.pickLoadout(JSON.parse(store.get('kt-kart')) || {}, PICK0); } catch { return { ...PICK0 }; } })();
+const loadText = () => `${Core.SHAPES[kartPick.shape].label}・${Core.RACE_PERKS[kartPick.rperk].label}・${Core.ITEM_PERKS[kartPick.iperk].label}`;
+function renderLoadLines() { $('loadLine').textContent = $('lLoadLine').textContent = `目前的車：${loadText()}`; }
+// 造型的側視小圖（128×80，地面在 y = 66）：車身、座椅上的小傢伙、輪子
+function drawKartIcon(x, shape, color) {
+  x.clearRect(0, 0, 128, 80); x.lineJoin = x.lineCap = 'round';
+  const ink = (fill, lw = 4) => { x.fillStyle = fill; x.fill(); x.lineWidth = lw; x.strokeStyle = INK; x.stroke(); };
+  const wheel = (cx, r) => { x.beginPath(); x.arc(cx, 66 - r, r, 0, Math.PI * 2); ink('#4a3b3b', 3); x.beginPath(); x.arc(cx, 66 - r, r * .38, 0, Math.PI * 2); x.fillStyle = '#fffdf8'; x.fill(); };
+  const head = (cx, cy) => { x.beginPath(); x.arc(cx, cy, 11, 0, Math.PI * 2); ink('#fffdf8', 3); x.fillStyle = INK; x.beginPath(); x.arc(cx + 4, cy - 1, 1.8, 0, Math.PI * 2); x.fill(); };
+  if (shape === 'spike') { // 閃電：低矮楔形、尖頭朝前、後擾流板
+    head(52, 26); x.beginPath(); x.moveTo(14, 34); x.lineTo(30, 34); x.lineTo(118, 52); x.lineTo(112, 58); x.lineTo(14, 58); x.closePath(); ink(color);
+    x.beginPath(); x.moveTo(20, 34); x.lineTo(20, 22); x.moveTo(30, 34); x.lineTo(30, 22); x.lineWidth = 4; x.strokeStyle = INK; x.stroke(); x.beginPath(); x.roundRect(10, 16, 30, 7, 3); ink('#fffdf8', 3);
+    wheel(36, 10); wheel(94, 10);
+  } else if (shape === 'puff') { // 軟糖：圓滾滾的一顆，大輪子
+    head(64, 22); x.beginPath(); x.ellipse(64, 46, 50, 18, 0, 0, Math.PI * 2); ink(color); x.beginPath(); x.ellipse(46, 40, 10, 4, -.3, 0, Math.PI * 2); x.fillStyle = 'rgba(255,255,255,.8)'; x.fill();
+    wheel(34, 13); wheel(94, 13);
+  } else if (shape === 'tank') { // 鐵甲：方正厚重，側面一條鐵板和螺絲
+    head(50, 18); x.beginPath(); x.roundRect(12, 26, 104, 32, 5); ink(color); x.beginPath(); x.roundRect(18, 38, 92, 12, 3); ink('#c9ced8', 3);
+    x.fillStyle = INK; for (const bx of [26, 46, 66, 86, 102]) { x.beginPath(); x.arc(bx, 44, 2, 0, Math.PI * 2); x.fill(); }
+    wheel(34, 12); wheel(94, 12);
+  } else if (shape === 'long') { // 飛梭：長車身、低底盤、兩片尾翼
+    head(56, 32); x.beginPath(); x.moveTo(6, 44); x.lineTo(100, 44); x.quadraticCurveTo(124, 46, 122, 56); x.lineTo(6, 58); x.closePath(); ink(color);
+    x.beginPath(); x.moveTo(8, 44); x.lineTo(14, 26); x.lineTo(26, 26); x.lineTo(28, 44); x.closePath(); ink('#fffdf8', 3);
+    wheel(28, 8); wheel(100, 8);
+  } else { // 泡泡：原本的圓角小車
+    head(52, 24); x.beginPath(); x.roundRect(14, 34, 100, 24, 10); ink(color); x.beginPath(); x.roundRect(98, 38, 20, 14, 5); ink('#fffdf8', 3);
+    wheel(36, 11); wheel(92, 11);
+  }
+}
+const pickBtn = (attr, key, on, inner) => `<button data-${attr}="${key}" aria-pressed="${on}">${inner}</button>`;
+function renderGarage() {
+  $('gShapes').innerHTML = Object.entries(Core.SHAPES).map(([k, v]) => pickBtn('shape', k, k === kartPick.shape, `<canvas width="128" height="80"></canvas><b>${v.label}</b>`)).join('');
+  $('gShapes').querySelectorAll('canvas').forEach((cv, i) => drawKartIcon(cv.getContext('2d'), Object.keys(Core.SHAPES)[i], setup.color));
+  $('gRace').innerHTML = Object.entries(Core.RACE_PERKS).map(([k, v]) => pickBtn('rperk', k, k === kartPick.rperk, `<b>${v.label}</b><small>${v.desc}</small>`)).join('');
+  $('gItem').innerHTML = Object.entries(Core.ITEM_PERKS).map(([k, v]) => pickBtn('iperk', k, k === kartPick.iperk, `<b>${v.label}</b><small>${v.desc}</small>`)).join('');
+}
+$('garageScreen').addEventListener('click', e => {
+  const b = e.target.closest('[data-shape],[data-rperk],[data-iperk]'); if (!b) return; haptic.tap();
+  kartPick = Core.pickLoadout({ shape: b.dataset.shape, rperk: b.dataset.rperk, iperk: b.dataset.iperk }, kartPick); store.set('kt-kart', JSON.stringify(kartPick)); renderGarage();
+});
+const openGarage = () => { renderGarage(); $('garageScreen').hidden = false; };
+$('garageBtn').addEventListener('click', openGarage); $('lGarageBtn').addEventListener('click', openGarage);
+$('garageDone').addEventListener('click', () => { $('garageScreen').hidden = true; renderLoadLines(); if (mode === 'online' && inLobby()) net.send(joinMsg()); });
+renderLoadLines();
 // 個人最佳：每張地圖、每個模式的最快完賽與最快一圈 { time, lap }，選地圖時顯示在卡片上（道具賽沿用舊的 key）
 const bestKey = (id, m) => 'kt-best-' + id + (m === 'speed' ? '-speed' : '');
 const bestOf = (id, m = raceMode) => { try { return JSON.parse(store.get(bestKey(id, m))) || null; } catch { return null; } };
 function startOffline(track = Core.TRACKS[0].id) {
   endSeq++;
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer();
-  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }], track, diff, mode: raceMode });
+  local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...kartPick }], track, diff, mode: raceMode });
   toast(`${Core.MODES[raceMode].label}：${Core.trackById(track).name}`, 1600);
   soloStart(track);
   acc = 0; prevLocal = null; buf.length = 0;
@@ -700,7 +875,7 @@ $('startBtn').addEventListener('click', () => showVote(null));
 $('soloBtn').addEventListener('click', () => goOffline());
 $('againBtn').addEventListener('click', () => {
   $('endScreen').hidden = true;
-  if (mode === 'online') { net.wantIn = true; playing = false; net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }); showLobby(); } else showVote(null);
+  if (mode === 'online') { net.wantIn = true; playing = false; net.send(joinMsg()); showLobby(); } else showVote(null);
 });
 function showEnd(r) {
   playing = false; const me = V?.myId, mine = r.players.find(p => p.id === me);
@@ -809,7 +984,7 @@ function connect() {
 function tryJoin() {
   if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
   const L = net.lobby; if (L && (L.phase === 'play' || L.players.length >= L.max)) return;
-  net.lastJoin = Date.now(); net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+  net.lastJoin = Date.now(); net.send(joinMsg());
 }
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
@@ -877,16 +1052,18 @@ function tick(now) {
     const meId = V.myId, mine = poses.find(d => d.id === meId) || [...poses].sort((a, b) => a.rank - b.rank)[0];
     followCam(mine, dt); updateHud(V.s, meId); drawMap(poses, meId);
     const own = meId != null ? poses.find(d => d.id === meId) : null; $('speedo').hidden = !own; if (own) drawSpeedo(own.v, own.bo, own.dr ? own.dl : 0);
-    wrongWay(own, dt);
+    wrongWay(own, dt); document.body.classList.toggle('foamed', !!own?.fo);
     for (const [i, m] of V.boxes.entries()) { m.rotation.y = t * 1.6 + i; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + i) * .1; }
     for (const [id, m] of V.haz) if (m.userData.decoy) { m.rotation.y = t * 1.6 + id; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + id) * .1; }
-  } else { orbitCam(dt); $('wrongWay').hidden = true; }
+  } else { orbitCam(dt); $('wrongWay').hidden = true; document.body.classList.remove('foamed'); }
   renderer.render(scene, camera);
 }
 requestAnimationFrame(tick);
 
 /* ---------- 外觀與進場：外觀由大廳設定；沒設定過就先跳選擇視窗 ---------- */
-function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; setup.eye = a.eye; setup.body = a.body; setup.blush = a.blush; if (mode === 'online' && inLobby()) net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush }); }
+// 加入房間的訊息：外觀加上車子的造型與能力
+const joinMsg = () => ({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...kartPick });
+function applyAppearance(a) { setup.color = a.color; setup.ear = a.ear; setup.eye = a.eye; setup.body = a.body; setup.blush = a.blush; if (mode === 'online' && inLobby()) net.send(joinMsg()); }
 async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
 $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
 // 連線對戰：沒有身分就先請玩家選 Telegram 登入或訪客

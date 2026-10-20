@@ -61,6 +61,29 @@ export const ITEM_ART = {
     x.beginPath(); x.roundRect(57, 18, 14, 14, 4); inkPath(x, '#c9d3e6', 3);
     x.lineWidth = 5; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#fffdf8'; x.beginPath(); x.moveTo(57, 68); x.lineTo(57, 46); x.lineTo(71, 68); x.lineTo(71, 46); x.stroke();
   },
+  foam(x) { // 泡泡雲：一團大小不一、顏色淡淡的肥皂泡，每顆有反光
+    for (const [cx, cy, r, c] of [[44, 58, 16, '#e8f4ff'], [84, 58, 16, '#f3e8ff'], [64, 42, 22, '#eafbe7'], [56, 70, 13, '#fff3b8'], [75, 72, 12, '#ffe0ec']]) { x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); inkPath(x, c, 3.5); shine(x, cx - r * .35, cy - r * .35, r * .16, r * .28); }
+  },
+  rocket(x) { // 泡泡火箭：往右上飛的粉色火箭 + 圓窗 + 藍色尾翼 + 尾焰
+    x.save(); x.translate(64, 56); x.rotate(Math.PI / 4);
+    x.beginPath(); x.moveTo(-9, 20); x.quadraticCurveTo(0, 42, 9, 20); x.closePath(); inkPath(x, '#ffa63d', 3);
+    for (const s of [-1, 1]) { x.beginPath(); x.moveTo(s * 11, 2); x.lineTo(s * 22, 20); x.lineTo(s * 9, 18); x.closePath(); inkPath(x, '#5ab8ff', 3); }
+    x.beginPath(); x.moveTo(0, -36); x.bezierCurveTo(16, -24, 14, 8, 11, 20); x.lineTo(-11, 20); x.bezierCurveTo(-14, 8, -16, -24, 0, -36); x.closePath(); inkPath(x, '#ff8fab');
+    x.beginPath(); x.arc(0, -10, 7, 0, Math.PI * 2); inkPath(x, '#bfe3ff', 3); x.restore();
+  },
+  magnet(x) { // 磁鐵：紅色 U 形磁鐵 + 銀色兩端 + 上方吸引線
+    const u = () => { x.beginPath(); x.moveTo(44, 34); x.lineTo(44, 54); x.arc(64, 54, 20, Math.PI, 0, true); x.lineTo(84, 34); };
+    x.lineCap = 'butt'; u(); x.lineWidth = 22; x.strokeStyle = INK; x.stroke(); u(); x.lineWidth = 14; x.strokeStyle = '#ff6b6b'; x.stroke();
+    for (const cx of [44, 84]) { x.beginPath(); x.rect(cx - 11, 22, 22, 13); inkPath(x, '#e8edf5', 4); }
+    x.lineWidth = 4; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(54, 14); x.lineTo(57, 8); x.moveTo(64, 13); x.lineTo(64, 6); x.moveTo(74, 14); x.lineTo(71, 8); x.stroke();
+  },
+  big(x) { // 巨大泡泡：大泡泡裡一台小車 + 左右往外的箭頭
+    x.beginPath(); x.arc(64, 52, 30, 0, Math.PI * 2); inkPath(x, '#e2d6ff'); shine(x, 51, 37, 5, 9);
+    x.beginPath(); x.roundRect(51, 48, 26, 12, 5); inkPath(x, '#ff8fab', 3);
+    for (const cx of [57, 71]) { x.beginPath(); x.arc(cx, 61, 4, 0, Math.PI * 2); inkPath(x, '#4a3b3b', 2.5); }
+    x.lineWidth = 4; x.lineCap = x.lineJoin = 'round'; x.strokeStyle = INK;
+    for (const s of [-1, 1]) { const ax = 64 + s * 44; x.beginPath(); x.moveTo(64 + s * 35, 52); x.lineTo(ax, 52); x.moveTo(ax - s * 6, 46); x.lineTo(ax, 52); x.lineTo(ax - s * 6, 58); x.stroke(); }
+  },
   super(x) { // 超級水球：紫色爆炸星 + 黃色核心
     x.beginPath(); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8 - Math.PI / 2, r = i % 2 ? 17 : 32; x[i ? 'lineTo' : 'moveTo'](64 + Math.cos(a) * r, 50 + Math.sin(a) * r); } x.closePath(); inkPath(x, '#c86bff');
     x.beginPath(); x.arc(64, 50, 11, 0, Math.PI * 2); inkPath(x, '#ffe14d', 3); shine(x, 60, 46, 3, 4);

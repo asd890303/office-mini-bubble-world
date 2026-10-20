@@ -208,7 +208,7 @@ test('kart room: lobby → countdown → race with steering and items → result
   assert.ok(end, 'end event sent');
   await new Promise(r => setTimeout(r, 0));
   const post = R.fetches.at(-1); assert.ok(post, 'result posted to the group');
-  assert.match(post.body.text, /泡泡賽車 結果（3 圈）/); assert.match(post.body.text, /Alice/); assert.match(post.body.text, /Bob｜出局｜0 分/);
+  assert.match(post.body.text, /泡泡賽車 道具賽 結果（3 圈）/); assert.match(post.body.text, /Alice/); assert.match(post.body.text, /Bob｜出局｜0 分/);
   R.adv(9000); R.tick(); assert.equal(R.room.phase, 'lobby');
 });
 
@@ -595,5 +595,50 @@ test('kart hard records: solo against hard computers go to their own board; norm
     assert.equal((await post('/kart/record', { id: alice, ticket: nor.ticket, time: 55 })).status, 200, 'an unknown difficulty counts as normal');
     board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(); candy = board.kart.tracks.find(t => t.id === 'candy');
     assert.deepEqual(candy.top.map(p => [p.name, p.time]), [['Alice', 55]]); assert.deepEqual(candy.hard.map(p => p.time), [50]);
+  } finally { Date.now = realNow; }
+});
+
+test('kart mode vote: map and mode are counted apart; the mode majority wins; nobody picking a mode means the item race', async () => {
+  const R = fakeRoom(KartRoom);
+  const a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob'), c = R.connect('3', 'Cat');
+  for (const w of [a, b, c]) await R.msg(w, { t: 'join' });
+  R.adv(20500); R.tick(); assert.equal(R.room.phase, 'vote');
+  await R.msg(a, { t: 'vote', mode: 'speed' }); // 只投模式
+  await R.msg(b, { t: 'vote', track: 'lake', mode: 'speed' }); await R.msg(c, { t: 'vote', track: 'lake', mode: 'item' }); await R.msg(c, { t: 'vote', mode: 'turbo' });
+  let v = a.out.findLast(m => m.t === 'lobby').vote;
+  assert.deepEqual(v.modes, { item: 1, speed: 2 }, 'unknown mode ignored'); assert.equal(v.counts.lake, 2, 'a mode-only vote is not a map vote');
+  const sent = a.out.length; for (let i = 0; i < 5; i++) await R.msg(b, { t: 'vote', track: 'lake', mode: 'speed' });
+  assert.equal(a.out.length, sent, 'repeating the same vote does not broadcast');
+  R.tick(); assert.equal(R.room.phase, 'vote', 'Alice has not picked a map yet');
+  await R.msg(a, { t: 'vote', track: 'candy' }); R.tick();
+  assert.equal(R.room.phase, 'play'); assert.equal(R.room.game.mode, 'speed'); assert.equal(R.room.game.boxes.length, 0, 'no item boxes in the speed race');
+  assert.equal(a.out.find(m => m.t === 'start').s.mode, 'speed');
+  // 沒人選模式：道具賽
+  const R2 = fakeRoom(KartRoom), p = R2.connect('1', 'A'), q = R2.connect('2', 'B');
+  await R2.msg(p, { t: 'join' }); await R2.msg(q, { t: 'join' }); R2.adv(20500); R2.tick();
+  await R2.msg(p, { t: 'vote', track: 'candy' }); await R2.msg(q, { t: 'vote', track: 'candy' }); R2.tick();
+  assert.equal(R2.room.game.mode, 'item'); assert.ok(R2.room.game.boxes.length > 0);
+});
+
+test('kart speed records: speed races get their own boards (online and solo, normal and hard); the minimum time allows nitro', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now;
+  const env = { ...AUTH_ENV, LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const K2 = fakeRoom(KartRoom, env); K2.room.track = 'lake'; K2.room.mode = 'speed';
+  await K2.room.reportScores({ winner: { id: 0 }, players: [{ rank: 1, id: 0, uid: '1', name: 'Bob', points: 5, time: 60 }] });
+  const alice = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 42, first_name: 'Alice' }));
+  const post = (path, body) => Bundle.default.fetch(new Request('https://x.test' + path, { method: 'POST', body: JSON.stringify(body) }), env);
+  const candy = KartCore.trackById('candy'), minItem = kartMinTime(candy), minSpeed = kartMinTime(candy, 'speed'), between = Math.round((minItem + minSpeed) / 2 * 100) / 100;
+  assert.ok(minSpeed < minItem - 3, `speed ${minSpeed.toFixed(1)} s, item ${minItem.toFixed(1)} s`);
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  try {
+    const sp = await (await post('/kart/solo', { id: alice, track: 'candy', diff: 'hard', mode: 'speed' })).json(); clock += 120000; now += 120000;
+    assert.equal((await post('/kart/record', { id: alice, ticket: sp.ticket, time: between })).status, 200, 'faster than the item-race limit is fine in a speed race');
+    now += 6000; clock += 6000;
+    const it = await (await post('/kart/solo', { id: alice, track: 'candy', diff: 'hard', mode: 'nope' })).json(); clock += 120000; now += 120000;
+    assert.equal((await post('/kart/record', { id: alice, ticket: it.ticket, time: between })).status, 422, 'an unknown mode counts as the item race, which keeps the stricter limit');
+    const board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(), t = id => board.kart.tracks.find(x => x.id === id);
+    assert.deepEqual(t('lake').speed.map(p => [p.name, p.time]), [['Bob', 60]], 'online speed race'); assert.deepEqual(t('lake').top, [], 'item board untouched');
+    assert.deepEqual(t('candy').speedHard.map(p => [p.name, p.time]), [['Alice', between]], 'solo speed race against hard computers'); assert.deepEqual(t('candy').hard, []);
   } finally { Date.now = realNow; }
 });

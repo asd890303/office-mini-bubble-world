@@ -11,23 +11,29 @@ export const KART = { VMAX: 10, ACCEL: 6, BRAKE: 8, STOP: 14, COAST: 4, REVERSE:
 export const GRID_LANES = [-2.25, -.75, .75, 2.25]; // 起跑 4 台並排，離起跑線同樣距離；窄路會等比例往中間收
 export const DRIFT = { MIN_V: 5, LEVELS: [.7, 1.4, 2.2], BOOST: [0, .7, 1.1, 1.6], MULT: 1.55, CHAIN: 1.5 }; // CHAIN：氮氣加速中甩尾，火花累積倍率（連貫甩噴）
 export const ITEMS = {
-  balloon: { speed: 22, range: 30, trap: 2, immune: 1.5, hitR: .8 },
   shoe: { time: 2, mult: 1.8 },
   puddle: { life: 15, drop: [-1.1, 0, 1.1], max: 9, spin: 1, slow: .3, hitR: .8, arm: .5 }, // drop：一次在車後丟一排，橫向偏移
-  shield: { time: 8 }, // 泡泡盾：時間內擋下一次水球、水柱或水窪
+  shield: { time: 8 }, // 泡泡盾：時間內擋下一次攻擊（水柱、水窪、雷雨雲、燙手泡泡、假道具箱）
   jet: { speed: 26, range: 120, reach: 80, steer: 8, trap: 2.5, hitR: 1 }, // 超級水柱：沿賽道追前方 reach 格內最近的車，steer 是每秒橫向修正幾格
+  storm: { speed: 30, delay: 2, trap: 1.5, life: 10, hitR: 1.2 }, // 雷雨雲：飛在空中（不管牆）追第一名，到頭上 delay 秒後下雨困住他；life 秒內沒追到就散掉
+  hot: { speed: 28, reach: 40, range: 90, steer: 8, hitR: 1, fuse: 5, min: 1.5, pass: .5, trap: 2 }, // 燙手泡泡：沿賽道飛向前方 reach 格內最近的車黏上去（最遠飛 range 格），fuse 秒後爆炸；撞到別人就黏過去（剩不到 min 秒補到 min），pass 秒內不能馬上傳回來
+  ghost: { time: 3 }, // 小幽靈：偷前面最近一台有道具的車的道具（前面沒有就偷後面的），自己透明 time 秒，道具和車子都會穿過去
+  decoy: { life: 20, max: 4, spin: 1, slow: .3, hitR: .8, arm: .5 }, // 假道具箱：丟在車後，撞到和水窪一樣打滑
 };
-export const ITEM_KINDS = ['puddle', 'balloon', 'shoe', 'shield', 'jet'];
-// 抽道具機率依名次：落後的人拿到較強的道具；第 1 名拿不到超級水柱
+export const ITEM_KINDS = ['puddle', 'shoe', 'shield', 'jet', 'storm', 'hot', 'ghost', 'decoy'];
+// 抽道具機率依名次：落後的人拿到較強的道具，加速鞋越後面越多；第 1 名拿不到超級水柱和雷雨雲，最後一名拿不到假道具箱
 export const ODDS = {
-  first: { puddle: 45, balloon: 25, shoe: 10, shield: 20, jet: 0 },
-  mid: { puddle: 25, balloon: 30, shoe: 20, shield: 10, jet: 15 },
-  last: { puddle: 5, balloon: 25, shoe: 35, shield: 5, jet: 30 },
+  first: { puddle: 40, shoe: 10, shield: 20, jet: 0, storm: 0, hot: 5, ghost: 5, decoy: 20 },
+  mid: { puddle: 15, shoe: 25, shield: 10, jet: 17, storm: 5, hot: 15, ghost: 10, decoy: 3 },
+  last: { puddle: 5, shoe: 40, shield: 5, jet: 20, storm: 15, hot: 5, ghost: 10, decoy: 0 },
 };
+// 模式：道具賽撿道具箱；競速賽沒有道具箱，漂移集滿氮氣槽得到 1 個氮氣（最多存 NITRO.max 個），按道具鍵用，效果和加速鞋一樣
+export const MODES = { item: { label: '道具賽' }, speed: { label: '競速賽' } };
+export const NITRO = { fill: 2.5, max: 2 }; // fill：漂移幾秒集滿一格
 export const POINTS = [5, 3, 2, 1];
 // 單人賽電腦難度：speed + 0..spread 是最高速比例；chain 為 true 時看前方彎道主動漂移並連噴，否則只偶爾漂移
 export const DIFFS = { normal: { label: '普通', speed: .94, spread: .04, chain: false }, hard: { label: '困難', speed: .98, spread: .02, chain: true } };
-export const BOX_RESPAWN = 5, BOX_R = .8;
+export const BOX_RESPAWN = 5, BOX_R = .8, IMMUNE = 1.5; // IMMUNE：被困住脫困後幾秒內不會再被困
 
 export function rngFrom(seed) { // mulberry32
   let a = (seed >>> 0) || 1;
@@ -95,9 +101,9 @@ export function trackPoint(s, lat = 0, T = TRACK) {
 
 /* ---------- 建立一場 ---------- */
 // humans: [{ uid, name, color, ear }]（最多 4 人，順序 = 起跑格位）；空位補電腦，bots 為 false 時不補
-export function createGame({ seed = 1, humans = [], bots = true, laps = LAPS, track = TRACKS[0].id, diff = 'normal' } = {}) {
+export function createGame({ seed = 1, humans = [], bots = true, laps = LAPS, track = TRACKS[0].id, diff = 'normal', mode = 'item' } = {}) {
   const rng = rngFrom(seed), tr = trackById(track), T = tr.T, D = DIFFS[diff] || DIFFS.normal;
-  const g = { seed: seed >>> 0, rng, laps, trackId: tr.id, T, diff: DIFFS[diff] ? diff : 'normal', phase: 'countdown', cd: COUNTDOWN, time: 0, karts: [], boxes: [], shots: [], hazards: [], nextId: 1, events: [], over: false, result: null, firstFinishAt: null, finishCount: 0 };
+  const g = { seed: seed >>> 0, rng, laps, trackId: tr.id, T, diff: DIFFS[diff] ? diff : 'normal', mode: MODES[mode] ? mode : 'item', phase: 'countdown', cd: COUNTDOWN, time: 0, karts: [], boxes: [], shots: [], hazards: [], nextId: 1, events: [], over: false, result: null, firstFinishAt: null, finishCount: 0 };
   const hs = humans.slice(0, MAX_PLAYERS), used = new Set(), earKeys = Object.keys(EARS);
   const pickColor = c => { if (!COLORS.includes(c) || used.has(c)) c = COLORS.find(k => !used.has(k)); used.add(c); return c; };
   const colors = hs.map(h => pickColor(h.color));
@@ -110,12 +116,13 @@ export function createGame({ seed = 1, humans = [], bots = true, laps = LAPS, tr
       id: g.karts.length, uid: h ? String(h.uid ?? i) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names[i], human: !!h,
       color: h ? colors[i] : pickColor(null), ear: h && EARS[h.ear] ? h.ear : earKeys[(i + 1) % earKeys.length],
       x: p.x, y: p.y, h: p.h, v: 0, steer: 0, gas: false, brake: false, driftIn: false, drift: 0, charge: 0, level: 0, boost: 0, chain: 0, combo: 0, shoe: 0, trap: 0, immune: 0, spin: 0, shield: 0,
+      storm: 0, stormBy: null, hot: 0, hotBy: null, hotCD: 0, ghost: 0, gauge: 0, nitro: 0,
       item: null, hint: loc.i, s: loc.s, total: s0, lap: 1, done: false, place: 0, finishT: null, state: 'racing', rank: i + 1, startPress: null,
       ai: h ? null : { lane: lat * .6, laneT: 1 + rng() * 3, drifting: false, itemT: .6 + rng(), speed: D.speed + rng() * D.spread },
     });
   }
-  const bl = Math.min(2, T.road - .6); // 每排 3 個道具箱，窄路排得近一點
-  for (const r of tr.boxes || [.3, .68]) for (const lat of [-bl, 0, bl]) { const p = trackPoint(T.L * r, lat, T); g.boxes.push({ i: g.boxes.length, x: p.x, y: p.y, t: 0 }); }
+  const bl = Math.min(2, T.road - .6); // 每排 3 個道具箱，窄路排得近一點；競速賽沒有道具箱
+  if (g.mode === 'item') for (const r of tr.boxes || [.3, .68]) for (const lat of [-bl, 0, bl]) { const p = trackPoint(T.L * r, lat, T); g.boxes.push({ i: g.boxes.length, x: p.x, y: p.y, t: 0 }); }
   return g;
 }
 const ev = (g, e) => g.events.push(e);
@@ -130,27 +137,69 @@ export function setInput(g, id, input = {}) {
 }
 export function useItem(g, id) {
   const k = g.karts[id];
-  if (!k || g.phase !== 'race' || !k.item || k.trap > 0 || k.state !== 'racing') return false;
+  if (!k || g.phase !== 'race' || k.trap > 0 || k.state !== 'racing') return false;
+  if (g.mode === 'speed') { // 競速賽：道具鍵用氮氣
+    if (!(k.nitro > 0) || k.done) return false;
+    k.nitro--; k.shoe = ITEMS.shoe.time; ev(g, { e: 'use', id: k.id, kind: 'nitro' });
+    return true;
+  }
+  if (!k.item) return false;
   const kind = k.item; k.item = null;
   const fx = Math.cos(k.h), fy = Math.sin(k.h);
   if (kind === 'shoe') k.shoe = ITEMS.shoe.time;
   else if (kind === 'shield') k.shield = ITEMS.shield.time;
-  else if (kind === 'balloon') g.shots.push({ id: g.nextId++, owner: k.id, kind, x: k.x + fx * .9, y: k.y + fy * .9, h: k.h, dist: 0, hint: k.hint, arm: .15 });
-  else if (kind === 'jet') { // 鎖定前方 reach 格內最近的車；前面沒人就沿賽道直直噴出去
-    const tgt = g.karts.filter(o => o !== k && o.state === 'racing' && !o.done && o.total > k.total && o.total - k.total < ITEMS.jet.reach).sort((a, b) => a.total - b.total)[0];
-    g.shots.push({ id: g.nextId++, owner: k.id, kind, target: tgt ? tgt.id : null, prog: k.total + 1, lat: clamp(locate(k.x, k.y, k.hint, g.T).d, -g.T.road, g.T.road), x: k.x, y: k.y, dist: 0 }); // 從草地發射也從路面上出發
-  } else if (kind === 'puddle') {
-    for (const lat of ITEMS.puddle.drop) g.hazards.push({ id: g.nextId++, owner: k.id, x: k.x - fx * 1.3 - fy * lat, y: k.y - fy * 1.3 + fx * lat, life: ITEMS.puddle.life, arm: ITEMS.puddle.arm });
-    while (g.hazards.length > ITEMS.puddle.max) g.hazards.shift();
+  else if (kind === 'jet' || kind === 'hot') { // 鎖定前方最近的車；前面沒人：水柱沿賽道直直噴出去，燙手泡泡往後飛黏後面最近的車
+    const reach = ITEMS[kind].reach, rs = rivals(g, k);
+    let tgt = rs.filter(o => o.total > k.total && o.total - k.total < reach).sort((a, b) => a.total - b.total)[0], dir = 1;
+    if (!tgt && kind === 'hot') { tgt = rs.filter(o => o.total <= k.total && k.total - o.total < reach).sort((a, b) => b.total - a.total)[0]; dir = -1; }
+    if (tgt && kind === 'hot' && Math.abs(tgt.total - k.total) < 1.5) stickHot(g, tgt, k.id); // 就在旁邊：直接黏上
+    else g.shots.push({ id: g.nextId++, owner: k.id, kind, target: tgt ? tgt.id : null, dir, prog: k.total + dir, lat: clamp(locate(k.x, k.y, k.hint, g.T).d, -g.T.road, g.T.road), x: k.x, y: k.y, dist: 0 }); // 從草地發射也從路面上出發
+  } else if (kind === 'storm') { // 鎖定第一名；第一名換人或完賽，飛行中會改追新的第一名
+    const tgt = leader(g, k);
+    if (tgt) g.shots.push({ id: g.nextId++, owner: k.id, kind, target: tgt.id, x: k.x, y: k.y, dist: 0, life: ITEMS.storm.life });
+  } else if (kind === 'ghost') {
+    k.ghost = ITEMS.ghost.time;
+    const has = g.karts.filter(o => o !== k && o.state === 'racing' && o.item);
+    const v = has.filter(o => o.total > k.total).sort((a, b) => a.total - b.total)[0] || has.sort((a, b) => b.total - a.total)[0];
+    if (v) { k.item = v.item; v.item = null; ev(g, { e: 'steal', id: k.id, from: v.id, kind: k.item }); }
+  } else if (kind === 'puddle' || kind === 'decoy') {
+    const it = ITEMS[kind], lats = kind === 'puddle' ? it.drop : [0], back = kind === 'puddle' ? 1.3 : 1.5;
+    for (const lat of lats) g.hazards.push({ id: g.nextId++, owner: k.id, kind, x: k.x - fx * back - fy * lat, y: k.y - fy * back + fx * lat, life: it.life, arm: it.arm });
+    const same = g.hazards.filter(z => z.kind === kind); // 同一種超過上限就收掉最舊的
+    for (const z of same.slice(0, Math.max(0, same.length - it.max))) g.hazards.splice(g.hazards.indexOf(z), 1);
   }
   ev(g, { e: 'use', id: k.id, kind });
   return true;
 }
-export function forfeit(g, id) { const k = g.karts[id]; if (!k || k.state !== 'racing') return; k.state = 'out'; k.v = 0; k.item = null; k.shield = 0; ev(g, { e: 'out', id }); }
-// 被水球、水柱或水窪打中：有泡泡盾就擋掉這一次（盾也跟著破），回傳 true
+export function forfeit(g, id) { const k = g.karts[id]; if (!k || k.state !== 'racing') return; k.state = 'out'; k.v = 0; k.item = null; k.shield = 0; k.storm = 0; k.hot = 0; ev(g, { e: 'out', id }); }
+const rivals = (g, k) => g.karts.filter(o => o !== k && o.state === 'racing' && !o.done);
+const leader = (g, k) => rivals(g, k).sort((a, b) => b.total - a.total)[0] || null;
+const tangible = k => k.state === 'racing' && !(k.ghost > 0); // 小幽靈透明時，道具和車子都穿過去
+// 被打中：有泡泡盾就擋掉這一次（盾也跟著破），回傳 true
 function blocked(g, k, by, kind) {
   if (!(k.shield > 0)) return false;
   k.shield = 0; ev(g, { e: 'block', id: k.id, by, kind });
+  return true;
+}
+// 被泡泡困住（水柱、雷雨雲、燙手泡泡）或打滑（水窪、假道具箱）；火花和連噴都歸零
+function trapKart(g, k, by, kind, t) {
+  if (blocked(g, k, by, kind)) return;
+  k.trap = t; k.drift = 0; k.charge = 0; k.level = 0; k.chain = 0; ev(g, { e: 'hit', id: k.id, by, kind });
+}
+function spinKart(g, k, by, kind) {
+  if (blocked(g, k, by, kind)) return;
+  const it = ITEMS[kind]; k.spin = it.spin; k.v *= it.slow; k.drift = 0; k.charge = 0; k.level = 0; k.chain = 0; ev(g, { e: 'spin', id: k.id, by, kind });
+}
+// 燙手泡泡黏上 k：泡泡盾擋得掉；已經黏著一顆就不再多黏
+function stickHot(g, k, by) {
+  if (k.hot > 0 || blocked(g, k, by, 'hot')) return;
+  k.hot = ITEMS.hot.fuse; k.hotBy = by; k.hotCD = 0; ev(g, { e: 'stick', id: k.id, by });
+}
+// 燙手泡泡：兩台車碰到時從 a 黏到 b
+function passHot(g, a, b) {
+  if (!(a.hot > 0) || b.hot > 0 || a.hotCD > 0 || b.done || b.state !== 'racing') return false;
+  b.hot = Math.max(a.hot, ITEMS.hot.min); b.hotBy = a.id; b.hotCD = ITEMS.hot.pass; a.hot = 0;
+  ev(g, { e: 'pass', id: b.id, by: a.id });
   return true;
 }
 
@@ -171,6 +220,10 @@ function driveAI(g, k, dt) {
   const ai = k.ai || (k.ai = { lane: 0, laneT: 2, drifting: false, itemT: 1, speed: .9 }), T = g.T;
   k.gas = true; k.brake = false;
   ai.laneT -= dt; if (ai.laneT <= 0) { ai.laneT = 2 + g.rng() * 3; ai.lane = (g.rng() - .5) * Math.min(3, (T.road - .8) * 2); } // 窄路換線幅度跟著變小
+  if (k.hot > 0 && k.hotCD <= 0 && !k.done) { // 身上有燙手泡泡：往 8 格內最近的車靠過去，撞到就傳出去
+    const o = rivals(g, k).filter(o => tangible(o) && !(o.hot > 0) && Math.abs(o.total - k.total) < 8).sort((a, b) => Math.abs(a.total - k.total) - Math.abs(b.total - k.total))[0];
+    if (o) ai.lane = clamp(locate(o.x, o.y, o.hint, T).d, -T.road, T.road);
+  }
   const look = Math.round((3 + Math.max(0, k.v) * .45) / T.STEP), j = (k.hint + look) % T.N;
   const tx = T.xs[j] - T.ty[j] * ai.lane, ty = T.ys[j] + T.tx[j] * ai.lane;
   const diff = wrapAngle(Math.atan2(ty - k.y, tx - k.x) - k.h);
@@ -187,13 +240,19 @@ function driveAI(g, k, dt) {
     if (ai.drifting && (Math.abs(diff) < .1 || k.charge > 1.5 || k.v < DRIFT.MIN_V)) ai.drifting = false;
   }
   k.driftIn = ai.drifting;
-  if (k.item && !k.done) {
+  if (g.mode === 'speed') { // 競速賽：在直線上、沒有其他加速時用氮氣
+    if (k.nitro > 0 && !k.done && !k.drift && k.boost <= 0 && k.shoe <= 0) {
+      const m = Math.round(12 / T.STEP), ang = j => Math.atan2(T.ty[j % T.N], T.tx[j % T.N]);
+      if (Math.abs(wrapAngle(ang(k.hint + m) - ang(k.hint))) < .25) useItem(g, k.id);
+    }
+  } else if (k.item && !k.done) {
     ai.itemT -= dt;
     if (ai.itemT <= 0) {
-      const ahead = g.karts.some(o => o !== k && o.state === 'racing' && o.total - k.total > 1 && o.total - k.total < 18 && Math.abs(wrapAngle(Math.atan2(o.y - k.y, o.x - k.x) - k.h)) < .35);
       const behind = g.karts.some(o => o !== k && o.state === 'racing' && k.total - o.total > 0 && k.total - o.total < 6);
-      const threat = g.shots.some(s => s.owner !== k.id && (s.kind !== 'jet' || s.target === k.id) && Math.hypot(s.x - k.x, s.y - k.y) < 9); // 有水球或追著自己的水柱靠近
-      const use = { shoe: true, balloon: ahead, puddle: behind, shield: threat || behind, jet: k.rank > 1 }[k.item];
+      // 威脅：追著自己的水柱、雷雨雲或燙手泡泡靠近，或頭上已經有雲、身上黏著泡泡
+      const threat = k.storm > 0 || k.hot > 0 || g.shots.some(s => s.owner !== k.id && s.target === k.id && Math.hypot(s.x - k.x, s.y - k.y) < (s.kind === 'storm' ? 15 : 9));
+      const hotTarget = rivals(g, k).some(o => Math.abs(o.total - k.total) < ITEMS.hot.reach); // 前面沒人時會往後黏
+      const use = { shoe: true, puddle: behind, shield: threat || behind, jet: k.rank > 1, storm: k.rank > 1, hot: hotTarget, ghost: threat || g.karts.some(o => o !== k && o.item), decoy: behind }[k.item];
       if (use || ai.itemT < -5) { useItem(g, k.id); ai.itemT = .6 + g.rng(); }
     }
   }
@@ -201,11 +260,17 @@ function driveAI(g, k, dt) {
 
 /* ---------- 每台車一步 ---------- */
 function driveKart(g, k, dt, band) {
-  if (k.trap > 0) { k.trap -= dt; k.v = Math.max(0, k.v - 30 * dt); if (k.trap <= 0) { k.trap = 0; k.immune = ITEMS.balloon.immune; } }
+  if (k.trap > 0) { k.trap -= dt; k.v = Math.max(0, k.v - 30 * dt); if (k.trap <= 0) { k.trap = 0; k.immune = IMMUNE; } }
   else if (k.immune > 0) k.immune = Math.max(0, k.immune - dt);
   if (k.boost > 0) k.boost = Math.max(0, k.boost - dt);
   if (k.shoe > 0) k.shoe = Math.max(0, k.shoe - dt);
   if (k.shield > 0) k.shield = Math.max(0, k.shield - dt);
+  if (k.ghost > 0) k.ghost = Math.max(0, k.ghost - dt);
+  if (k.hotCD > 0) k.hotCD = Math.max(0, k.hotCD - dt);
+  if (k.done) { k.storm = 0; k.hot = 0; }
+  // 雷雨雲下雨、燙手泡泡爆炸；剛好透明、被困住或剛脫困（immune）就沒事
+  if (k.storm > 0 && (k.storm -= dt) <= 0) { k.storm = 0; if (k.ghost > 0 || k.trap > 0 || k.immune > 0) ev(g, { e: 'miss', id: k.id, by: k.stormBy, kind: 'storm' }); else trapKart(g, k, k.stormBy, 'storm', ITEMS.storm.trap); }
+  if (k.hot > 0 && (k.hot -= dt) <= 0) { k.hot = 0; if (k.trap > 0 || k.immune > 0) ev(g, { e: 'miss', id: k.id, by: k.hotBy, kind: 'hot' }); else trapKart(g, k, k.hotBy, 'hot', ITEMS.hot.trap); }
   const stunned = k.trap > 0 || k.spin > 0;
   if (k.spin > 0) { k.spin = Math.max(0, k.spin - dt); k.v = Math.max(0, k.v - 6 * dt); }
   if (!stunned && (!k.human || k.done)) driveAI(g, k, dt);
@@ -219,6 +284,7 @@ function driveKart(g, k, dt, band) {
     k.drift = 0; k.charge = 0; k.level = 0;
   }
   if (k.drift && !k.wallHit) { k.charge += dt * (k.boost > 0 ? DRIFT.CHAIN : 1); k.level = DRIFT.LEVELS.filter(t => k.charge >= t).length; } // 擦著牆時火花暫停累積，不能靠磨牆集滿粉色
+  if (g.mode === 'speed' && k.drift && !k.wallHit && !k.done && k.nitro < NITRO.max && (k.gauge += dt / NITRO.fill) >= 1) { k.gauge -= 1; k.nitro++; ev(g, { e: 'nitro', id: k.id, n: k.nitro }); } // 氮氣槽：存滿 max 個就停在原處
   // 轉向：低速轉不動，高速轉得慢；漂移時固定往漂移方向彎，搖桿只調鬆緊
   const sp = Math.abs(k.v), tf = clamp(sp / 3, 0, 1) * (1 - .35 * Math.min(1, sp / KART.VMAX)) * (k.v < 0 ? -1 : 1); // 倒車時方向盤反過來
   const turn = k.drift ? k.drift * (.75 + .45 * steer * k.drift) : steer;
@@ -301,11 +367,13 @@ export function step(g, dt) {
     const band = lead == null || k.human ? 1 : k.total - lead > 20 ? .94 : lead - k.total > 20 ? 1.06 : 1; // 電腦太前面就放慢、太後面就加快
     driveKart(g, k, dt, band);
   }
-  // 車子互撞：把兩台車完全推開，再沿碰撞方向交換一部分速度（後車減速、前車被頂一下），撞得夠用力會往側邊彈
+  // 車子互撞：把兩台車完全推開，再沿碰撞方向交換一部分速度（後車減速、前車被頂一下），撞得夠用力會往側邊彈。
+  // 透明的車直接穿過去；碰到時燙手泡泡會黏到對方身上
   const live = g.karts.filter(k => k.state !== 'out');
   for (let a = 0; a < live.length; a++) for (let b = a + 1; b < live.length; b++) {
     const A = live[a], B = live[b], dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy), min = KART.R * 2;
-    if (!(d < min)) continue;
+    if (!(d < min) || A.ghost > 0 || B.ghost > 0) continue;
+    passHot(g, A, B) || passHot(g, B, A);
     const ux = d > 1e-6 ? dx / d : 1, uy = d > 1e-6 ? dy / d : 0, push = (min - d) / 2 + .02;
     A.x -= ux * push; A.y -= uy * push; B.x += ux * push; B.y += uy * push;
     const ax = Math.cos(A.h) * A.v, ay = Math.sin(A.h) * A.v, bx = Math.cos(B.h) * B.v, by = Math.sin(B.h) * B.v;
@@ -326,28 +394,39 @@ export function step(g, dt) {
     b.t = BOX_RESPAWN;
     if (!k.item) { k.item = rollItem(g, k); ev(g, { e: 'item', id: k.id, kind: k.item }); }
   }
-  // 水球直線前進，撞牆或超過射程就破；超級水柱沿賽道前進、橫向慢慢對準目標，不會撞牆
+  // 超級水柱和燙手泡泡沿賽道前進、橫向慢慢對準目標，不會撞牆；雷雨雲直接飛向目標
+  const popAt = s => ev(g, { e: 'pop', x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 });
   for (const s of [...g.shots]) {
-    const it = ITEMS[s.kind], d = it.speed * dt; let wall = false;
-    if (s.kind === 'jet') {
-      s.prog += d;
-      const t = s.target != null ? g.karts[s.target] : null;
-      if (t && t.state === 'racing') { const want = clamp(locate(t.x, t.y, t.hint, g.T).d, -g.T.road, g.T.road); s.lat += clamp(want - s.lat, -it.steer * dt, it.steer * dt); }
-      const p = trackPoint(s.prog, s.lat, g.T); s.x = p.x; s.y = p.y;
-    } else {
-      s.x += Math.cos(s.h) * d; s.y += Math.sin(s.h) * d; s.arm -= dt;
-      const loc = locate(s.x, s.y, s.hint, g.T); s.hint = loc.i; wall = Math.abs(loc.d) > g.T.wall;
+    const it = ITEMS[s.kind], d = it.speed * dt;
+    if (s.kind === 'storm') {
+      let t = g.karts[s.target];
+      if (!t || t.state !== 'racing' || t.done) { t = leader(g, g.karts[s.owner]); s.target = t ? t.id : null; }
+      s.life -= dt; let gone = !t || s.life <= 0;
+      if (!gone) {
+        const dx = t.x - s.x, dy = t.y - s.y, dd = Math.hypot(dx, dy);
+        if (dd > Math.max(it.hitR, d)) { s.x += dx / dd * d; s.y += dy / dd * d; }
+        else { s.x = t.x; s.y = t.y; if (!(t.ghost > 0)) { gone = true; if (!(t.storm > 0)) { t.storm = it.delay; t.stormBy = s.owner; ev(g, { e: 'cloud', id: t.id, by: s.owner }); } } } // 目標透明時雲停在頭上等
+      }
+      if (gone) { g.shots.splice(g.shots.indexOf(s), 1); if (s.life <= 0 || !t) popAt(s); }
+      continue;
     }
+    s.prog += d * (s.dir || 1);
+    const t = s.target != null ? g.karts[s.target] : null;
+    if (t && t.state === 'racing') { const want = clamp(locate(t.x, t.y, t.hint, g.T).d, -g.T.road, g.T.road); s.lat += clamp(want - s.lat, -it.steer * dt, it.steer * dt); }
+    const p = trackPoint(s.prog, s.lat, g.T); s.x = p.x; s.y = p.y;
     s.dist += d;
-    const hit = live.find(k => k.state === 'racing' && k.trap <= 0 && k.immune <= 0 && (k.id !== s.owner || (s.kind === 'balloon' && s.arm <= 0)) && Math.hypot(k.x - s.x, k.y - s.y) < it.hitR);
-    if (hit && !blocked(g, hit, s.owner, s.kind)) { hit.trap = it.trap; hit.drift = 0; hit.charge = 0; hit.level = 0; hit.chain = 0; ev(g, { e: 'hit', id: hit.id, by: s.owner, kind: s.kind }); }
-    if (hit || wall || s.dist > it.range) { g.shots.splice(g.shots.indexOf(s), 1); if (!hit) ev(g, { e: 'pop', x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100 }); }
+    const near = k => tangible(k) && k.id !== s.owner && Math.hypot(k.x - s.x, k.y - s.y) < it.hitR;
+    const hit = s.kind === 'hot' ? live.find(k => near(k) && !k.done) // 燙手泡泡被困住的車也黏得上
+      : live.find(k => near(k) && k.trap <= 0 && k.immune <= 0);
+    if (hit && s.kind === 'hot') stickHot(g, hit, s.owner);
+    else if (hit) trapKart(g, hit, s.owner, s.kind, it.trap);
+    if (hit || s.dist > it.range) { g.shots.splice(g.shots.indexOf(s), 1); if (!hit) popAt(s); }
   }
-  // 水窪：踩到打滑
+  // 水窪、假道具箱：撞到打滑
   for (const z of [...g.hazards]) {
-    z.life -= dt; z.arm -= dt;
-    const k = live.find(k => k.state === 'racing' && k.trap <= 0 && k.spin <= 0 && (k.id !== z.owner || z.arm <= 0) && Math.hypot(k.x - z.x, k.y - z.y) < ITEMS.puddle.hitR);
-    if (k && !blocked(g, k, z.owner, 'puddle')) { k.spin = ITEMS.puddle.spin; k.v *= ITEMS.puddle.slow; k.drift = 0; k.charge = 0; k.level = 0; k.chain = 0; ev(g, { e: 'spin', id: k.id, by: z.owner }); }
+    const it = ITEMS[z.kind]; z.life -= dt; z.arm -= dt;
+    const k = live.find(k => tangible(k) && k.trap <= 0 && k.spin <= 0 && (k.id !== z.owner || z.arm <= 0) && Math.hypot(k.x - z.x, k.y - z.y) < it.hitR);
+    if (k) spinKart(g, k, z.owner, z.kind);
     if (k || z.life <= 0) g.hazards.splice(g.hazards.indexOf(z), 1);
   }
   // 結束：所有真人完賽或出局、全部完賽、第一名衝線後 FINISH_GRACE 秒、或超過 MAX_TIME
@@ -363,32 +442,37 @@ export function step(g, dt) {
 // 連線每個 tick 送 full: false 的版本，約省一半流量：不送整場不變的資料（名字、顏色、耳朵、道具箱座標），值是 0 的欄位也省略。
 // 客戶端用 expandFrame 拿開局時的完整快照補回來
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
-const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'done', 'place'];
+const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'cl', 'ho', 'gh', 'ni', 'ga', 'done', 'place'];
+// shots 第 4 欄的道具代碼（0 原本是水球，已移除）；haz 第 4 欄 1 = 假道具箱、0 = 水窪
+export const SHOT_CODE = { jet: 1, storm: 2, hot: 3 };
 export function snapshot(g, { full = true } = {}) {
   const s = fullSnapshot(g);
   if (full) return s;
   const karts = s.karts.map(k => Object.fromEntries(Object.entries(k).filter(([key, v]) => !KART_STATIC.includes(key) && !(v === 0 && KART_ZERO.includes(key)))));
-  return { ...s, full: 0, karts, boxes: s.boxes.map(b => b[3]).join('') };
+  const { mode, ...rest } = s;
+  return { ...rest, full: 0, karts, boxes: s.boxes.map(b => b[3]).join('') };
 }
 export function expandFrame(f, base) {
   if (f.full !== 0) return f;
   const { full, ...rest } = f;
   return {
-    ...rest,
+    ...rest, mode: base.mode,
     karts: f.karts.map(k => { const b = base.karts.find(o => o.id === k.id) || {}, o = {}; for (const key of KART_STATIC) o[key] = b[key]; for (const key of KART_ZERO) o[key] = 0; return { ...o, ...k }; }),
     boxes: base.boxes.map((b, i) => [b[0], b[1], b[2], f.boxes[i] === '1' ? 1 : 0]),
   };
 }
 function fullSnapshot(g) {
   return {
-    seed: g.seed, track: g.trackId, phase: g.phase, cd: r2(g.cd), time: r2(g.time), over: g.over, laps: g.laps,
+    seed: g.seed, track: g.trackId, mode: g.mode, phase: g.phase, cd: r2(g.cd), time: r2(g.time), over: g.over, laps: g.laps,
     karts: g.karts.map(k => ({
       id: k.id, uid: k.uid, name: k.name, human: k.human, color: k.color, ear: k.ear, x: r3(k.x), y: r3(k.y), h: r3(k.h), v: r2(k.v),
       dr: k.drift, dl: k.level, bo: k.boost > 0 || k.shoe > 0 ? 1 : 0, tr: r2(k.trap), sp: r2(k.spin), im: k.immune > 0 ? 1 : 0, sh: k.shield > 0 ? 1 : 0,
+      // cl：頭上有雷雨雲；ho：燙手泡泡還剩幾秒（無條件進位，每秒才變一次）；gh：透明；ni、ga：氮氣個數與氮氣槽（每 5% 一格）
+      cl: k.storm > 0 ? 1 : 0, ho: Math.ceil(k.hot), gh: k.ghost > 0 ? 1 : 0, ni: k.nitro, ga: Math.round(k.gauge * 20) / 20,
       lap: k.lap, tot: r2(k.total), item: k.item, done: k.done ? 1 : 0, place: k.place, rank: k.rank, st: k.state,
     })),
     boxes: g.boxes.map(b => [b.i, r3(b.x), r3(b.y), b.t > 0 ? 0 : 1]),
-    shots: g.shots.map(s => [s.id, r3(s.x), r3(s.y), s.kind === 'jet' ? 1 : 0]), // 第 4 欄：1 = 超級水柱
-    haz: g.hazards.map(z => [z.id, r3(z.x), r3(z.y)]),
+    shots: g.shots.map(s => [s.id, r3(s.x), r3(s.y), SHOT_CODE[s.kind]]),
+    haz: g.hazards.map(z => [z.id, r3(z.x), r3(z.y), z.kind === 'decoy' ? 1 : 0]),
   };
 }

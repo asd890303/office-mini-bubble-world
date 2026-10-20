@@ -101,7 +101,7 @@ if (inTelegram) { try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); }
 /* ---------- 房間（每款遊戲一間）。新增遊戲：加一筆，並在 deploy/build.mjs 的 GAMES 加同一個 id ---------- */
 const ROOMS = [
   { id: 'bubble', title: '泡泡碰碰島', blurb: '放水球、炸箱子、撿道具，撐到最後的小傢伙獲勝', color: '#5ab8ff', x0: .6, x1: 4.6, y0: .6, y1: 4.4, path: '/bubble/', art(x) { x.save(); x.translate(-12, 4); x.scale(.9, .9); ITEM_ART.bomb(x); x.restore(); x.save(); x.translate(42, 26); x.scale(.7, .7); ITEM_ART.power(x); x.restore(); } },
-  { id: 'kart', title: '泡泡賽車', blurb: '3 圈搶道具、漂移、衝線，2–4 人連線', color: '#ff8fab', x0: 5, x1: 9, y0: .6, y1: 4.4, path: '/kart/', art(x) { GAME_ART.kart(x); } },
+  { id: 'kart', title: '泡泡賽車', blurb: '道具賽或競速賽，3 圈漂移衝線，2–4 人連線', color: '#ff8fab', x0: 5, x1: 9, y0: .6, y1: 4.4, path: '/kart/', art(x) { GAME_ART.kart(x); } },
   { id: 'artillery', title: '泡泡砲戰', blurb: '3 對 3 輪流砲擊，2–6 人，電腦遊玩', color: '#4cd68a', x0: 9.4, x1: 13.4, y0: .6, y1: 4.4, path: '/artillery/', art(x) { GAME_ART.artillery(x); } },
 ];
 
@@ -169,8 +169,8 @@ async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
 }
 /* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
-const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人普通電腦都算' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
-let boardTab = 'total', gamesData = null, kartDiff = 'normal'; // 賽車分頁裡可以切換電腦難度，各自一份榜
+const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '道具賽・連線和單人普通電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
+let boardTab = 'total', gamesData = null, kartDiff = 'normal', kartMode = 'item'; // 賽車分頁裡可以切換模式（道具賽／競速賽）與電腦難度，各自一份榜
 async function loadGames() {
   try { const r = await fetch('/board/games', { cache: 'no-store' }); if (r.ok) { gamesData = await r.json(); renderGames(); } } catch {}
 }
@@ -179,10 +179,11 @@ function renderGames() {
   const el = $('boardGames');
   if (!gamesData) { el.innerHTML = '<ol><li>載入中…</li></ol>'; return; }
   if (boardTab === 'kart') {
-    const hard = kartDiff === 'hard';
-    el.innerHTML = `<div class="subtabs"><button data-kd="normal" class="${hard ? '' : 'on'}">普通</button><button data-kd="hard" class="${hard ? 'on' : ''}">困難</button></div>` +
-      ((gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(hard ? t.hard : t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>');
-    $('boardNote').textContent = hard ? '單人對困難電腦，每條賽道最快完賽前 3 名' : BOARD_TABS.kart.note;
+    const hard = kartDiff === 'hard', speed = kartMode === 'speed', list = t => (speed ? (hard ? t.speedHard : t.speed) : (hard ? t.hard : t.top)) || [];
+    const tabs = (key, opts, cur) => `<div class="subtabs">${opts.map(([v, label]) => `<button data-${key}="${v}" class="${v === cur ? 'on' : ''}">${label}</button>`).join('')}</div>`;
+    el.innerHTML = tabs('km', [['item', '道具賽'], ['speed', '競速賽']], kartMode) + tabs('kd', [['normal', '普通'], ['hard', '困難']], kartDiff) +
+      ((gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(list(t), p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>');
+    $('boardNote').textContent = `${speed ? '競速賽' : '道具賽'}・${hard ? '單人對困難電腦' : '連線和單人普通電腦'}，每條賽道最快完賽前 3 名`;
   }
   else if (boardTab === 'bubble') el.innerHTML = recList(gamesData.bubble?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
   else if (boardTab === 'artillery') el.innerHTML = recList(gamesData.artillery?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
@@ -194,7 +195,7 @@ function setBoardTab(tab) {
   $('boardList').hidden = tab !== 'total'; $('boardGames').hidden = tab === 'total';
   if (tab !== 'total') { renderGames(); loadGames(); }
 }
-$('boardGames').addEventListener('click', e => { const b = e.target.closest('button[data-kd]'); if (!b) return; kartDiff = b.dataset.kd; renderGames(); });
+$('boardGames').addEventListener('click', e => { const b = e.target.closest('button[data-kd], button[data-km]'); if (!b) return; if (b.dataset.kd) kartDiff = b.dataset.kd; else kartMode = b.dataset.km; renderGames(); });
 $('boardTabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) setBoardTab(b.dataset.tab); });
 function renderBoardList() {
   const top = boardData?.top || [];

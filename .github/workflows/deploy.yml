@@ -27,12 +27,17 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/dev'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # 只有這個 job 要推 tag
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node deploy/build.mjs
+      - id: build
+        run: |
+          node deploy/build.mjs | tee build.log
+          echo "id=$(grep -o 'build [0-9a-f]*' build.log | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -40,3 +45,15 @@ jobs:
           workingDirectory: deploy
           wranglerVersion: "4.151.1"
           command: deploy
+      # 部署成功後在這個 commit 打 tag：deploy-日期時間-版本碼，版本碼就是線上 /version 回傳的那串；同一個版本碼已經有 tag 就略過
+      - name: Tag the deployed commit
+        env:
+          BUILD_ID: ${{ steps.build.outputs.id }}
+        run: |
+          test -n "$BUILD_ID"
+          if git ls-remote --tags origin "refs/tags/deploy-*-$BUILD_ID" | grep -q .; then echo "tag for $BUILD_ID already exists"; exit 0; fi
+          tag="deploy-$(TZ=Asia/Taipei date +%Y%m%d-%H%M)-$BUILD_ID"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "deploy $BUILD_ID" "$GITHUB_SHA"
+          git push origin "$tag"

@@ -548,3 +548,49 @@ test('kart solo records: ticket at the start, checked time at the finish; record
     assert.equal((await Bundle.default.fetch(new Request('https://x.test/record', { method: 'POST', body: '{}' }), env)).status, 404, '/record is not public');
   } finally { Date.now = realNow; }
 });
+
+test('records: artillery keeps the best single-game kills per player; zero, bots and out-of-range values dropped', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now++;
+  const env = { LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const R = fakeRoom(ArtilleryRoom, env);
+  assert.equal(R.room.recordStats({ kills: 0 }), null); assert.deepEqual(R.room.recordStats({ kills: 2 }), { kills: 2 });
+  await R.room.reportScores({ winnerTeam: 0, players: [{ rank: 1, id: 0, uid: '1', name: 'Alice', team: 0, kills: 3, points: 5 }, { rank: 2, id: 1, uid: '2', name: 'Bob', team: 1, kills: 1, points: 1 }, { rank: 3, id: 2, uid: null, name: 'Bot', bot: true, team: 1, kills: 3, points: 1 }] });
+  await R.room.reportScores({ winnerTeam: 1, players: [{ rank: 1, id: 1, uid: '2', name: 'Bob', team: 1, kills: 2, points: 5 }, { rank: 2, id: 0, uid: '1', name: 'Alice', team: 0, kills: 1, points: 1 }] });
+  await lobby.addScores({ game: 'artillery', entries: [{ uid: '9', name: 'Hack', points: 1, stats: { kills: 99 } }, { uid: '8', name: 'Frac', points: 1, stats: { kills: 1.5 } }] });
+  const r = await Bundle.default.fetch(new Request('https://x.test/board/games'), env), g = await r.json();
+  assert.deepEqual(g.artillery.kills.map(p => [p.rank, p.name, p.kills]), [[1, 'Alice', 3], [2, 'Bob', 2]]);
+});
+
+test('bubble / artillery solo records: ticket at the start, kills checked at the finish; too many, too fast, wrong ticket, guests rejected', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now;
+  const env = { ...AUTH_ENV, LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const alice = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 42, first_name: 'Alice' })), bob = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 7, first_name: 'Bob' }));
+  const post = (path, body) => Bundle.default.fetch(new Request('https://x.test' + path, { method: 'POST', body: JSON.stringify(body) }), env);
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  try {
+    for (const [game, perKill] of [['artillery', 8], ['bubble', 5]]) {
+      const start = await post(`/${game}/solo`, { id: alice }); assert.equal(start.status, 200); const { ticket } = await start.json(); assert.ok(ticket);
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket, kills: 1 })).status, 422, 'faster than one kill can take');
+      clock += 60000; now += 60000;
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket, kills: 4 })).status, 422, 'more than 3 enemies');
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket, kills: 0 })).status, 422, 'zero is not a record');
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket, kills: 1.5 })).status, 422);
+      assert.equal((await post(`/${game}/record`, { id: bob, ticket, kills: 1 })).status, 403, 'the ticket belongs to Alice');
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket: 'bad.ticket', kills: 1 })).status, 403);
+      const kartTicket = await (await post('/kart/solo', { id: alice, track: 'candy' })).json();
+      assert.equal((await post(`/${game}/record`, { id: alice, ticket: kartTicket.ticket, kills: 1 })).status, 403, 'a kart ticket is not a ' + game + ' ticket');
+      const ok = await post(`/${game}/record`, { id: alice, ticket, kills: 2 }); assert.equal(ok.status, 200);
+      assert.deepEqual(await ok.json(), { ok: true, rank: 1, improved: true, top: [{ rank: 1, name: 'Alice', kills: 2 }] });
+      now += 6000; assert.equal((await post(`/${game}/record`, { id: alice, ticket, kills: 1 })).status, 200, 'a worse result is accepted but does not replace the best');
+      const board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(); assert.deepEqual(board[game].kills.map(p => [p.name, p.kills]), [['Alice', 2]]);
+      now += 10000;
+    }
+    const web = await signSession({ uid: 'g:1', name: 'Guest', guest: 1, exp: clock + 60000 }, AUTH_ENV);
+    assert.equal((await post('/artillery/solo', { id: 'session=' + encodeURIComponent(web) })).status, 403, 'guests get no ticket');
+    assert.equal((await post('/artillery/solo', { id: 'auth=nope' })).status, 401);
+    assert.equal((await Bundle.default.fetch(new Request('https://x.test/artillery/solo'), env)).status, 405);
+    const total = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json(); assert.equal(total.top.length, 0, 'solo records never add points');
+  } finally { Date.now = realNow; }
+});

@@ -13,12 +13,19 @@ body { background: linear-gradient(var(--bg-top), var(--bg-bottom)); }
 canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
 .btn[aria-pressed="true"] { background: var(--pink); color: #4a3b3b; }
 .back { display: inline-block; margin-top: 10px; text-decoration: none; color: var(--ink); }
+.endnote { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.endnote.best { color: var(--pink-deep); font-size: 15px; }
 .box.sm { border-width: 2px; border-radius: 14px; padding: 4px 10px; }
 
 /* HUD */
 .top { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; pointer-events: none; z-index: 5; }
 .top > * { pointer-events: auto; }
-.teams { display: flex; flex-direction: column; gap: 6px; width: 210px; }
+.left { display: flex; flex-direction: column; gap: 6px; width: 210px; }
+.teams { display: flex; flex-direction: column; gap: 6px; }
+.keys { border-width: 2px; border-radius: 14px; padding: 4px 8px 6px; font-size: 11.5px; font-weight: 700; line-height: 1.7; }
+.keys h4 { margin: 0; font-size: 12px; font-weight: 900; display: flex; justify-content: space-between; align-items: center; }
+.keys kbd { display: inline-block; min-width: 16px; padding: 0 4px; margin-right: 2px; text-align: center; font: 900 10.5px inherit; border: 2px solid var(--ink); border-radius: 6px; background: #fff; }
+.keys.fold .keylist { display: none; }
 .team { border-width: 2px; border-radius: 14px; padding: 4px 8px 5px; font-size: 12px; font-weight: 900; }
 .team h4 { margin: 0 0 3px; font-size: 12px; display: flex; justify-content: space-between; }
 .mem { display: grid; grid-template-columns: 1fr 70px; gap: 6px; align-items: center; padding: 1px 3px; border-radius: 8px; white-space: nowrap; }
@@ -123,7 +130,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .list li:last-child { border: 0; }
 .pcnotice { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 50; font-size: 13px; font-weight: 900; padding: 6px 16px; }
 .pcnotice[hidden] { display: none; }
-body.idle :is(.teams, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingbar, .feed) { visibility: hidden; }
+body.idle :is(.teams, .keys, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingbar, .feed) { visibility: hidden; }
 </style>
 </head>
 <body class="idle">
@@ -131,7 +138,7 @@ body.idle :is(.teams, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingba
 <div class="box pcnotice" id="pcnotice" hidden>請用電腦玩</div>
 
 <div class="top">
-  <div class="teams" id="teams"></div>
+  <div class="left"><div class="teams" id="teams"></div><div class="box keys" id="keys"><h4><span>操作</span><button class="btn foldbtn" data-fold="keys" data-label=""></button></h4><div class="keylist"><div><kbd>A</kbd><kbd>D</kbd> 左右移動</div><div><kbd>滑鼠</kbd> 瞄準</div><div><kbd>左鍵</kbd> 按住蓄力，放開發射</div><div><kbd>右鍵</kbd> 取消蓄力</div><div><kbd>1</kbd>到<kbd>8</kbd> 選攻擊道具</div><div><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> 支援道具</div><div><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> 買　<kbd>R</kbd> 刷新</div><div><kbd>Shift</kbd>＋點地面 標記隊友</div></div></div></div>
   <div class="center">
     <div class="box banner" id="banner">第 1 / 10 輪</div>
     <div class="timer" id="timer">20</div>
@@ -210,6 +217,7 @@ body.idle :is(.teams, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingba
     <h2 id="endTitle"></h2>
     <p id="endSub"></p>
     <ul class="list" id="results"></ul>
+    <p class="endnote" id="endNote" hidden></p>
     <button class="btn primary go" id="againBtn">再打一場</button>
     <a class="btn back" href="/">回遊戲大廳</a>
   </div>
@@ -225,6 +233,7 @@ import { INK, inkPath, shine, badgeFrame } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { watchUpdates } from '/shared/update.js';
+import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 import { toon, G, M, blob, boxOutline, makeCritter, animateCritter } from '/shared/three-kit.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 
@@ -354,7 +363,7 @@ function disposeView() {
   for (const c of V.chars) { scene.remove(c.grp, c.tag); if (c.bub) scene.remove(c.bub); }
   for (const p of projectiles) scene.remove(p.mesh); projectiles.length = 0; for (const b of V.bombs.values()) scene.remove(b.m);
   for (const p of parts) scene.remove(p.m); parts.length = 0; for (const m of markers) scene.remove(m.s); markers.length = 0; V = null;
-  document.body.classList.add('idle'); $('readyScreen').hidden = true; reachKey = ''; for (const d of reachDots) d.visible = false; for (const e of reachEnds) e.visible = false;
+  lastPathKey = ''; if (lastPathObj) { scene.remove(lastPathObj); lastPathObj = null; } document.body.classList.add('idle'); $('readyScreen').hidden = true; reachKey = ''; for (const d of reachDots) d.visible = false; for (const e of reachEnds) e.visible = false;
 }
 function buildView(s, me) {
   disposeView(); fxQueue.length = 0; busyUntil = 0;
@@ -429,7 +438,7 @@ function projMesh(item) {
 }
 function playShot(e) {
   const c = V.chars[e.id], t0 = performance.now(); let tmax = 0; sfx.shot(); c.pulse = .3; c.face = Math.cos(e.angle * Math.PI / 180) >= 0 ? 1 : -1;
-  feed(`${c.name} 發射 ${A.ITEMS[e.item].name}`, e.id);
+  feed(`${c.name} 發射 ${A.ITEMS[e.item].name}`, e.id); c.lastPaths = e.shots.map(s => s.path); c.pathVer = (c.pathVer || 0) + 1;
   for (const s of e.shots) { projectiles.push({ mesh: projMesh(e.item), path: s.path, dur: s.dur, t0: t0 + (s.at || 0), item: e.item, last: 0, acc: 0, bore: s.bore, digFrom: s.digFrom, dug: s.digFrom ?? -1 }); tmax = Math.max(tmax, s.dur); }
   for (const f of e.fx) { tmax = Math.max(tmax, f.t); fxQueue.push({ at: t0 + f.t, fn: () => applyFx(f, e) }); }
   fxQueue.push({ at: t0 + 30, fn: () => { c.money = e.money; c.items = { ...e.items }; refreshHud(); refreshHotbar(); } });
@@ -637,7 +646,7 @@ function updateGuide(me, a) {
   guide.forEach((g, i) => { const j = Math.round(i / (guide.length - 1) * last), x = s.path[j * 2], y = s.path[j * 2 + 1]; g.o.position.x = g.d.position.x = x; g.o.position.y = g.d.position.y = -y; g.o.material.opacity = g.d.material.opacity = g.k; g.o.visible = g.d.visible = true; });
 }
 // 當前角色還能走到的範圍：沿著地面的點線，兩端立一根柱子；再走會掉下懸崖的那端用紅色
-const reachDots = Array.from({ length: 64 }, () => { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75 })); m.scale.setScalar(2.6); m.position.z = 27; m.visible = false; scene.add(m); return m; });
+const reachDots = Array.from({ length: 128 }, () => { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75 })); m.scale.setScalar(2.6); m.position.z = 27; m.visible = false; scene.add(m); return m; });
 const reachEnds = [0, 1].map(() => { const g = new THREE.Group(), o = new THREE.Mesh(G.box, basic(0x3b2f2f)), p = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xffffff })); o.scale.set(6, 22, 1); o.position.y = 11; p.scale.set(3, 19, 1); p.position.set(0, 11, .1); g.add(o, p); g.userData.p = p; g.position.z = 27; g.visible = false; scene.add(g); return g; });
 let reachKey = '', reachAt = 0;
 function updateReach() {
@@ -653,6 +662,18 @@ function updateReach() {
   });
   for (; k < reachDots.length; k++) reachDots[k].visible = false;
 }
+// 輪到某個角色時，把他上一次發射的彈道用淡淡的點線留在畫面上，方便修正角度與力度；發射後就收起來
+const dotTex = canvasTex(32, 32, x => { x.beginPath(); x.arc(16, 16, 12, 0, 7); x.fillStyle = '#fff'; x.fill(); });
+let lastPathObj = null, lastPathKey = '';
+function updateLastPath() {
+  const c = V.turn && V.phase === 'turn' && !V.turn.fired && !V.over ? V.chars[V.turn.id] : null, key = c && c.lastPaths ? `${c.id}|${c.pathVer}` : '';
+  if (key === lastPathKey) return; lastPathKey = key;
+  if (lastPathObj) { scene.remove(lastPathObj); lastPathObj.geometry.dispose(); lastPathObj.material.dispose(); lastPathObj = null; }
+  if (!key) return;
+  const pts = []; for (const p of c.lastPaths) for (let i = 0; i < p.length; i += 6) pts.push(p[i], -p[i + 1], 22);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  lastPathObj = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x3b2f2f, size: 5, sizeAttenuation: false, map: dotTex, alphaTest: .3, transparent: true, opacity: .3, depthTest: false })); lastPathObj.renderOrder = 20; scene.add(lastPathObj);
+}
 let tPrev = performance.now();
 function tick(now) {
   requestAnimationFrame(tick);
@@ -667,7 +688,7 @@ function tick(now) {
     inputFrame(now, dt);
     for (const c of V.chars) updateChar(c, dt, t);
     for (const b of V.bombs.values()) { b.m.scale.setScalar(10 * (1 + Math.sin(t * 9) * .12)); b.m.rotation.z = Math.sin(t * 4) * .25; }
-    updateAim(now); updateReach(); { const me = isMyTurn() ? V.chars[V.me] : null; updateGuide(me, me ? { angle: aimAngle(me), power: chargePower(now), item: V.sel, charging: V.myAim.charging } : null); }
+    updateAim(now); updateReach(); updateLastPath(); { const me = isMyTurn() ? V.chars[V.me] : null; updateGuide(me, me ? { angle: aimAngle(me), power: chargePower(now), item: V.sel, charging: V.myAim.charging } : null); }
     hint(isMyTurn() ? (V.tele ? '點要傳送的位置（Esc 取消）' : mouse.down ? '右鍵取消' : '') : (pingKind ? '點地面' : ''));
     if (V.myAim.charging) $('power').firstElementChild.style.width = chargePower(now) * 100 + '%';
   }
@@ -736,8 +757,10 @@ function stepProjectile(p, now) {
 function startLocal(recipe) {
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer(); mode = 'offline';
   L.g = A.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, recipe, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, team: setup.team, seat: 0 }], waitReady: true });
-  const me = L.g.chars.find(c => c.human).id; buildView(A.snapshot(L.g), me); L.snapT = 0; L.g.events.length = 0;
+  const me = L.g.chars.find(c => c.human).id; buildView(A.snapshot(L.g), me); L.snapT = 0; L.g.events.length = 0; solo = soloStart('artillery', ID);
 }
+// 單人擊敗數紀錄：開局拿票，打完送出，伺服器檢查合理才進看板（訪客與沒登入的人不記錄）
+let solo = null, endSeq = 0;
 $('t0').onclick = () => { setup.team = 0; $('t0').setAttribute('aria-pressed', 'true'); $('t1').setAttribute('aria-pressed', 'false'); };
 $('t1').onclick = () => { setup.team = 1; $('t1').setAttribute('aria-pressed', 'true'); $('t0').setAttribute('aria-pressed', 'false'); };
 $('startBtn').onclick = () => showVote(null);
@@ -778,6 +801,8 @@ function showEnd(r) {
   $('endSub').textContent = r.reason === 'collapse' ? '地面崩光了' : r.reason === 'draw' ? '同時倒下' : `${r.rounds} 輪`;
   $('results').innerHTML = r.players.map(p => `<li><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid var(--ink);margin-right:6px;background:${A.TEAMS[p.team].color}"></i>${esc(p.name)}${p.id === V?.me ? '（你）' : ''}${p.bot ? ' 電腦' : ''}</span><span>${p.hp} 血｜${p.money} 元｜${p.points} 分</span></li>`).join('');
   $('againBtn').textContent = '再打一場'; $('endScreen').hidden = false;
+  const note = $('endNote'), seq = ++endSeq, s = solo; solo = null; note.hidden = true;
+  if (mode === 'offline' && s) showSoloNote(note, soloFinish(s, ID, me?.kills ?? 0, '砲戰'), () => seq !== endSeq);
 }
 
 /* ---------- 連線（Worker 的 ArtilleryRoom） ---------- */

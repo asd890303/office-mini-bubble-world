@@ -6,8 +6,8 @@ export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#
 export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽' };
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓', '年糕', '銅鑼燒'];
 export const TEAMS = [{ name: '紅隊', color: '#ff8a8a' }, { name: '藍隊', color: '#7ab8ff' }];
-export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 150, STEP: 4, DROP: 8, HEAD: 22 };
-export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 100, INCOME: 20, CATCHUP: 15, KILL: 30, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 20, START_ITEMS: { heavy: 1, triple: 1, drill: 1 } };
+export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 188, STEP: 4, DROP: 8, HEAD: 22 };
+export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 120, INCOME: 20, CATCHUP: 15, KILL: 30, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 20, START_ITEMS: { heavy: 1, triple: 1, drill: 1 } };
 export const SHOT = { G: 900, V0: 132, V1: 968, DT: 1 / 120, MAX_STEPS: 1100, SAMPLE: 5 };
 export const ITEMS = {
   basic: { name: '水球', price: 0, r: 38, dmg: 26, desc: '傷害小' },
@@ -176,7 +176,7 @@ export function createGame({ seed = 1, recipe = RECIPES[0], humans = [], botErr 
   for (let t = 0; t < 2; t++) for (let s = 0; s < 3; s++) {
     const h = seats[t][s], [x, y] = terrain.spawns[t][s];
     chars.push({ id: chars.length, uid: h ? String(h.uid ?? chars.length) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names.pop(), human: !!h, team: t, seat: s, color: pickColor(h?.color), ear: h && EARS[h.ear] ? h.ear : earKeys[Math.floor(rng() * 4)],
-      x, y, hp: CHAR.HP, alive: true, money: RULES.START_MONEY, items: { ...RULES.START_ITEMS }, bought: {}, glove: false, shield: false, face: t ? -1 : 1, stamina: CHAR.STAMINA, move: 0, acc: 0, ai: h ? null : { err: botErr }, ready: !h, off: false });
+      x, y, hp: CHAR.HP, alive: true, money: RULES.START_MONEY, items: { ...RULES.START_ITEMS }, bought: {}, kills: 0, glove: false, shield: false, face: t ? -1 : 1, stamina: CHAR.STAMINA, move: 0, acc: 0, ai: h ? null : { err: botErr }, ready: !h, off: false });
   }
   const g = { seed: seed >>> 0, rng, recipe: rc, theme: themeOf(rc), mask: terrain.mask, chars, round: 0, order: [], idx: -1, cur: -1, phase: 'turn', turnT: 0, shopT: 0, offer: [], fired: false, resolveT: 0, botT: 0, aim: null, over: false, result: null, hp10: null, events: [], collapseStage: 0, bombs: [], bombSeq: 0, readyT: 0 };
   if (waitReady) { g.phase = 'ready'; g.readyT = RULES.READY; } else startRound(g);
@@ -246,7 +246,7 @@ function explode(g, shooter, x, y, r, dmg, carveR, t, fx, freeze = false) {
     let dealt = Math.max(1, Math.round(dmg * (1 - d / reach)));
     if (c.shield) { c.shield = false; fx.push({ t, k: 'shield', id: c.id }); dealt = 0; }
     else {
-      c.hp = Math.max(0, c.hp - dealt); const killed = c.hp <= 0; if (killed) c.alive = false;
+      c.hp = Math.max(0, c.hp - dealt); const killed = c.hp <= 0; if (killed) { c.alive = false; if (shooter && c.team !== shooter.team) shooter.kills++; } // 只算擊敗對手，不算隊友與自己
       fx.push({ t, k: 'hit', id: c.id, dmg: dealt, hp: c.hp, dead: killed });
       if (freeze && !killed) { c.frozen = true; fx.push({ t, k: 'freeze', id: c.id }); }
       if (shooter && c.id !== shooter.id) { const mate = c.team === shooter.team, half = Math.floor(dealt / 2), delta = (mate ? -1 : 1) * (half + (killed ? RULES.KILL : 0)), me = money(g, shooter, delta); if (me) fx.push({ t, k: 'money', ...me, delta }); }
@@ -404,7 +404,7 @@ function checkOver(g) {
   let win = null, reason = 'wipe'; if (!a0 && a1) win = 1; else if (a0 && !a1) win = 0; else { reason = g.round > ROUNDS ? 'collapse' : 'draw'; const h = g.hp10; if (g.round > ROUNDS && h && h[0] !== h[1]) win = h[0] > h[1] ? 0 : 1; }
   g.over = true; g.phase = 'over'; g.cur = -1;
   const pts = t => (win == null ? 3 : win === t ? 5 : 1);
-  g.result = { reason, winnerTeam: win, rounds: g.round, players: g.chars.filter(c => !c.off).sort((x, y) => (win === y.team) - (win === x.team) || y.hp - x.hp).map((c, i) => ({ rank: i + 1, id: c.id, uid: c.uid, name: c.name, bot: !c.human, team: c.team, hp: c.hp, money: c.money, points: pts(c.team), win: win === c.team })) };
+  g.result = { reason, winnerTeam: win, rounds: g.round, players: g.chars.filter(c => !c.off).sort((x, y) => (win === y.team) - (win === x.team) || y.hp - x.hp).map((c, i) => ({ rank: i + 1, id: c.id, uid: c.uid, name: c.name, bot: !c.human, team: c.team, hp: c.hp, money: c.money, kills: c.kills, points: pts(c.team), win: win === c.team })) };
   ev(g, { e: 'end', result: g.result }); return true;
 }
 // 崩塌：第 k 次把離中線超過 (1 - k / 5) 個半寬的地形全部消失，第 5 次什麼都不剩

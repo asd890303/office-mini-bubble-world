@@ -65,6 +65,8 @@ body.touch .keys { display: none; }
 #endScreen .rank { margin: 0; font-size: 13px; }
 #endScreen .rank li { padding: 3px 4px; }
 #endScreen .go { margin-top: 8px; padding: 7px; }
+.endnote { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.endnote.best { color: var(--pink-deep); font-size: 15px; }
 .me-tag { position: fixed; transform: translate(-50%, -100%); pointer-events: none; background: var(--pink); color: #4a3b3b; border: 2px solid var(--ink); border-radius: 999px; padding: 0 10px; font-weight: 900; font-size: 13px; z-index: 4; }
 .me-tag[hidden] { display: none; }
 .mute { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 6; padding: 4px 10px; font-size: 12px; }
@@ -143,6 +145,7 @@ body.touch .keys { display: none; }
     <h2 id="endTitle"></h2>
     <p id="endSub"></p>
     <ul class="rank" id="rank"></ul>
+    <p class="endnote" id="endNote" hidden></p>
     <button class="btn primary go" id="againBtn">再玩一局</button>
     <a class="btn back" href="/">回遊戲大廳</a>
   </div>
@@ -169,6 +172,7 @@ import * as Core from './game-core.js';
 import { INK, ITEM_ART, badgeFrame } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
+import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, OUTLINE, G, M, withOutline, blob, boxOutline, makeCritter, addNameTag } from '/shared/three-kit.js';
@@ -476,11 +480,13 @@ $('startScreen').addEventListener('click', onSetupClick);
 $('lobbyScreen').addEventListener('click', onSetupClick);
 
 /* ---------- 單人版 ---------- */
+// 單人擊敗數紀錄：開局拿票，打完送出，伺服器檢查合理才進看板（訪客與沒登入的人不記錄）
+let solo = null, endSeq = 0;
 function startOffline() {
   $('startScreen').hidden = true; $('endScreen').hidden = true; $('lobbyScreen').hidden = true;
   try { TG?.MainButton?.hide(); } catch {}
   local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear }], diff: setup.diff, roundTime: ROUND_TIME });
-  buildView(Core.snapshot(local), 0); playing = true;
+  buildView(Core.snapshot(local), 0); playing = true; solo = soloStart('bubble', ID);
   toast('開始！', 900);
   window.dispatchEvent(new CustomEvent('bubblepop:start', { detail: { difficulty: setup.diff, online: false } }));
 }
@@ -507,6 +513,7 @@ function showEnd(r) {
   if (winner && winner.id === me) { haptic.win(); toast('勝利！', 1200); }
   if (mode === 'online') net.wantIn = false;
   const mine = r.players.find(p => p.id === me);
+  { const note = $('endNote'), seq = ++endSeq, s = solo; solo = null; note.hidden = true; if (mode === 'offline' && s) showSoloNote(note, soloFinish(s, ID, mine?.kills ?? 0, '泡泡島'), () => seq !== endSeq); }
   const result = { ...r, online: mode === 'online', humanWon: !!(winner && winner.id === me), difficulty: mode === 'online' ? 'normal' : setup.diff, me: mine ? { rank: mine.rank, kills: mine.kills } : null };
   window.dispatchEvent(new CustomEvent('bubblepop:end', { detail: result }));
   try { window.BubblePop?.onEnd?.(result); } catch (err) { console.error(err); }

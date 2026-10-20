@@ -152,8 +152,8 @@ test('ready seats: move to any non-human seat, toggle bots per seat, never leave
   assert.equal(g.result.players.length, g.chars.filter(c => !c.off).length, 'empty seats are not in the result');
 });
 
-test('walk reach: matches real walking, stops at walls, flags a fall; stamina is 25% more', () => {
-  assert.equal(A.CHAR.STAMINA, 150);
+test('walk reach: matches real walking, stops at walls, flags a fall; stamina is 25% more than 150, twice over', () => {
+  assert.equal(A.CHAR.STAMINA, 188); assert.equal(A.RULES.START_MONEY, 120);
   const g = two(); const c = put(g, 0, 400), r = A.walkReach(g.mask, c.x, c.y, 1, c.stamina);
   c.move = 1; run(g, 4, gg => { gg.chars[0].move = 1; }); assert.equal(c.x, r.x); assert.equal(r.fell, false); assert.ok(r.pts.length >= 4);
   const w = two(); const d = put(w, 0, 400); for (let y = 0; y < A.H; y++) for (let x = 430; x < 460; x++) w.mask[y * A.W + x] = 1; assert.ok(A.walkReach(w.mask, d.x, d.y, 1, 150).x < 432);
@@ -283,4 +283,14 @@ test('bots use the new items: shield, gloves and teleport', () => {
   A.step(g, .05); assert.equal(c.shield, true, 'hurt bot raises a shield'); assert.equal(g.fired, true);
   const h = two(); const d = put(h, 0, 330); d.human = false; d.ai = { err: 0 }; d.items.gloves = 1; d.money = 0; h.botT = 0; h.phase = 'turn'; h.cur = 0; h.fired = false; h.shopT = 0;
   for (let k = 0; k < 40 && !h.fired; k++) { A.step(h, .05); } assert.ok(h.fired);
+});
+
+test('kills: only defeated enemies count; teammates and yourself do not; result lists kills per player', () => {
+  const g = two(); const me = put(g, 0, 300), foe = put(g, 3, 330), mate = put(g, 1, 360); foe.hp = 1; mate.hp = 1; me.items.heavy = 2;
+  const e = A.fire(g, 0, { angle: 60, power: .12, item: 'heavy' });
+  assert.ok(e.fx.some(f => f.k === 'hit' && f.dead && f.id === 3) && e.fx.some(f => f.k === 'hit' && f.dead && f.id === 1), 'both fall');
+  assert.equal(me.kills, 1, 'the enemy counts, the teammate does not');
+  const r = two(); const a = put(r, 0, 300); a.hp = 1; a.items.heavy = 1; A.fire(r, 0, { angle: 90, power: .12, item: 'heavy' }); assert.equal(a.kills, 0, 'suicide is not a kill');
+  const f = two(); for (const c of f.chars.slice(3)) c.alive = false; f.chars[0].kills = 2; f.chars[0].alive = true; A.forfeit(f, 1); A.forfeit(f, 2);
+  assert.ok(f.over && f.result.players.find(p => p.id === 0).kills === 2);
 });

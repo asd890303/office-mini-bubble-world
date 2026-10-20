@@ -30,6 +30,7 @@ const blushMat = c => { if (!blushMats.has(c)) blushMats.set(c, new THREE.MeshBa
 
 export function makeCritter({ ear, color, eye = 'dot', body: bodyColor = '#fffdf7', blush: blushColor = '#ffa3b5' }) { // 只改外觀，不影響碰撞與遊戲判定
   const root = new THREE.Group(), bm = toon(bodyColor);
+  const dark = bodyColor === '#000000', ink = dark ? M.white : M.black, glint = dark ? M.black : M.white; // 黑色身體上的五官改白色
   const pivot = new THREE.Group(); root.add(pivot);
   const body = blob(G.sphere, bm, .55, .5, .52); body.position.y = .5; pivot.add(body);
   const arms = [];
@@ -73,16 +74,16 @@ export function makeCritter({ ear, color, eye = 'dot', body: bodyColor = '#fffdf
   const eyes = [];
   for (const s of [-1, 1]) {
     const style = eye === 'wink' ? (s < 0 ? 'dot' : 'happy') : eye;
-    if (style === 'happy') { const arc = new THREE.Mesh(G.smile, M.black); arc.scale.setScalar(1.5); arc.position.set(s * .16, .03, .5); face.add(arc); }
-    else if (style === 'sleepy') { const lid = new THREE.Mesh(G.small, M.black); lid.scale.set(.06, .014, .03); lid.position.set(s * .16, .04, .5); face.add(lid); }
+    if (style === 'happy') { const arc = new THREE.Mesh(G.smile, ink); arc.scale.setScalar(1.5); arc.position.set(s * .16, .03, .5); face.add(arc); }
+    else if (style === 'sleepy') { const lid = new THREE.Mesh(G.small, ink); lid.scale.set(.06, .014, .03); lid.position.set(s * .16, .04, .5); face.add(lid); }
     else {
-      const big = style === 'big' || style === 'sparkle', e = new THREE.Mesh(G.small, M.black); e.scale.set(big ? .07 : .05, big ? .09 : .065, .03); e.userData.sy = e.scale.y; e.position.set(s * .16, .06, .5); face.add(e); eyes.push(e);
-      const hl = new THREE.Mesh(G.small, M.white); hl.scale.setScalar(style === 'sparkle' ? .4 : .35); hl.position.set(.3, .35, .6); e.add(hl);
-      if (style === 'sparkle') { const h2 = new THREE.Mesh(G.small, M.white); h2.scale.setScalar(.2); h2.position.set(-.25, -.35, .6); e.add(h2); }
+      const big = style === 'big' || style === 'sparkle', e = new THREE.Mesh(G.small, ink); e.scale.set(big ? .07 : .05, big ? .09 : .065, .03); e.userData.sy = e.scale.y; e.position.set(s * .16, .06, .5); face.add(e); eyes.push(e);
+      const hl = new THREE.Mesh(G.small, glint); hl.scale.setScalar(style === 'sparkle' ? .4 : .35); hl.position.set(.3, .35, .6); e.add(hl);
+      if (style === 'sparkle') { const h2 = new THREE.Mesh(G.small, glint); h2.scale.setScalar(.2); h2.position.set(-.25, -.35, .6); e.add(h2); }
     }
     const bl = new THREE.Mesh(G.disc, blushMat(blushColor)); bl.scale.set(.085, .055, 1); bl.position.set(s * .3, -.04, .44); bl.rotation.y = s * .55; face.add(bl);
   }
-  const mouth = new THREE.Mesh(G.smile, M.black); mouth.position.set(0, -.04, .52); mouth.rotation.z = Math.PI; face.add(mouth);
+  const mouth = new THREE.Mesh(G.smile, ink); mouth.position.set(0, -.04, .52); mouth.rotation.z = Math.PI; face.add(mouth);
   const sm = toon(color);
   const scarf = new THREE.Mesh(G.scarf, sm); scarf.rotation.x = Math.PI / 2; scarf.position.y = .28; withOutline(scarf, 1.04); pivot.add(scarf);
   const tail = blob(G.small, sm, .08, .14, .05, 1.2); tail.position.set(.28, .18, .42); tail.rotation.z = .4; pivot.add(tail);

@@ -9,12 +9,12 @@ export const FLAME_HIT_R = .4;
 export const BASE_SPEED = 3.4, SPEED_STEP = .8, MAX_SPEED = 7;
 export const MAX_POWER = 8, SUPER_POWER = 15, KICK_SPEED = 8;
 export const ROUND_TIME = 180, SHRINK_AT = 40, SHRINK_EVERY = .18;
-export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a'];
+export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a', '#ffffff', '#000000', '#ff0000'];
 export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽', cat: '貓耳', bear: '熊耳', horn: '小角', bow: '蝴蝶結', ant: '觸角' };
 export const EYES = { dot: '圓眼', big: '大眼', happy: '笑眼', sleepy: '瞇眼', sparkle: '閃亮', wink: '眨眼' };
 const EYE_KEYS = Object.keys(EYES);
-export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3'];
-export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff'];
+export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3', '#ffffff', '#000000', '#ff0000'];
+export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff', '#ffffff', '#000000', '#ff0000'];
 export const DIFFS = { easy: { label: '簡單', think: .45, wander: .35, hunt: false }, normal: { label: '普通', think: .22, wander: .12, hunt: true }, hard: { label: '困難', think: .1, wander: .03, hunt: true } };
 // 道具掉落：箱子 ITEM_DROP 機率掉一個，種類照下面權重（超級水球稀有）
 export const ITEM_DROP = .42;

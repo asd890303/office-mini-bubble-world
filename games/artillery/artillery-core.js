@@ -2,12 +2,12 @@
 // 不碰 DOM / three.js / Math.random：亂數全部來自種子，同一組種子與輸入會重播出同樣結果。
 // 座標單位是「點」，原點在左上角，x 往右、y 往下；地形遮罩 1 點 1 格（1 = 有地）。角度以 +x 為 0 度、往上為正。
 export const W = 1200, H = 600, TEAM_SIZE = 3, MAX_PLAYERS = 6, ROUNDS = 10, STAGES = 5;
-export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a'];
+export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a', '#ffffff', '#000000', '#ff0000'];
 export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽', cat: '貓耳', bear: '熊耳', horn: '小角', bow: '蝴蝶結', ant: '觸角' };
 export const EYES = { dot: '圓眼', big: '大眼', happy: '笑眼', sleepy: '瞇眼', sparkle: '閃亮', wink: '眨眼' };
 const EYE_KEYS = Object.keys(EYES);
-export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3'];
-export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff'];
+export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3', '#ffffff', '#000000', '#ff0000'];
+export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff', '#ffffff', '#000000', '#ff0000'];
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓', '年糕', '銅鑼燒'];
 export const TEAMS = [{ name: '紅隊', color: '#ff8a8a' }, { name: '藍隊', color: '#7ab8ff' }];
 export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 235, STEP: 4, DROP: 8, HEAD: 22, JUMP_COST: 30, JUMP_VX: 70, JUMP_VY: 330 };

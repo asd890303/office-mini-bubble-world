@@ -62,7 +62,12 @@ body.touch .board.show { transform: translate(0, 0); }
 .board .subtabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
 .board h3:first-child { margin-top: 0; }
 .board .ver { text-align: center; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
-.board .news { list-style: none; margin: 4px 0 0; padding: 0; font-size: 15px; color: var(--ink-soft); }
+.board .news { list-style: none; margin: 4px 0 0; padding: 0; font-size: 15px; }
+.board .news > li { display: block; padding: 8px 4px; border-bottom: 1px dashed var(--line); }
+.board .news > li:last-child { border: 0; }
+.board .news b { display: block; font-size: 15px; margin-bottom: 2px; }
+.board .news em { font-style: normal; font-size: 12px; font-weight: 900; padding: 0 7px; margin-right: 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--chip); }
+.board .news p { margin: 3px 0; text-align: left; font-size: 14px; color: var(--ink); line-height: 1.45; }
 .toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 14px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
 .toast.show { opacity: 1; }
 </style>
@@ -84,7 +89,7 @@ body.touch .board.show { transform: translate(0, 0); }
 <div class="who box" id="who" hidden></div>
 <div class="who-tip box" id="whoTip" hidden><div class="slot" id="tipSlot"></div><b id="tipName"></b><small id="tipLook"></small></div>
 <div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
-<div class="board box" id="notice"><h2>布告欄</h2><p>目前版本</p><div class="ver" id="noticeVer">載入中…</div><h3>更新資訊</h3><ul class="news" id="noticeNews"><li>還沒有更新資訊</li></ul></div>
+<div class="board box" id="notice"><h2>布告欄</h2><p>目前版本</p><div class="ver" id="noticeVer">載入中…</div><h3>更新資訊</h3><ul class="news" id="noticeNews"></ul></div>
 <div class="toast box" id="toast"></div>
 
 <script type="importmap">
@@ -179,6 +184,18 @@ function placeMat(R, tex) { // 平鋪在地上的地墊：俯視看得清楚，�
 placeMat(BOARD, boardTex); drawBoard();
 
 /* ---------- 布告欄：地墊顯示目前版本；站上去跳出版本與更新資訊 ---------- */
+// 更新資訊：最新的在最前面，只留最近 5 筆。由 /release 整理出內容後寫進來。
+const CHANGELOG = [
+  { date: '2026-10-20', title: '首次公開版本',
+    '新功能': ['泡泡賽車新增競速賽，漂移集滿氮氣槽就能衝刺，連線時和地圖一起投票', '賽車新增雷雨雲、燙手泡泡、小幽靈、假道具箱', '泡泡砲戰新增跳躍、牽引水球、水泥球，每人起始各有一個基礎道具', '泡泡島、砲戰新增擊敗數戰績，單人成績也進紀錄榜', '大廳新增布告欄，玩家進遊戲後頭上顯示「遊戲中」', '角色外觀新增身體與腮紅顏色、更多耳朵與眼睛造型'],
+    '調整': ['砲戰地圖改版：雙浮空島、更高的中央土丘、更深的峽谷', '砲戰命中對手的金額提高 25%，護盾限購一次', '賽車紀錄依模式與難度分成四份榜，看板移到左側並放大'],
+    '修正': ['砲戰走下懸崖或掉進水裡沒有正確結算'] },
+];
+const NEWS_ORDER = ['新功能', '調整', '修正'];
+function renderNews() {
+  $('noticeNews').innerHTML = CHANGELOG.length ? CHANGELOG.slice(0, 5).map(e => `<li><b>${esc(e.date)}${e.title ? '・' + esc(e.title) : ''}</b>${NEWS_ORDER.filter(k => e[k]?.length).map(k => e[k].map(t => `<p><em>${k}</em>${esc(t)}</p>`).join('')).join('')}</li>`).join('') : '<li>還沒有更新資訊</li>';
+}
+renderNews();
 let buildId = null;
 const noticeCv = document.createElement('canvas'); noticeCv.width = 512; noticeCv.height = 340;
 const noticeTex = new THREE.CanvasTexture(noticeCv); noticeTex.colorSpace = THREE.SRGBColorSpace;

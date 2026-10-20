@@ -555,6 +555,7 @@ function handle(e) {
   else if (e.e === 'go') { V.phase = 'turn'; refreshReady(); toast('開戰！', 900); }
   else if (e.e === 'shot') { V.turn && (V.turn.fired = true); const c = V.chars[e.id]; if (c) { c.items = { ...e.items }; if (c.bub) c.bubT = 0; } playShot(e); refreshShop(); }
   else if (e.e === 'collapse') playCollapse(e);
+  else if (e.e === 'fall') { const c = V.chars[e.id]; if (c) { c.alive = false; c.hp = 0; c.hpShown = 0; c.dying = c.dying || 1; c.falling = true; splash(e.x ?? c.dx, H); feed(`${c.name} 掉進水裡`, e.id); refreshHud(); } }
   else if (e.e === 'skip') { const c = V.chars[e.id]; feed(`${c.name} 超時`, e.id); }
   else if (e.e === 'out') { const c = V.chars[e.id]; c.alive = false; c.dying = 1; feed(`${c.name} 離開`, e.id); refreshHud(); }
   else if (e.e === 'end') { V.over = true; setTimeout(() => showEnd(e.result), 1600); }

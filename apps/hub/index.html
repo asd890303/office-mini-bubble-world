@@ -71,7 +71,7 @@ body.touch .board.show { transform: translate(0, 0); }
   <small id="zNote"></small>
 </div>
 <div class="who box" id="who" hidden></div>
-<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
+<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="karthard">賽車困難</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
 <div class="toast box" id="toast"></div>
 
 <script type="importmap">
@@ -166,7 +166,7 @@ async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
 }
 /* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
-const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人都算' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
+const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '每條賽道最快完賽前 3 名，連線和單人普通電腦都算' }, karthard: { title: '賽車困難紀錄', note: '單人對困難電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' } };
 let boardTab = 'total', gamesData = null;
 async function loadGames() {
   try { const r = await fetch('/board/games', { cache: 'no-store' }); if (r.ok) { gamesData = await r.json(); renderGames(); } } catch {}
@@ -175,7 +175,7 @@ function recList(rows, fmt) { return `<ol>${rows?.length ? rows.map(fmt).join(''
 function renderGames() {
   const el = $('boardGames');
   if (!gamesData) { el.innerHTML = '<ol><li>載入中…</li></ol>'; return; }
-  if (boardTab === 'kart') el.innerHTML = (gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>';
+  if (boardTab === 'kart' || boardTab === 'karthard') el.innerHTML = (gamesData.kart?.tracks || []).map(t => `<h3>${esc(t.name)}</h3>` + recList(boardTab === 'karthard' ? t.hard : t.top, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${Number(p.time).toFixed(2)} 秒</b></li>`)).join('') || '<ol><li>尚無紀錄</li></ol>';
   else if (boardTab === 'bubble') el.innerHTML = recList(gamesData.bubble?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
   else if (boardTab === 'artillery') el.innerHTML = recList(gamesData.artillery?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
 }

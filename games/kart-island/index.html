@@ -656,9 +656,9 @@ function showEnd(r) {
 /* ---------- 單人紀錄：開跑時向伺服器拿票，完賽送出成績，伺服器檢查合理才進賽道紀錄（訪客與沒登入的人不記錄） ---------- */
 let solo = null, endSeq = 0;
 function soloStart(track) {
-  solo = { track, ticket: Promise.resolve(null) };
+  solo = { track, diff, ticket: Promise.resolve(null) };
   if (!ID || ID.guest) return;
-  solo.ticket = fetch('/kart/solo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, track }) })
+  solo.ticket = fetch('/kart/solo', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, track, diff }) })
     .then(r => (r.ok ? r.json() : null)).then(j => j?.ticket || null).catch(() => null);
 }
 // 回傳結算畫面要顯示的一句話 { text, best }；沒完賽回傳 null
@@ -667,7 +667,7 @@ async function soloFinish(time) {
   if (!s || time == null) return null;
   if (!ID) return { text: '登入後，單人成績也會進賽道紀錄' };
   if (ID.guest) return { text: '訪客的成績不進賽道紀錄' };
-  const name = Core.trackById(s.track).name, ticket = await s.ticket;
+  const name = Core.trackById(s.track).name + (s.diff === 'hard' ? '（困難）' : ''), ticket = await s.ticket;
   if (!ticket) return { text: '紀錄沒送出：連不上伺服器' };
   try {
     const r = await fetch('/kart/record', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: ID.query, ticket, time }) });

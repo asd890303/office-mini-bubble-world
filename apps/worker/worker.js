@@ -15,7 +15,7 @@ const VOTE_MS = 15000;
 const SCORE_POINTS = [5, 3, 2, 1];
 // 看板儲存前綴：換一個新前綴，看板就從零重新記錄；舊前綴底下的資料保留不刪
 const SCORE_PREFIX = 'score2:';
-// 各遊戲紀錄：賽車每條賽道最快完賽 best:kart:<賽道 id>，泡泡島單場最多擊敗 best:bubble:kills，泡泡砲戰單場擊敗對手數 best:artillery:kills；每份只留前 RECORD_TOP 名，每位玩家只留自己最好的一次
+// 各遊戲紀錄：賽車每條賽道最快完賽 best:kart:<賽道 id>（困難電腦的單人成績另存 best:kart:<賽道 id>:hard），泡泡島單場最多擊敗 best:bubble:kills，泡泡砲戰單場擊敗對手數 best:artillery:kills；每份只留前 RECORD_TOP 名，每位玩家只留自己最好的一次
 const RECORD_PREFIX = 'best:', RECORD_TOP = 3, KART_MIN_TIME = 5;
 // 泡泡賽車單人紀錄：開跑時發的票 SOLO_TICKET_MS 內有效；同一人兩次送出至少隔 RECORD_GAP_MS
 const SOLO_TICKET_MS = 10 * 60 * 1000, RECORD_GAP_MS = 5000;
@@ -172,7 +172,8 @@ async function handleKartSolo(req, url, env) {
   const now = Date.now();
   if (url.pathname === '/kart/solo') {
     const tr = KartCore.TRACKS.find(t => t.id === body.track); if (!tr) return fail('track', 400);
-    return Response.json({ ticket: await signSession({ uid: u.id, track: tr.id, t0: now, exp: now + SOLO_TICKET_MS }, env, 'kart-solo') }, { headers: { 'cache-control': 'no-store' } });
+    const diff = KartCore.DIFFS[body.diff] ? body.diff : 'normal'; // 電腦難度：困難的成績進另一份榜
+    return Response.json({ ticket: await signSession({ uid: u.id, track: tr.id, diff, t0: now, exp: now + SOLO_TICKET_MS }, env, 'kart-solo') }, { headers: { 'cache-control': 'no-store' } });
   }
   const tk = await readSession(body.ticket, env, now, 'kart-solo');
   if (!tk || tk.uid !== u.id) return fail('ticket', 403);
@@ -180,7 +181,7 @@ async function handleKartSolo(req, url, env) {
   if (!tr || !Number.isFinite(time) || time < kartMinTime(tr) || time > KartCore.MAX_TIME) return fail('time', 422);
   if ((now - tk.t0) / 1000 < time) return fail('time', 422); // 倒數 3 秒不算在成績裡，剛好當網路延遲的緩衝
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
+  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, diff: tk.diff === 'hard' ? 'hard' : 'normal', entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -582,7 +583,7 @@ export class ArtilleryRoom extends GameRoom {
 
 // /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS。新遊戲在這裡加一個欄位
 function emptyGameBoard() {
-  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [] })) }, bubble: { kills: [] }, artillery: { kills: [] } };
+  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] } };
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
@@ -657,7 +658,7 @@ export class LobbyRoom {
         const t = Number(e.stats.time);
         if (e.stats.time == null || !Number.isFinite(t) || t < KART_MIN_TIME || t > KartCore.MAX_TIME) continue;
         if (!KartCore.TRACKS.some(tr => tr.id === body.track)) return [];
-        rows.push({ key: `${RECORD_PREFIX}kart:${body.track}`, uid: String(e.uid), name, v: Math.round(t * 100) / 100, low: true });
+        rows.push({ key: `${RECORD_PREFIX}kart:${body.track}${body.diff === 'hard' ? ':hard' : ''}`, uid: String(e.uid), name, v: Math.round(t * 100) / 100, low: true });
       } else if (body.game === 'artillery') {
         const k = Number(e.stats.kills);
         if (!Number.isInteger(k) || k < 1 || k > 5) continue;
@@ -685,7 +686,10 @@ export class LobbyRoom {
   async gameBoard() {
     if (this.gameCache && this.now() - this.gameAt < 10000) return this.gameCache;
     const st = this.ctx.storage, out = emptyGameBoard();
-    for (const t of out.kart.tracks) t.top = ((await st.get(`${RECORD_PREFIX}kart:${t.id}`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
+    for (const t of out.kart.tracks) {
+      t.top = ((await st.get(`${RECORD_PREFIX}kart:${t.id}`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
+      t.hard = ((await st.get(`${RECORD_PREFIX}kart:${t.id}:hard`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v }));
+    }
     out.bubble.kills = ((await st.get(`${RECORD_PREFIX}bubble:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));
     out.artillery.kills = ((await st.get(`${RECORD_PREFIX}artillery:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));
     this.gameCache = out; this.gameAt = this.now();

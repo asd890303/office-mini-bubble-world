@@ -594,3 +594,25 @@ test('bubble / artillery solo records: ticket at the start, kills checked at the
     const total = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json(); assert.equal(total.top.length, 0, 'solo records never add points');
   } finally { Date.now = realNow; }
 });
+
+test('kart hard records: solo against hard computers go to their own board; normal and online stay on the normal board', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now;
+  const env = { ...AUTH_ENV, LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const alice = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 42, first_name: 'Alice' }));
+  const post = (path, body) => Bundle.default.fetch(new Request('https://x.test' + path, { method: 'POST', body: JSON.stringify(body) }), env);
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  try {
+    const hard = await (await post('/kart/solo', { id: alice, track: 'candy', diff: 'hard' })).json();
+    clock += 120000; now += 120000;
+    const ok = await post('/kart/record', { id: alice, ticket: hard.ticket, time: 50 }); assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, rank: 1, improved: true, top: [{ rank: 1, name: 'Alice', time: 50 }] });
+    let board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(), candy = board.kart.tracks.find(t => t.id === 'candy');
+    assert.deepEqual(candy.hard.map(p => [p.name, p.time]), [['Alice', 50]]); assert.deepEqual(candy.top, [], 'normal board untouched');
+    now += 6000; clock += 6000;
+    const nor = await (await post('/kart/solo', { id: alice, track: 'candy', diff: 'nope' })).json(); clock += 120000; now += 120000;
+    assert.equal((await post('/kart/record', { id: alice, ticket: nor.ticket, time: 55 })).status, 200, 'an unknown difficulty counts as normal');
+    board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(); candy = board.kart.tracks.find(t => t.id === 'candy');
+    assert.deepEqual(candy.top.map(p => [p.name, p.time]), [['Alice', 55]]); assert.deepEqual(candy.hard.map(p => p.time), [50]);
+  } finally { Date.now = realNow; }
+});

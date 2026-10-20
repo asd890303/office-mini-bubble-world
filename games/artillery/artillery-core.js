@@ -7,7 +7,7 @@ export const EARS = { be: '圓耳', pay: '長耳', fe: '尖耳', tool: '小芽' 
 export const BOT_NAMES = ['麻糬', '湯圓', '布丁', '棉花', '豆花', '芋圓', '年糕', '銅鑼燒'];
 export const TEAMS = [{ name: '紅隊', color: '#ff8a8a' }, { name: '藍隊', color: '#7ab8ff' }];
 export const CHAR = { R: 12, HP: 100, WALK: 90, STAMINA: 188, STEP: 4, DROP: 8, HEAD: 22 };
-export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 120, INCOME: 20, CATCHUP: 15, KILL: 30, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 20, START_ITEMS: { heavy: 1, triple: 1, drill: 1 } };
+export const RULES = { TURN: 20, SHOP: 8, START_MONEY: 120, INCOME: 20, CATCHUP: 15, KILL: 30, HIT_GAIN: .625, HEAL: 30, PAD: 1.2, SHOP_SIZE: 3, READY: 60, REFRESH: 20, START_ITEMS: { heavy: 1, triple: 1, drill: 1 } };
 export const SHOT = { G: 900, V0: 132, V1: 968, DT: 1 / 120, MAX_STEPS: 1100, SAMPLE: 5 };
 export const ITEMS = {
   basic: { name: '水球', price: 0, r: 38, dmg: 26, desc: '傷害小' },
@@ -71,9 +71,9 @@ const THEMES = {
 };
 export const THEME_NAMES = Object.keys(THEMES);
 export const RECIPES = [
-  { id: 'plains', name: '草原丘陵', tag: '正中間一座大土丘，要用拋物線繞過去', type: 'hills', seed: 11, base: 400, amp: 16, waves: 1.2, rough: 2, peak: 125, caves: 0, floats: 0, theme: 'meadow' },
-  { id: 'twin', name: '雙島長橋', tag: '兩座懸崖島，只有一座細橋，打斷橋就掉海', type: 'islands', seed: 23, base: 340, amp: 12, waves: 1.6, rough: 3, gap: [470, 730], caves: 0, floats: 4, theme: 'dusk' },
-  { id: 'canyon', name: '泡泡峽谷', tag: '兩側高台，谷底深處有洞穴能繞背', type: 'canyon', seed: 37, base: 318, amp: 20, waves: 1.4, rough: 7, valley: 185, caves: 4, floats: 1, theme: 'candy' },
+  { id: 'plains', name: '草原丘陵', tag: '正中間一座大土丘，要用拋物線繞過去', type: 'hills', seed: 11, base: 400, amp: 16, waves: 1.2, rough: 2, peak: 175, caves: 0, floats: 0, theme: 'meadow' },
+  { id: 'twin', name: '雙浮空島', tag: '兩隊各在一座浮空島，中間沒有路，掉下去就是海', type: 'islands', float: true, seed: 23, base: 340, amp: 8, waves: 1.6, rough: 2, caves: 0, floats: 2, theme: 'dusk' },
+  { id: 'canyon', name: '泡泡峽谷', tag: '兩側高台夾著深谷，谷底有洞穴能繞背', type: 'canyon', seed: 37, base: 290, amp: 14, waves: 1.4, rough: 6, valley: 250, caves: 4, floats: 1, theme: 'candy' },
 ];
 export const recipeById = id => RECIPES.find(r => r.id === id) || RECIPES[0];
 const TYPES = ['hills', 'islands', 'canyon'];
@@ -81,9 +81,10 @@ const TYPES = ['hills', 'islands', 'canyon'];
 export function sanitizeRecipe(o = {}) {
   const num = (v, a, b, d) => (Number.isFinite(Number(v)) ? clamp(Number(v), a, b) : d), type = TYPES.includes(o.type) ? o.type : 'hills';
   const r = { id: 'gen', name: String(o.name || '新地圖').replace(/[\u0000-\u001f<>]/g, '').slice(0, 10) || '新地圖', tag: String(o.tag || '隨機地形').replace(/[\u0000-\u001f<>]/g, '').slice(0, 20),
-    type, seed: num(o.seed, 1, 4294967295, 1) >>> 0, base: num(o.base, 320, 420, 380), amp: num(o.amp, 10, 70, 40), waves: num(o.waves, 1, 3.4, 2), rough: num(o.rough, 0, 10, 5), peak: type === 'hills' ? num(o.peak, 0, 130, 0) : 0,
+    type, seed: num(o.seed, 1, 4294967295, 1) >>> 0, base: num(o.base, 280, 420, 380), amp: num(o.amp, 10, 70, 40), waves: num(o.waves, 1, 3.4, 2), rough: num(o.rough, 0, 10, 5), peak: type === 'hills' ? num(o.peak, 0, 130, 0) : 0,
     caves: Math.round(num(o.caves, 0, 4, 1)), floats: Math.round(num(o.floats, 0, 4, 1)), theme: THEMES[o.theme] ? o.theme : 'meadow' };
-  if (type === 'islands') { const w = num(o.gapWidth, 120, 230, 170), c = num(o.gapCenter, 560, 640, 600); r.gap = [Math.round(c - w / 2), Math.round(c + w / 2)]; }
+  if (type === 'islands' && o.float) r.float = true; // 兩座浮空島，不用 gap
+  else if (type === 'islands') { const w = num(o.gapWidth, 120, 230, 170), c = num(o.gapCenter, 560, 640, 600); r.gap = [Math.round(c - w / 2), Math.round(c + w / 2)]; }
   if (type === 'canyon') r.valley = num(o.valley, 60, 170, 120);
   return r;
 }
@@ -101,15 +102,17 @@ export function generateTerrain(r) {
     const u = x / W * Math.PI * 2 * r.waves, k = x / 24, k0 = Math.floor(k), f = k - k0, n = knots[k0] * (1 - f * f * (3 - 2 * f)) + knots[Math.min(51, k0 + 1)] * (f * f * (3 - 2 * f));
     let y = r.base + r.amp * (Math.sin(u + ph[0]) * .6 + Math.sin(u * 2.3 + ph[1]) * .3 + Math.sin(u * 5.1 + ph[2]) * .1) + n * r.rough;
     if (r.peak) y -= r.peak * Math.exp(-(((x - W / 2) / (W * .1)) ** 2));
-    if (r.type === 'canyon') y += r.valley * Math.exp(-(((x - W / 2) / (W * .17)) ** 2));
-    h[x] = clamp(y, 150, H - 90);
+    if (r.type === 'canyon') y += r.valley * Math.exp(-(((x - W / 2) / (W * .145)) ** 2));
+    h[x] = clamp(y, 150, H - 80);
   }
   // 兩側出生區壓成同一個高度，雙方公平
-  const level = clamp(r.base, 330, 410), blend = x => clamp((x < 600 ? Math.min(x - 60, 360 - x) : Math.min(x - 840, 1140 - x)) / 50, 0, 1), sm = t => t * t * (3 - 2 * t);
+  const level = clamp(r.base, r.type === 'canyon' ? 280 : 330, 410), blend = x => clamp((x < 600 ? Math.min(x - 60, 360 - x) : Math.min(x - 840, 1140 - x)) / 50, 0, 1), sm = t => t * t * (3 - 2 * t);
   for (let x = 60; x <= 360; x++) h[x] += (level - h[x]) * sm(blend(x));
   for (let x = 840; x <= 1140; x++) h[x] += (level - h[x]) * sm(blend(x));
-  for (let x = 0; x < W; x++) for (let y = Math.round(h[x]); y < H; y++) m[y * W + x] = 1;
-  if (r.type === 'islands' && r.gap) {
+  if (r.float) { // 兩座浮空島：左右各一個底部圓弧的石塊，下面是空的，中間完全沒有連接
+    for (const [x0, x1] of [[40, 430], [770, 1160]]) { const cx = (x0 + x1) / 2, hw = (x1 - x0) / 2; for (let x = x0; x <= x1; x++) { const u = (x - cx) / hw, d = 26 + 135 * Math.sqrt(Math.max(0, 1 - u * u)); for (let y = Math.round(h[x]); y < h[x] + d; y++) m[y * W + x] = 1; } }
+  } else for (let x = 0; x < W; x++) for (let y = Math.round(h[x]); y < H; y++) m[y * W + x] = 1;
+  if (r.type === 'islands' && r.gap && !r.float) {
     const [g0, g1] = r.gap;
     for (let x = g0; x < g1; x++) for (let y = 0; y < H; y++) m[y * W + x] = 0;
     for (let x = g0 - 24; x < g1 + 24; x++) for (let y = Math.round(level) - 6; y < Math.round(level) + 8; y++) m[y * W + x] = 1; // 長橋
@@ -121,7 +124,7 @@ export function generateTerrain(r) {
   for (let i = 0; i < r.caves; i++) { const cx = 380 + rng() * 440, hy = h[Math.round(cx)], cy = hy + 70 + rng() * Math.max(10, H - hy - 150); carve(m, cx, cy, 24 + rng() * 26, 0); carve(m, cx + 30 + rng() * 20, cy + (rng() - .5) * 30, 18 + rng() * 14, 0); }
   // 出生區上方不留任何東西（空中平台蓋在頭上會卡住）
   for (const xs of SPAWN_X) for (let x = xs[0] - 40; x <= xs[2] + 40; x++) for (let y = 0; y < Math.round(h[x]) - 1; y++) m[y * W + x] = 0;
-  return { mask: m, spawns: SPAWN_X.map(xs => xs.map(x => [x, groundY(m, x)])) };
+  return { mask: m, float: !!r.float, spawns: SPAWN_X.map(xs => xs.map(x => [x, groundY(m, x)])) };
 }
 
 /* ---------- 彈道 ---------- */
@@ -141,7 +144,7 @@ export function simulate(m, chars, x0, y0, angle, power, ignore = -1) {
 // 出生區是否平整、雙方互相打得到、地形比例合理
 export function validateTerrain(t) {
   const why = [], m = t.mask; let n = 0; for (let i = 0; i < m.length; i++) n += m[i];
-  const frac = n / m.length; if (frac < .16 || frac > .62) why.push(`solid ${frac.toFixed(2)}`);
+  const frac = n / m.length; if (frac < (t.float ? .09 : .16) || frac > .62) why.push(`solid ${frac.toFixed(2)}`);
   for (const [ti, sp] of t.spawns.entries()) {
     for (const [x, y] of sp) { if (y < 120 || y > H - 120) why.push(`spawn y ${y}`); if (solid(m, x, y - CHAR.HEAD) || solid(m, x, y)) why.push('spawn blocked'); }
     if (Math.max(...sp.map(s => s[1])) - Math.min(...sp.map(s => s[1])) > 6) why.push(`team ${ti} not flat`);
@@ -249,7 +252,7 @@ function explode(g, shooter, x, y, r, dmg, carveR, t, fx, freeze = false) {
       c.hp = Math.max(0, c.hp - dealt); const killed = c.hp <= 0; if (killed) { c.alive = false; if (shooter && c.team !== shooter.team) shooter.kills++; } // 只算擊敗對手，不算隊友與自己
       fx.push({ t, k: 'hit', id: c.id, dmg: dealt, hp: c.hp, dead: killed });
       if (freeze && !killed) { c.frozen = true; fx.push({ t, k: 'freeze', id: c.id }); }
-      if (shooter && c.id !== shooter.id) { const mate = c.team === shooter.team, half = Math.floor(dealt / 2), delta = (mate ? -1 : 1) * (half + (killed ? RULES.KILL : 0)), me = money(g, shooter, delta); if (me) fx.push({ t, k: 'money', ...me, delta }); }
+      if (shooter && c.id !== shooter.id) { const mate = c.team === shooter.team, base = mate ? Math.floor(dealt / 2) : Math.floor(dealt * RULES.HIT_GAIN), delta = (mate ? -1 : 1) * (base + (killed ? RULES.KILL : 0)), me = money(g, shooter, delta); if (me) fx.push({ t, k: 'money', ...me, delta }); }
       if (!killed) push(g.mask, c, Math.sign(c.x - x) || (g.rng() < .5 ? -1 : 1), Math.round(14 * (1 - d / reach)));
     }
   }
@@ -443,13 +446,15 @@ export function step(g, dt) {
     if (g.phase === 'ready') { g.readyT -= dt; if (g.readyT <= 0 || g.chars.every(c => c.ready || !c.human)) { g.phase = 'turn'; ev(g, { e: 'go' }); startRound(g); } } // 斷線的人交給電腦，不必等
     else if (g.phase === 'turn') {
       const c = turnChar(g); g.turnT -= dt; g.shopT = Math.max(0, g.shopT - dt);
-      if (c.move && !g.fired && c.stamina > 0) { c.acc += CHAR.WALK * dt; const n = Math.floor(c.acc); c.acc -= n; if (n) { walk(g, c, c.move, n); if (!c.alive) ev(g, { e: 'fall', id: c.id }); } } // 累積小數，速度才準
+      if (c.move && !g.fired && c.stamina > 0) { c.acc += CHAR.WALK * dt; const n = Math.floor(c.acc); c.acc -= n; if (n) walk(g, c, c.move, n); } // 累積小數，速度才準
+      if (!c.alive) { ev(g, { e: 'fall', id: c.id, x: r1(c.x) }); nextTurn(g); return flush(g); } // 走下懸崖掉進水裡：這個人的回合結束，順便判斷勝負
       if (!c.human && !g.fired) { g.botT -= dt; if (g.botT <= 0) botAct(g); }
       if (g.turnT <= 0 && !g.fired) { ev(g, { e: 'skip', id: c.id }); nextTurn(g); }
     } else if (g.phase === 'resolve') { g.resolveT -= dt; if (g.resolveT <= 0) nextTurn(g); }
   }
-  const out = g.events; g.events = []; return out;
+  return flush(g);
 }
+const flush = g => { const out = g.events; g.events = []; return out; };
 
 // 畫面用的快照。mask: true 時附上整張地形（開局與晚加入的人）；平常的更新不帶，爆炸只送事件
 const r2 = v => Math.round(v * 100) / 100;

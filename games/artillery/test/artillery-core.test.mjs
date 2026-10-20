@@ -33,13 +33,13 @@ test('shots: deterministic, stop on terrain or character, out of bounds is a spl
   assert.ok(hit.kind === 'char' || hit.kind === 'out');
 });
 
-test('fire: hitting an enemy hurts, pays half the damage, carves a hole; only the current player can fire, once', () => {
+test('fire: hitting an enemy hurts, pays 62.5% of the damage, carves a hole; only the current player can fire, once', () => {
   const g = two(); const me = put(g, 0, 250), foe = put(g, 3, 700); assert.equal(g.cur, 0);
   assert.equal(A.fire(g, 3, { angle: 45, power: .8 }), null, 'not your turn');
   const before = g.mask.slice(), m0 = me.money, e = shootAt(g, 0, foe);
   assert.ok(e && e.e === 'shot'); assert.notDeepEqual(g.mask, before, 'terrain was carved');
   const hit = e.fx.find(f => f.k === 'hit' && f.id === 3);
-  if (hit) { assert.ok(foe.hp < A.CHAR.HP && foe.hp === A.CHAR.HP - hit.dmg); assert.equal(me.money, m0 + Math.floor(hit.dmg / 2) + (hit.dead ? A.RULES.KILL : 0)); }
+  if (hit) { assert.ok(foe.hp < A.CHAR.HP && foe.hp === A.CHAR.HP - hit.dmg); assert.equal(me.money, m0 + Math.floor(hit.dmg * A.RULES.HIT_GAIN) + (hit.dead ? A.RULES.KILL : 0)); }
   assert.equal(A.fire(g, 0, { angle: 45, power: .8 }), null, 'only one shot per turn'); assert.equal(g.phase, 'resolve');
 });
 
@@ -49,7 +49,7 @@ test('fire: a direct hit works and the numbers add up (damage falls off with dis
   const g2 = two(); const a = put(g2, 0, 250), f2 = put(g2, 3, 400); const m = a.money;
   const sol = A.aimSolve(g2, a, f2.x, f2.y - A.CHAR.R); const ev = A.fire(g2, 0, { angle: sol.ang, power: sol.p });
   const hits = ev.fx.filter(f => f.k === 'hit'); assert.ok(hits.length >= 1, 'the solver finds a hit on a close target');
-  const h = hits.find(x => x.id === 3); assert.ok(h && h.dmg > 0 && h.dmg <= A.ITEMS.basic.dmg); assert.equal(a.money, m + Math.floor(h.dmg / 2) + (h.dead ? A.RULES.KILL : 0)); void foe;
+  const h = hits.find(x => x.id === 3); assert.ok(h && h.dmg > 0 && h.dmg <= A.ITEMS.basic.dmg); assert.equal(a.money, m + Math.floor(h.dmg * A.RULES.HIT_GAIN) + (h.dead ? A.RULES.KILL : 0)); void foe;
 });
 
 test('friendly fire: hitting a teammate costs money (never below 0); self damage does not move money', () => {
@@ -293,4 +293,27 @@ test('kills: only defeated enemies count; teammates and yourself do not; result 
   const r = two(); const a = put(r, 0, 300); a.hp = 1; a.items.heavy = 1; A.fire(r, 0, { angle: 90, power: .12, item: 'heavy' }); assert.equal(a.kills, 0, 'suicide is not a kill');
   const f = two(); for (const c of f.chars.slice(3)) c.alive = false; f.chars[0].kills = 2; f.chars[0].alive = true; A.forfeit(f, 1); A.forfeit(f, 2);
   assert.ok(f.over && f.result.players.find(p => p.id === 0).kills === 2);
+});
+
+test('hit income: an enemy hit pays 25% more than half the damage; a teammate hit still costs half', () => {
+  assert.equal(A.RULES.HIT_GAIN, .5 * 1.25);
+  const g = two(); const me = put(g, 0, 300), foe = put(g, 3, 330); put(g, 1, 360); me.items.heavy = 2; me.money = 100;
+  const e = A.fire(g, 0, { angle: 60, power: .12, item: 'heavy' }), hits = e.fx.filter(f => f.k === 'hit' && f.id !== 0);
+  assert.ok(hits.some(h => h.id === 3) && hits.some(h => g.chars[h.id].team === 0), 'an enemy and a teammate are in the blast');
+  const want = hits.reduce((m, h) => m + (g.chars[h.id].team === 0 ? -Math.floor(h.dmg / 2) : Math.floor(h.dmg * .625)) + (h.dead ? (g.chars[h.id].team === 0 ? -1 : 1) * A.RULES.KILL : 0), 100);
+  assert.equal(me.money, want); assert.ok(foe.hp < A.CHAR.HP);
+});
+
+test('falling: walking off a cliff into the void ends that turn right away, and a wiped team ends the game', () => {
+  const g = two(); const c = put(g, 0, 300); for (let x = 320; x < A.W; x++) for (let y = 0; y < A.H; y++) g.mask[y * A.W + x] = 0; // 前面整片沒有地
+  c.move = 1; const seen = run(g, 3, gg => { gg.chars[0].move = 1; });
+  assert.equal(c.alive, false); assert.ok(seen.some(e => e.e === 'fall' && e.id === 0)); assert.notEqual(g.cur, 0, 'turn moved on');
+  const w = two(); for (const o of w.chars) if (o.team === 0 && o.id !== 0) o.alive = false; const d = put(w, 0, 300); for (let x = 320; x < A.W; x++) for (let y = 0; y < A.H; y++) w.mask[y * A.W + x] = 0;
+  d.move = 1; run(w, 3, gg => { gg.chars[0].move = 1; }); assert.equal(w.over, true); assert.equal(w.result.winnerTeam, 1);
+});
+
+test('falling: whoever dies during their own turn (a bot walking into the void, for one) never stalls the game', () => {
+  const g = two(); const b = g.chars[0]; b.human = false; b.ai = { err: 0 }; g.botT = 99;
+  b.alive = false; b.hp = 0; // 回合中途掉下去
+  const evs = A.step(g, .05); assert.ok(evs.some(e => e.e === 'fall' && e.id === 0)); assert.notEqual(g.cur, 0, 'the turn moves on at once, not after the 20 s timer');
 });

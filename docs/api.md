@@ -93,7 +93,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 | 路徑 | body | 說明 |
 |---|---|---|
-| `/kart/solo` | `id`、`track` | 領票，票綁定賽道，10 分鐘有效 |
+| `/kart/solo` | `id`、`track`、`diff`（選填，`hard` 為困難，其他值視為普通） | 領票，票綁定賽道與難度，10 分鐘有效 |
 | `/kart/record` | `id`、`ticket`、`time` | 送完賽秒數，檢查最短時間與票的經過時間 |
 | `/bubble/solo` | `id` | 領票，15 分鐘有效 |
 | `/bubble/record` | `id`、`ticket`、`kills` | 送擊敗數，1 到 3，每擊敗 1 人至少 5 秒 |
@@ -116,14 +116,14 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 429 | 同一人兩次送出間隔不到 5 秒 |
 | 503 | 伺服器沒綁定紀錄儲存 |
 
-單人紀錄只更新各遊戲看板，不加總積分。每條賽道和每款遊戲的看板只留前 3 名，每位玩家只留自己最好的一次。
+單人紀錄只更新各遊戲看板，不加總積分。賽車的 `top` 是連線與單人普通電腦的榜，`hard` 是單人困難電腦的榜，兩份分開。每條賽道和每款遊戲的看板只留前 3 名，每位玩家只留自己最好的一次。
 
 ## 公開唯讀
 
 | 路徑 | 說明 | 回應 |
 |---|---|---|
 | GET `/board` | 總積分榜前 20 名 | `{"players":<總人數>,"top":[{rank,name,points,games,wins}]}` |
-| GET `/board/games` | 各遊戲紀錄 | `{"kart":{laps,tracks:[{id,name,top}]},"bubble":{kills:[]},"artillery":{kills:[]}}` |
+| GET `/board/games` | 各遊戲紀錄 | `{"kart":{laps,tracks:[{id,name,top,hard}]},"bubble":{kills:[]},"artillery":{kills:[]}}` |
 | GET `/version` | 目前部署的版本碼，`no-store` | `{"v":"<12 碼>"}` |
 | GET `/health` | 健康檢查 | `{"ok":true,"game":"office-mini-bubble-world"}` |
 

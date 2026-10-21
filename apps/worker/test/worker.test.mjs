@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
+import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
 import * as KartCore from '../../../games/kart-island/kart-core.js';
 import * as RunCore from '../../../games/bubble-run/run-core.js';
+import * as SurviveCore from '../../../games/bubble-survivors/survivors-core.js';
 const { LOBBY, IDLE_MS } = LobbyRoom;
 import * as Bundle from '../../../deploy/dist/worker.bundle.js';
 
@@ -744,4 +745,90 @@ test('run records: online scores and solo scores share one top 3 of meters; solo
     const total = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json(); assert.ok(total.top.every(p => ['Carol', 'Dan', 'Zero', 'Hack', 'Frac'].includes(p.name)), 'solo records never add points');
   } finally { Date.now = realNow; }
   assert.deepEqual((await (await Bundle.default.fetch(new Request('https://x.test/board/games'), {})).json()).run, { score: [] });
+});
+
+/* ---------- 泡泡倖存者 ---------- */
+test('survive room: lobby → picks → countdown → run (10 snapshots a second, events batched) → spectators → forfeit → result posted and scored → lobby', async () => {
+  const R = fakeRoom(SurviveRoom);
+  const a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', color: '#a8d8ff', ear: 'fe' }); await R.msg(b, { t: 'join' });
+  R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.equal(typeof st.s.seed, 'number'); assert.deepEqual(st.s.pl.map(p => p.name), ['Alice', 'Bob']); assert.equal(st.s.pl[0].look.color, '#a8d8ff');
+  assert.equal(st.s.pl[0].ch.length, 3, 'starter choices'); assert.equal(R.room.status().players, 2);
+  await R.msg(a, { t: 'pick', i: 0 }); assert.deepEqual(Object.keys(R.room.game.players[0].weapons), ['gun']); await R.msg(a, { t: 'pick', i: 0 });
+  await R.msg(b, { t: 'pick', i: 2 }); assert.deepEqual(Object.keys(R.room.game.players[1].weapons), ['wave']);
+  R.tick(75); assert.equal(R.room.game.phase, 'running');
+  await R.msg(a, { t: 'in', x: 1, y: 0 }); assert.equal(R.room.game.players[0].ix, 1);
+  await R.msg(a, { t: 'in', x: 9, y: 9 }); assert.ok(Math.hypot(R.room.game.players[0].ix, R.room.game.players[0].iy) <= 1 + 1e-9, 'input is clamped');
+  await R.msg(a, { t: 'dash', x: 0, y: 1 }); assert.ok(R.room.game.players[0].dashT > 0, 'dash message starts a dash'); assert.equal(R.room.game.players[0].dy, 1); await R.msg(a, { t: 'dash', x: 0, y: 1 }); assert.ok(R.room.game.players[0].dashCd > 0);
+  const before = a.out.filter(m => m.t === 's').length; R.tick(40); const frames = a.out.filter(m => m.t === 's').length - before;
+  assert.ok(frames >= 19 && frames <= 21, `${frames} frames for 40 ticks`);
+  const fr = a.out.findLast(m => m.t === 's').s; assert.equal(fr.seed, undefined); assert.equal(fr.pl[0].name, undefined); assert.ok(Array.isArray(fr.en) && Array.isArray(fr.b) && Array.isArray(fr.sh));
+  assert.ok(a.out.filter(m => m.t === 's').every(m => Array.isArray(m.ev)));
+  const c = R.connect('3', 'Carol'); await R.msg(c, { t: 'join' }); const late = c.out.find(m => m.t === 'start'); assert.equal(late.me, null); assert.equal(late.s.seed, st.s.seed);
+  await R.msg(c, { t: 'in', x: 1, y: 0 }); await R.msg(c, { t: 'pick', i: 0 });
+  b.readyState = 3; R.room.onLeave(b); assert.ok(R.room.gone.has('2')); R.tick(220); assert.equal(R.room.game.players[1].alive, false, 'disconnected player is out after the grace period'); assert.equal(R.room.game.players[0].alive, true);
+  R.room.game.run = SurviveCore.RUN_TIME - .2; R.tick(10); assert.equal(R.room.phase, 'end');
+  const end = a.out.findLast(m => m.t === 's' && m.ev?.some(e => e.type === 'end')); assert.ok(end, 'end event sent'); assert.equal(end.ev.find(e => e.type === 'end').result.cleared, true);
+  await new Promise(r => setTimeout(r, 0)); const post = R.fetches.at(-1); assert.ok(post); assert.match(post.body.text, /泡泡倖存者 過關/); assert.match(post.body.text, /Alice/);
+  R.adv(9000); R.tick(); assert.equal(R.room.phase, 'lobby');
+});
+
+test('survive room: everyone down fails the run; every player still gets rank points, wins only count when cleared', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  const env = { LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const R = fakeRoom(SurviveRoom, env), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join' }); await R.msg(b, { t: 'join' }); R.adv(20500); R.tick();
+  await R.msg(a, { t: 'pick', i: 0 }); await R.msg(b, { t: 'pick', i: 0 }); R.tick(75);
+  SurviveCore.forfeit(R.room.game, 0); SurviveCore.forfeit(R.room.game, 1); R.tick(2);
+  assert.equal(R.room.phase, 'end'); assert.equal(R.room.result.cleared, false);
+  await new Promise(r => setTimeout(r, 10));
+  const board = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json();
+  assert.equal(board.top.length, 2); assert.ok(board.top.every(p => p.points > 0 && p.wins === 0), 'points for everyone, no win for a failed run');
+});
+
+test('bundle serves the survive page and its rules file; the room is exported and needs a websocket', async () => {
+  for (const path of ['/survive/', '/survive/survivors-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
+  assert.equal((await Bundle.default.fetch(new Request('https://x.test/survive/ws'), {})).status, 426);
+  assert.equal(typeof Bundle.SurviveRoom, 'function');
+});
+
+test('survive records: one top 3 of survival seconds (kills break ties), online and solo together; solo needs a ticket, a possible time and a possible kill count', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now++;
+  const env = { ...AUTH_ENV, LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const alice = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 42, first_name: 'Alice' })), bob = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 7, first_name: 'Bob' }));
+  const post = (path, body) => Bundle.default.fetch(new Request('https://x.test' + path, { method: 'POST', body: JSON.stringify(body) }), env);
+  const R = fakeRoom(SurviveRoom, env);
+  await R.room.reportScores({ cleared: true, players: [{ rank: 1, id: 0, uid: '1', name: 'Carol', time: 300, kills: 500, points: 5 }, { rank: 2, id: 1, uid: '2', name: 'Dan', time: 300, kills: 650, points: 3 }, { rank: 3, id: 2, uid: '3', name: 'Zed', time: 0.4, kills: 0, points: 1 }] });
+  await lobby.addScores({ game: 'survive', entries: [{ uid: '9', name: 'Hack', points: 1, stats: { time: 120, kills: 999999 } }, { uid: '8', name: 'Frac', points: 1, stats: { time: 100.5, kills: 5 } }, { uid: '7', name: 'Long', points: 1, stats: { time: 999, kills: 5 } }] });
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  try {
+    const { ticket } = await (await post('/survive/solo', { id: alice })).json(); assert.ok(ticket);
+    assert.equal((await post('/survive/record', { id: alice, ticket, time: 100, kills: 50 })).status, 422, 'longer than the real time since the ticket');
+    clock += 150000; now += 150000;
+    assert.equal((await post('/survive/record', { id: alice, ticket, time: 100, kills: SurviveCore.maxKills(100, 1) + 1 })).status, 422, 'more kills than enemies that can exist');
+    for (const bad of [0, -1, 1.5, 'x', null, 301]) assert.equal((await post('/survive/record', { id: alice, ticket, time: bad, kills: 5 })).status, 422, 'time ' + bad);
+    for (const bad of [-1, 2.5, 'x']) assert.equal((await post('/survive/record', { id: alice, ticket, time: 100, kills: bad })).status, 422, 'kills ' + bad);
+    assert.equal((await post('/survive/record', { id: bob, ticket, time: 100, kills: 50 })).status, 403, 'the ticket belongs to Alice');
+    assert.equal((await post('/survive/record', { id: alice, ticket: 'bad.ticket', time: 100, kills: 50 })).status, 403);
+    const runTicket = await (await post('/run/solo', { id: alice })).json(); assert.equal((await post('/survive/record', { id: alice, ticket: runTicket.ticket, time: 100, kills: 50 })).status, 403, 'a run ticket is not a survive ticket');
+    const ok = await post('/survive/record', { id: alice, ticket, time: 140, kills: 300 }); assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, rank: 3, improved: true, top: [{ rank: 1, name: 'Dan', time: 300, kills: 650 }, { rank: 2, name: 'Carol', time: 300, kills: 500 }, { rank: 3, name: 'Alice', time: 140, kills: 300 }] });
+    const board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json();
+    assert.deepEqual(board.survive.time.map(p => [p.name, p.time, p.kills]), [['Dan', 300, 650], ['Carol', 300, 500], ['Alice', 140, 300]], 'seconds first, kills break ties; zero-second, fractional and impossible values dropped');
+    const web = await signSession({ uid: 'g:1', name: 'Guest', guest: 1, exp: clock + 60000 }, AUTH_ENV);
+    assert.equal((await post('/survive/solo', { id: 'session=' + encodeURIComponent(web) })).status, 403, 'guests get no ticket'); assert.equal((await post('/survive/solo', { id: 'auth=nope' })).status, 401);
+    assert.equal((await Bundle.default.fetch(new Request('https://x.test/survive/solo'), env)).status, 405);
+  } finally { Date.now = realNow; }
+  assert.deepEqual((await (await Bundle.default.fetch(new Request('https://x.test/board/games'), {})).json()).survive, { time: [] });
+});
+
+test('survive room: damage numbers are capped per snapshot and never push out important events like end', async () => {
+  const R = fakeRoom(SurviveRoom), a = R.connect('1', 'Alice'); R.room.game = SurviveCore.createGame({ seed: 1, humans: [{ uid: '1', name: 'Alice' }] });
+  const many = Array.from({ length: 200 }, (_, i) => ({ type: 'd', x: i, y: i, v: 5, d: 0 }));
+  R.room.n = 1; R.room.broadcast({ t: 's', s: {}, ev: [...many, { type: 'out', id: 0 }] }); // n 奇數：這格會送出
+  const sent = a.out.findLast(m => m.t === 's'); assert.ok(sent); assert.equal(sent.ev.filter(e => e.type === 'd').length, 40); assert.ok(sent.ev.some(e => e.type === 'out'));
+  R.room.n = 0; R.room.broadcast({ t: 's', s: {}, ev: [{ type: 'level', id: 0 }] }); R.room.broadcast({ t: 's', s: {}, ev: [{ type: 'out', id: 0 }] });
+  assert.deepEqual(a.out.findLast(m => m.t === 's').ev.map(e => e.type), ['level', 'out'], 'a skipped snapshot hands its events to the next one');
 });

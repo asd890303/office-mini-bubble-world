@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡倖存者</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%23cfe9ff'/%3E%3Cg%20stroke='%233b2f2f'%20stroke-width='3.5'%20stroke-linejoin='round'%3E%3Ccircle%20cx='19'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='45'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='32'%20cy='37'%20r='22'%20fill='%23fffdf7'/%3E%3C/g%3E%3Ccircle%20cx='24'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Ccircle%20cx='40'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Cellipse%20cx='17.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cellipse%20cx='46.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cpath%20d='M28%2043q4%204%208%200'%20fill='none'%20stroke='%233b2f2f'%20stroke-width='2.8'%20stroke-linecap='round'/%3E%3Cellipse%20cx='22'%20cy='27'%20rx='4'%20ry='2.4'%20transform='rotate(-35%2022%2027)'%20fill='%23fff'%20opacity='.9'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; transition: background 1.2s; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* HUD */
+.stick { position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 55%, transparent); pointer-events: none; z-index: 3; }
+.stick[hidden] { display: none; }
+.stick .knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: var(--pink); border: 3px solid var(--ink); }
+.hudtop { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+.clock { padding: 2px 18px; font-weight: 900; font-size: 24px; font-variant-numeric: tabular-nums; display: flex; gap: 10px; align-items: baseline; }
+.clock small { font-size: 12px; color: var(--ink-soft); font-weight: 700; }
+.bossbar { width: min(360px, 60%); height: 14px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); overflow: hidden; }
+.bossbar[hidden] { display: none; }
+.bossbar i { display: block; height: 100%; width: 100%; background: #ff8fab; transition: width .15s; }
+.team { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; width: 172px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.tm { padding: 3px 8px; border-radius: 12px; font-size: 12px; line-height: 1.3; border-width: 2px; }
+.tm .l1 { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; }
+.tm .l1 span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.tm i.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 5px; vertical-align: -1px; }
+.tm .hp { height: 6px; margin-top: 2px; border-radius: 999px; background: #e8dede; overflow: hidden; }
+.tm .hp b { display: block; height: 100%; background: #ff8fab; }
+.tm.me { background: var(--pink); color: #4a3b3b; }
+.tm.out { opacity: .5; }
+.hudbot { position: fixed; left: 50%; bottom: max(12px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(520px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+.bars { display: grid; gap: 4px; }
+.bar { height: 12px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); overflow: hidden; position: relative; }
+.bar i { display: block; height: 100%; }
+.bar.hp i { background: #ff8fab; }
+.bar.xp i { background: #ffd36b; }
+.bar span { position: absolute; inset: 0; font-size: 9px; font-weight: 900; line-height: 10px; text-align: center; }
+.grp { display: flex; align-items: center; gap: 6px; }
+.lbl { font-size: 11px; font-weight: 900; color: var(--ink-soft); width: 28px; flex: none; text-align: right; }
+.wrow { display: flex; gap: 5px; flex-wrap: wrap; flex: 1; }
+.wp { position: relative; min-width: 74px; padding: 2px 8px 3px; border-width: 2px; border-radius: 12px; overflow: hidden; line-height: 1.25; }
+.wp i { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(124,200,255,.42); height: 0; }
+.wp b, .wp small, .wp em { position: relative; display: block; font-style: normal; }
+.wp b { font-size: 12px; font-weight: 900; white-space: nowrap; }
+.wp small { font-size: 10px; color: var(--ink-soft); font-weight: 700; display: flex; justify-content: space-between; gap: 6px; }
+.wp.ready { border-color: #4cae7a; }
+.wp.evo { background: #fff3c4; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; }
+.chip { padding: 1px 8px; font-size: 11px; font-weight: 900; border-width: 2px; border-radius: 999px; }
+.chip.p { background: #e8f4ff; }
+.chip.e { background: #ffe9a8; }
+.choose { position: fixed; left: 0; right: 0; bottom: 96px; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 8; padding: 0 10px; }
+.choose[hidden] { display: none; }
+.choose h3 { margin: 0; padding: 2px 14px; font-size: 14px; font-weight: 900; border-width: 2px; }
+.cards { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.card { width: 150px; padding: 8px 10px; text-align: left; cursor: pointer; border-width: 3px; font: inherit; color: var(--ink); background: var(--paper); border-radius: 18px; }
+.card:hover { background: var(--pink-soft, #fff0f5); }
+.card b { display: flex; justify-content: space-between; font-size: 14px; font-weight: 900; }
+.card kbd { font: 900 10px inherit; border: 2px solid var(--ink); border-radius: 6px; padding: 0 4px; background: #fff; }
+.card small { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.4; color: var(--ink-soft); font-weight: 700; }
+.card em { font-style: normal; font-size: 10.5px; font-weight: 900; color: var(--pink-deep); }
+.card.evo { background: #fff3c4; }
+.rerollbtn { padding: 3px 14px; font-size: 12px; }
+.count { position: fixed; left: 0; right: 0; top: 24%; text-align: center; font-size: 100px; font-weight: 900; color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; pointer-events: none; line-height: 1; }
+.count[hidden] { display: none; }
+.count.pop { animation: pop .5s ease-out; }
+@keyframes pop { from { transform: scale(1.6); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+.dmg { position: fixed; z-index: 5; pointer-events: none; font-weight: 900; font-size: 15px; color: #fff; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; transform: translate(-50%, -50%); animation: dmgrise .8s ease-out forwards; white-space: nowrap; }
+.dmg.chain { color: #ffd36b; font-size: 19px; }
+.dmg.big { font-size: 24px; color: #ff9a4c; }
+.dmg.me { color: #ff6b8a; font-size: 18px; }
+@keyframes dmgrise { from { opacity: 1; transform: translate(-50%, -50%) scale(.8); } 15% { transform: translate(-50%, -70%) scale(1.15); } to { opacity: 0; transform: translate(-50%, -200%) scale(1); } }
+.dashbtn { position: fixed; right: 14px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 6; width: 86px; height: 86px; border-radius: 50%; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); font: inherit; font-weight: 900; font-size: 15px; box-shadow: var(--shadow); overflow: hidden; touch-action: none; }
+.dashbtn[hidden] { display: none; }
+.dashbtn i { position: absolute; left: 0; right: 0; bottom: 0; background: #bfe9ff; height: 100%; transition: height .1s; }
+.dashbtn span { position: relative; display: block; line-height: 1.2; }
+.dashbtn small { display: block; font-size: 10px; color: var(--ink-soft); }
+.dashbtn.ready { background: #bfe9ff; }
+.vignette { position: fixed; inset: 0; pointer-events: none; box-shadow: inset 0 0 120px 30px rgba(255,80,110,.0); transition: box-shadow .25s; }
+.vignette.hit { box-shadow: inset 0 0 120px 30px rgba(255,80,110,.55); }
+@media (max-height: 520px) and (orientation: landscape) { .dashbtn { width: 70px; height: 70px; } .choose { bottom: 70px; } .card { width: 130px; padding: 5px 8px; } .card small { display: none; } .count { font-size: 70px; } .team { width: 150px; } }
+/* 畫面 */
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
+.screen[hidden] { display: none; }
+.screen .box { width: min(400px, calc(100% - 28px)); padding: 20px; text-align: center; max-height: calc(100% - 28px); overflow: auto; }
+.screen h1 { margin: 0; font-size: 30px; font-weight: 900; }
+.screen h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
+.screen p { margin: 6px 0 12px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.go { margin-top: 16px; width: 100%; padding: 10px; font-size: 17px; }
+.back { display: inline-block; margin-top: 10px; text-decoration: none; color: var(--ink); }
+.rank { text-align: left; margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.rank li { display: flex; justify-content: space-between; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.rank li:last-child { border: 0; }
+.slots i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; }
+.slots li.empty { color: var(--ink-soft); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; text-align: left; font-size: 12.5px; margin-top: 10px; }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 84px); transform: translate(-50%, 0) scale(.8); font-size: 15px; font-weight: 900; padding: 4px 16px; border-width: 2px; max-width: calc(100% - 24px); white-space: nowrap; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#endScreen { background: transparent; place-items: end center; pointer-events: none; }
+#endScreen .box { pointer-events: auto; margin-bottom: max(14px, env(safe-area-inset-bottom)); max-height: 52%; padding: 12px 16px; }
+#endScreen h2 { font-size: 20px; margin: 0; }
+#endScreen p { margin: 2px 0 6px; }
+#endScreen .rank { margin: 0; font-size: 13px; }
+#endScreen .rank li { padding: 3px 4px; }
+#endScreen .go { margin-top: 8px; padding: 7px; }
+.endnote { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.endnote.best { color: var(--pink-deep); font-size: 15px; }
+.mute { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 6; padding: 4px 10px; font-size: 12px; }
+@media (max-height: 520px) and (orientation: landscape) {
+  .screen .box { width: min(560px, calc(100% - 20px)); max-height: calc(100% - 16px); padding: 12px 16px; }
+  .screen h1 { font-size: 22px; }
+  .screen h2 { font-size: 20px; }
+  .screen p, .legend { display: none; }
+  .go { margin-top: 10px; padding: 7px; }
+  .count { font-size: 80px; top: 14%; }
+  .count.small { font-size: 34px; }
+  .runners { width: 150px; }
+  #endScreen .box { max-height: calc(100% - 16px); width: min(380px, calc(100% - 340px)); margin-bottom: 8px; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="vignette" id="vig"></div>
+<div class="hudtop"><div class="clock box"><b id="clock">5:00</b><small id="wave">第 1 波</small></div><div class="bossbar box" id="bossbar" hidden><i id="bossfill"></i></div></div>
+<div class="team" id="team" hidden></div>
+<div class="count" id="count" hidden></div>
+<div class="choose" id="choose" hidden><h3 class="box" id="chooseTitle"></h3><div class="cards" id="cards"></div><button class="btn rerollbtn" id="rerollBtn" type="button">重抽 (R)</button></div>
+<div class="hudbot" id="hudbot" hidden><div class="grp"><span class="lbl">武器</span><div class="wrow" id="wchips"></div></div><div class="grp"><span class="lbl">升級</span><div class="chips" id="pchips"></div></div><div class="bars"><div class="bar hp box"><i id="hpFill"></i><span id="hpText"></span></div><div class="bar xp box"><i id="xpFill"></i><span id="xpText"></span></div></div></div>
+<button class="dashbtn" id="dashBtn" type="button" hidden><i id="dashFill"></i><span>衝刺<small id="dashKey">空白</small></span></button>
+<div class="stick" id="stick" hidden><div class="knob" id="knob"></div></div>
+<button class="btn mute" id="mute">音效 開</button>
+<div class="toast box" id="toast"></div>
+
+<section class="screen" id="startScreen">
+  <div class="box">
+    <h1>泡泡倖存者</h1>
+    <p>用泡泡包住湧來的敵人，再走進泡泡戳破，連鎖爆炸清場。撐 5 分鐘或打倒泡泡王就過關，升級時三選一配出自己的組合。</p>
+    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線合作</button></div>
+    <div class="legend"><span>泡泡：包住敵人</span><span>走進泡泡：戳破連鎖</span><span>碎片：撿滿升級</span><span>連線：2 到 4 人合作</span></div>
+    <button class="btn primary go" id="startBtn">開始</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="rank" id="rank"></ul>
+    <p class="endnote" id="endNote" hidden></p>
+    <button class="btn primary go" id="againBtn">再玩一局</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="lobbyScreen" hidden>
+  <div class="box">
+    <h1>泡泡倖存者</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="rank slots" id="slots"></ul>
+    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button></div>
+    <button class="btn primary go" id="joinBtn">加入</button>
+    <button class="btn" id="soloBtn" style="margin-top:10px">先玩單人版</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './survivors-core.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
+import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, G, M, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+watchUpdates();
+mountKeyHelp({ rows: ['[W][A][S][D] 或 [方向鍵] 移動（手機拖曳）', '[空白] 無敵衝刺（手機點右下按鈕）', '攻擊自動，泡泡會包住敵人', '走進被包住的敵人 戳破它', '[1][2][3] 升級選擇　[R] 重抽'], top: '190px' });
+
+const WORKER_URL = location.origin;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- Telegram ---------- */
+const TG = window.Telegram?.WebApp;
+const inTelegram = !!(TG && TG.initData);
+const tgUser = inTelegram ? TG.initDataUnsafe?.user : null;
+if (inTelegram) {
+  try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {}
+  if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
+}
+const haptic = {
+  tap() { try { TG?.HapticFeedback?.impactOccurred('light'); } catch {} },
+  hit() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} },
+  win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} },
+};
+
+/* ---------- 音效 ---------- */
+let muted = store.get('bp-muted') === '1', actx = null, lastTone = 0;
+function tone(freq, dur = .12, type = 'sine', vol = .12, slide = 0) {
+  if (muted) return;
+  const now = performance.now(); if (now - lastTone < 30) return; lastTone = now;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch {}
+}
+const sfx = {
+  pop: d => tone(300 + Math.min(8, d) * 70, .14, 'sine', .12, 1.8),
+  poke: () => tone(900, .06, 'square', .04, .6),
+  wave: () => tone(220, .3, 'sine', .1, 2.2),
+  level: () => { tone(660, .1, 'sine', .1); setTimeout(() => tone(990, .16, 'sine', .1), 90); },
+  hurt: () => tone(180, .2, 'triangle', .14, .5),
+  out: () => { tone(260, .4, 'triangle', .16, .4); tone(120, .3, 'sine', .1, .5); },
+  boss: () => { tone(110, .6, 'sawtooth', .1, .6); },
+  dash: () => tone(500, .16, 'sawtooth', .07, 2.4),
+  tick: () => tone(660, .1, 'square', .05),
+  go: () => { tone(880, .18, 'square', .06); tone(1320, .25, 'sine', .08); },
+};
+$('mute').textContent = muted ? '音效 關' : '音效 開';
+$('mute').addEventListener('click', e => { e.stopPropagation(); muted = !muted; store.set('bp-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+
+const S = 34; // 1 個世界單位 = 34 點
+const loginErr = captureLogin();
+let ID = identity();
+let mode = ID && /^https?:\/\//.test(WORKER_URL) ? 'online' : 'offline';
+const TOUCH = matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch');
+if (TOUCH) document.body.classList.add('touch');
+
+/* ---------- three.js ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(26, 1, .1, 300);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(6, 20, 8); scene.add(sun);
+const root = new THREE.Group(); scene.add(root);
+const AW = Core.ARENA.W / S, AH = Core.ARENA.H / S;
+{
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d');
+  x.fillStyle = '#e4f6d4'; x.fillRect(0, 0, 128, 128); x.fillStyle = '#d3efc0'; x.fillRect(0, 0, 64, 64); x.fillRect(64, 64, 64, 64);
+  const tex = new THREE.CanvasTexture(cv); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(AW / 4, AH / 4); tex.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(AW, AH), new THREE.MeshBasicMaterial({ map: tex })); ground.rotation.x = -Math.PI / 2; ground.position.set(AW / 2, 0, AH / 2); root.add(ground);
+  const wall = (w, d, px, pz) => { const m = new THREE.Mesh(G.box, toon('#f3c9b0')); m.scale.set(w, .5, d); m.position.set(px, .25, pz); withOutline(m, 1.02); root.add(m); };
+  wall(AW + 1, .6, AW / 2, -.3); wall(AW + 1, .6, AW / 2, AH + .3); wall(.6, AH, -.3, AH / 2); wall(.6, AH, AW + .3, AH / 2);
+}
+
+/* ---------- 外觀 ---------- */
+const EN_COL = { slime: '#8fd694', swarm: '#ffcf6b', shell: '#b9a7e8', shooter: '#7cc8ff', boss: '#ff8fab' };
+const dark = new THREE.MeshBasicMaterial({ color: 0x2b2222 });
+function makeEnemy(type) {
+  const r = Core.ENEMIES[type].r / S, g = new THREE.Group();
+  const body = blob(G.sphere, toon(EN_COL[type]), r, r * .85, r, 1.1); body.position.y = r * .85; g.add(body);
+  for (const sx of [-1, 1]) { const e = blob(G.small, dark, r * .14, r * .18, r * .1, 0); e.position.set(sx * r * .36, r * 1.0, r * .86); g.add(e); }
+  let armor = null;
+  if (type === 'shell') { armor = blob(G.sphere, toon('#6a5aa8'), r * .85, r * .55, r * .85, 1.08); armor.position.y = r * 1.35; g.add(armor); }
+  if (type === 'shooter') { const c = new THREE.Mesh(G.cone, toon('#3d7cc8')); withOutline(c, 1.12); c.scale.setScalar(r * 2.2); c.position.y = r * 2.0; g.add(c); }
+  if (type === 'boss') for (const sx of [-1, 0, 1]) { const c = new THREE.Mesh(G.cone, toon('#ffd36b')); withOutline(c, 1.12); c.scale.setScalar(r * 1.2); c.position.set(sx * r * .5, r * 2.2, 0); g.add(c); }
+  const bubble = new THREE.Mesh(G.sphere, M.bubble); bubble.scale.setScalar(r * 1.55); bubble.position.y = r * .85; bubble.visible = false; g.add(bubble);
+  return { g, body, bubble, armor, r, x: 0, y: 0, wrapped: 0, seed: Math.random() * 6 };
+}
+const bulletGeo = G.sphere, bulletMat = toon('#bfe9ff', { transparent: true, opacity: .85 }), ebMat = toon('#ff6b6b'), shardMat = toon('#ffd36b');
+const ringGeo = new THREE.RingGeometry(.88, 1, 40);
+const fx = [];
+function addRing(x, y, r, color, dur = .35, grow = true) {
+  const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x / S, .06, y / S); m.scale.setScalar(grow ? .1 : r / S); V.group.add(m);
+  fx.push({ m, t: 0, dur, r: r / S, grow });
+}
+function addLine(x, y, tx, ty) {
+  const dx = tx - x, dy = ty - y, d = Math.hypot(dx, dy) / S, m = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .9 }));
+  m.scale.set(d, .08, .08); m.position.set((x + tx) / 2 / S, .8, (y + ty) / 2 / S); m.rotation.y = -Math.atan2(dy, dx); V.group.add(m); fx.push({ m, t: 0, dur: .16, line: true });
+}
+
+/* ---------- 一局的畫面 ---------- */
+let L = null;          // 單人：本機的對局
+let V = null;          // 畫面物件
+let net1 = null;       // 連線：最新一格
+let playing = false, solo = null, endSeq = 0, toastTimer = 0, hudAt = 0, lastChoiceKey = '', lastCount = null, shake = 0;
+const setup = { color: Core.COLORS[0], ear: 'be', eye: 'dot', body: Core.BODIES[0], blush: Core.BLUSHES[0] };
+const myName = (ID?.name || tgUser?.first_name || store.get('bp-name') || '你').slice(0, 10);
+function toast(text, ms = 1400) { const t = $('toast'); t.textContent = text; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms); }
+
+function clearView() {
+  if (!V) return; root.remove(V.group);
+  V.group.traverse(o => { if (o.isSprite) { o.material.map?.dispose(); o.material.dispose(); } });
+  fx.length = 0; V = null;
+}
+// snap：完整快照（含名字與外觀）
+function buildView(snap, myId) {
+  clearView();
+  const group = new THREE.Group(); root.add(group);
+  V = { group, myId, info: snap.pl.map(p => ({ name: p.name, look: p.look, uid: p.uid })), players: new Map(), enemies: new Map(), bullets: [], ebullets: [], shards: [], orbits: new Map(), pred: null, dashLocal: null, cam: { x: Core.ARENA.W / 2, y: Core.ARENA.H / 2 }, snapAt: performance.now(), ended: false, lastRun: 0, hurtAt: 0 };
+  const me = snap.pl[myId ?? 0]; if (me) V.pred = { x: me.x, y: me.y };
+  $('team').hidden = snap.pl.length < 2; $('hudbot').hidden = false; lastChoiceKey = ''; lastCount = null;
+}
+function ensurePlayer(sp) {
+  let o = V.players.get(sp.id); if (o) return o;
+  const inf = V.info[sp.id] || {}, look = inf.look || {};
+  const c = makeCritter({ color: look.color || Core.COLORS[sp.id % Core.COLORS.length], ear: look.ear || 'be', eye: look.eye || 'dot', body: look.body || Core.BODIES[0], blush: look.blush || Core.BLUSHES[0] });
+  addNameTag(c, sp.id === V.myId ? '你' : inf.name || `玩家${sp.id + 1}`); c.nameTag.scale.set(2.4, .6, 1); c.nameTag.position.y = 1.9;
+  const g = new THREE.Group(); g.add(c.root); V.group.add(g);
+  o = { g, c, x: sp.x, y: sp.y, yaw: 0, dead: 0, moving: false }; V.players.set(sp.id, o); return o;
+}
+const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+
+function followTarget(s) {
+  const me = s.pl[V.myId ?? -1]; if (me && me.a) return me;
+  return s.pl.find(p => p.a) || me || s.pl[0];
+}
+
+function sync(s, dt, t) {
+  const online = mode === 'online', k = online ? Math.min(1, dt * 14) : 1;
+  const meSp = V.myId != null ? s.pl[V.myId] : null;
+  // 自己的位置：連線版先在本機預測，伺服器位置只用來修正
+  if (online && meSp) {
+    if (V.newFrame) { const ex = meSp.x - V.pred.x, ey = meSp.y - V.pred.y; if (Math.hypot(ex, ey) > 90) { V.pred.x = meSp.x; V.pred.y = meSp.y; } else { V.pred.x += ex * .2; V.pred.y += ey * .2; } }
+    if (meSp.a && s.phase === 'running') {
+      let vx, vy; const d = V.dashLocal;
+      if (d) { const step = Math.min(dt, d.t); vx = d.dx * Core.DASH.DIST / Core.DASH.TIME * step / dt; vy = d.dy * Core.DASH.DIST / Core.DASH.TIME * step / dt; d.t -= step; if (d.t <= 1e-9) V.dashLocal = null; }
+      else { const sp = Core.stats({ passives: meSp.ps || {} }).speed, v = inputVec(); vx = v.x * sp; vy = v.y * sp; }
+      V.pred.x = Math.max(Core.PLAYER.R, Math.min(Core.ARENA.W - Core.PLAYER.R, V.pred.x + vx * dt)); V.pred.y = Math.max(Core.PLAYER.R, Math.min(Core.ARENA.H - Core.PLAYER.R, V.pred.y + vy * dt));
+    }
+  }
+  for (const sp of s.pl) {
+    const o = ensurePlayer(sp), mine = online && sp.id === V.myId, tx = mine ? V.pred.x : sp.x, ty = mine ? V.pred.y : sp.y;
+    const px = o.x, py = o.y; o.x += (tx - o.x) * (mine ? 1 : k); o.y += (ty - o.y) * (mine ? 1 : k);
+    o.moving = Math.hypot(o.x - px, o.y - py) > .15;
+    o.g.position.set(o.x / S, 0, o.y / S);
+    const targetYaw = Math.PI / 2 - sp.f; o.yaw += wrapAngle(targetYaw - o.yaw) * Math.min(1, dt * 14); o.c.root.rotation.y = o.yaw;
+    if (!sp.a) { o.dead = Math.min(1, o.dead + dt * 3); o.c.root.rotation.z = -o.dead * 1.5; for (const e of o.c.eyes) e.scale.y = .008; o.c.pivot.rotation.x = 0; o.c.pivot.position.z = 0; }
+    else {
+      o.dead = 0; o.c.root.rotation.z = 0; animateCritter(o.c, dt, t, o.moving);
+      const dashing = !!sp.ds || (mine && !!V.dashLocal);
+      if (dashing && !o.wasDash) o.roll = 0; o.wasDash = dashing;
+      if (o.roll != null) { o.roll += dt / .45; if (o.roll >= 1) o.roll = null; }
+      const th = o.roll == null ? 0 : (o.roll * o.roll * (3 - 2 * o.roll)) * Math.PI * 2;
+      o.c.pivot.rotation.x = th; o.c.pivot.position.y += .5 - .5 * Math.cos(th) + (o.roll == null ? 0 : Math.sin(o.roll * Math.PI) * .35); o.c.pivot.position.z = -.5 * Math.sin(th);
+    }
+    o.c.root.visible = sp.a || o.dead < 1 || true;
+    o.g.visible = true;
+    // 環繞泡泡
+    const orbitId = sp.w?.hole ? 'hole' : sp.w?.orbit ? 'orbit' : null; let list = V.orbits.get(sp.id) || [];
+    const want = orbitId && sp.a ? Core.WEAPONS[orbitId].n[(sp.w[orbitId] || 1) - 1] : 0;
+    while (list.length < want) { const m = new THREE.Mesh(G.sphere, toon('#bfe9ff', { transparent: true, opacity: .9 })); withOutline(m, 1.1); m.scale.setScalar(Core.WEAPONS.orbit.r / S * 1.3); V.group.add(m); list.push(m); }
+    while (list.length > want) V.group.remove(list.pop());
+    V.orbits.set(sp.id, list);
+    if (want) { const w = Core.WEAPONS[orbitId], R = w.radius * Core.stats({ passives: sp.ps || {} }).area; list.forEach((m, i) => { const a = s.run * w.spin + i * Math.PI * 2 / want; m.position.set((o.x + Math.cos(a) * R) / S, .5, (o.y + Math.sin(a) * R) / S); }); }
+  }
+  // 敵人
+  const seen = new Set();
+  for (const [id, type, x, y, wr, , arm] of s.en) {
+    let o = V.enemies.get(id); if (!o) { o = makeEnemy(type); o.x = x; o.y = y; V.group.add(o.g); V.enemies.set(id, o); }
+    seen.add(id); const ek = online ? Math.min(1, dt * 12) : 1; o.x += (x - o.x) * ek; o.y += (y - o.y) * ek;
+    o.g.position.set(o.x / S, 0, o.y / S); o.wrapped = wr;
+    o.bubble.visible = !!wr; if (o.armor) o.armor.visible = !!arm;
+    const bob = wr ? Math.sin(t * 3 + o.seed) * .12 : 0; o.body.position.y = o.r * .85 + bob; o.bubble.position.y = o.r * .85 + bob; o.bubble.scale.setScalar(o.r * (1.5 + (wr ? Math.sin(t * 4 + o.seed) * .06 : 0)));
+  }
+  for (const [id, o] of V.enemies) if (!seen.has(id)) { V.group.remove(o.g); V.enemies.delete(id); addRing(o.x, o.y, o.r * S * 1.6, 0xffffff, .25); }
+  // 子彈與碎片
+  const age = Math.min(.15, (performance.now() - V.snapAt) / 1000);
+  pool(V.bullets, s.b, () => { const m = new THREE.Mesh(bulletGeo, bulletMat); m.scale.setScalar(.26); return m; }, (m, b) => m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .55, (b[1] + (online ? (b[3] || 0) * age : 0)) / S));
+  pool(V.ebullets, s.eb, () => { const m = new THREE.Mesh(bulletGeo, ebMat); m.scale.setScalar(.2); withOutline(m, 1.1); return m; }, (m, b) => m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .5, (b[1] + (online ? (b[3] || 0) * age : 0)) / S));
+  pool(V.shards, s.sh, () => { const m = new THREE.Mesh(G.star, shardMat); m.scale.setScalar(.2); withOutline(m, 1.15); return m; }, (m, b) => { m.position.set(b[0] / S, .3 + Math.sin(t * 4 + b[0]) * .05, b[1] / S); m.rotation.y = t * 2; });
+  V.newFrame = false;
+  // 特效
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i]; f.t += dt; const k = Math.min(1, f.t / f.dur);
+    if (!f.line) f.m.scale.setScalar(f.grow ? Math.max(.1, f.r * k) : f.r); f.m.material.opacity = (f.line ? .9 : .8) * (1 - k);
+    if (k >= 1) { V.group.remove(f.m); f.m.material.dispose(); fx.splice(i, 1); }
+  }
+}
+function pool(list, data, make, place) {
+  while (list.length < data.length) { const m = make(); V.group.add(m); list.push(m); }
+  for (let i = 0; i < list.length; i++) { const m = list[i]; if (i < data.length) { m.visible = true; place(m, data[i]); } else m.visible = false; }
+}
+
+function placeCamera(s, dt) {
+  const f = followTarget(s), mine = f && mode === 'online' && f.id === V.myId && V.pred ? V.pred : f;
+  const tx = mine ? mine.x : Core.ARENA.W / 2, ty = mine ? mine.y : Core.ARENA.H / 2, k = Math.min(1, dt * 8);
+  V.cam.x += (tx - V.cam.x) * k; V.cam.y += (ty - V.cam.y) * k;
+  const aspect = innerWidth / innerHeight, wantW = aspect < 1 ? 13 : 21, tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), d = Math.max(16, wantW / (2 * tanH * Math.max(.3, aspect))), tilt = THREE.MathUtils.degToRad(24);
+  const cx = V.cam.x / S + (Math.random() - .5) * shake, cz = V.cam.y / S + (Math.random() - .5) * shake;
+  camera.position.set(cx, d * Math.cos(tilt), cz + d * Math.sin(tilt)); camera.lookAt(cx, 0, cz + .6);
+  shake = Math.max(0, shake - dt * 1.5);
+}
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+if (inTelegram) { try { TG.onEvent('viewportChanged', resize); } catch {} }
+
+/* ---------- HUD ---------- */
+const fmt = sec => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+const WKIND = { weapon: '武器', passive: '被動', evolve: '進化', heal: '補血' };
+function hud(s) {
+  const left = Math.max(0, Core.RUN_TIME - s.run);
+  $('clock').textContent = fmt(s.phase === 'running' || s.phase === 'over' ? left : Core.RUN_TIME); $('wave').textContent = `第 ${Math.min(5, Math.floor(s.run / Core.WAVE.LEN) + 1)} 波`;
+  $('bossbar').hidden = !s.boss; if (s.boss) $('bossfill').style.width = Math.max(0, s.boss.hp / s.boss.max * 100) + '%';
+  const f = followTarget(s), me = V.myId != null ? s.pl[V.myId] : f;
+  if (me) {
+    $('hpFill').style.width = me.hp / me.mh * 100 + '%'; $('hpText').textContent = `${me.hp} / ${me.mh}`;
+    const cdMax = Core.stats({ passives: me.ps || {} }).dashCd, ready = me.dc <= .05; $('dashFill').style.height = (ready ? 0 : me.dc / cdMax * 100) + '%'; $('dashBtn').classList.toggle('ready', ready); $('dashKey').textContent = ready ? (TOUCH ? '就緒' : '空白') : me.dc.toFixed(1) + 's'; $('dashBtn').hidden = !playing || !me.a || s.phase !== 'running';
+    $('xpFill').style.width = Math.min(100, me.xp / me.need * 100) + '%'; $('xpText').textContent = `Lv ${me.lv}`;
+    $('wchips').innerHTML = Object.entries(me.w || {}).map(([id, l]) => {
+      const w = Core.WEAPONS[id], cdMax = w.cd?.[l - 1], rem = me.wc?.[id] ?? 0, ready = !cdMax || rem <= .05;
+      return `<div class="wp box ${w.evolved ? 'evo' : ''} ${cdMax && ready ? 'ready' : ''}"><i style="height:${cdMax && !ready ? Math.min(100, rem / cdMax * 100) : 0}%"></i><b>${w.name}</b><small><span>${w.evolved ? '進化' : 'Lv' + l}</span><span>${cdMax ? (ready ? '就緒' : rem.toFixed(1) + 's') : '常駐'}</span></small></div>`;
+    }).join('');
+    $('pchips').innerHTML = Object.entries(me.ps || {}).map(([id, l]) => `<span class="chip box p">${Core.PASSIVES[id].name} Lv${l}</span>`).join('') || '<span class="chip box">尚未選擇</span>';
+  }
+  if (!$('team').hidden) $('team').innerHTML = s.pl.map(p => { const inf = V.info[p.id] || {}; return `<div class="tm box ${p.id === V.myId ? 'me' : ''} ${p.a ? '' : 'out'}"><div class="l1"><span><i class="dot" style="background:${inf.look?.color || '#fff'}"></i>${esc(inf.name || '')}</span><b>Lv${p.lv}</b></div><div class="hp"><b style="width:${p.hp / p.mh * 100}%"></b></div></div>`; }).join('');
+  // 倒數
+  const ct = $('count');
+  if (s.phase === 'countdown') { const n = Math.ceil(Core.COUNTDOWN - s.t - 1e-6); if (n !== lastCount && n > 0) { lastCount = n; ct.hidden = false; ct.textContent = n; ct.classList.remove('pop'); void ct.offsetWidth; ct.classList.add('pop'); sfx.tick(); } }
+  else if (lastCount !== 'go' && s.phase === 'running' && s.run < .8) { lastCount = 'go'; ct.hidden = false; ct.textContent = 'GO!'; ct.classList.remove('pop'); void ct.offsetWidth; ct.classList.add('pop'); sfx.go(); setTimeout(() => { ct.hidden = true; }, 700); }
+  else if (s.phase === 'pick') ct.hidden = true;
+  // 升級選擇
+  const ch = me && me.a && playing ? me.ch : null, key = ch ? JSON.stringify(ch) + me.rr : '';
+  if (key !== lastChoiceKey) { lastChoiceKey = key; renderChoices(ch, me, s); }
+}
+function cardHtml(c, i) {
+  let name = '', desc = '', tag = '';
+  if (c.kind === 'weapon') { const w = Core.WEAPONS[c.id]; name = w.name; desc = w.desc; tag = c.lv > 1 ? `Lv ${c.lv}` : '新武器'; }
+  else if (c.kind === 'passive') { const p = Core.PASSIVES[c.id]; name = p.name; desc = p.desc; tag = c.lv > 1 ? `Lv ${c.lv}` : '新被動'; }
+  else if (c.kind === 'evolve') { const w = Core.WEAPONS[c.to]; name = w.name; desc = w.desc; tag = '進化！'; }
+  else { name = '補血'; desc = '恢復 30 點生命'; }
+  return `<button class="card box ${c.kind === 'evolve' ? 'evo' : ''}" data-i="${i}" type="button"><b><span>${esc(name)}</span><kbd>${i + 1}</kbd></b><em>${tag}</em><small>${esc(desc)}</small></button>`;
+}
+function renderChoices(ch, me, s) {
+  $('choose').hidden = !ch;
+  if (!ch) return;
+  $('chooseTitle').textContent = s.phase === 'pick' ? '選一把起手武器' : `升級！選一項${me.q ? `（還有 ${me.q} 次）` : ''}`;
+  $('cards').innerHTML = ch.map(cardHtml).join(''); $('rerollBtn').hidden = s.phase === 'pick' || !me.rr; $('rerollBtn').textContent = `重抽 (R)`;
+}
+function choose(i) {
+  if ($('choose').hidden) return;
+  if (mode === 'offline') { if (Core.pick(L, 0, i)) { lastChoiceKey = 'x'; haptic.tap(); } }
+  else if (V?.myId != null) { net.send({ t: 'pick', i }); $('choose').hidden = true; lastChoiceKey = 'sent'; }
+}
+$('cards').addEventListener('click', e => { const b = e.target.closest('.card'); if (b) choose(Number(b.dataset.i)); });
+$('rerollBtn').addEventListener('click', () => { if (mode === 'offline') Core.reroll(L, 0); else net.send({ t: 'reroll' }); lastChoiceKey = 'x'; });
+
+/* ---------- 輸入 ---------- */
+const keys = new Set(); let stickVec = { x: 0, y: 0 };
+function inputVec() {
+  let x = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0), y = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
+  if (!x && !y) return stickVec; const m = Math.hypot(x, y); return { x: x / m, y: y / m };
+}
+addEventListener('keydown', e => {
+  if (e.target.closest?.('input')) return; const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); if (!e.repeat) doDash(); return; }
+  if (['1', '2', '3'].includes(k)) { choose(Number(k) - 1); return; }
+  if (k === 'r' && !$('choose').hidden && !$('rerollBtn').hidden) { $('rerollBtn').click(); return; }
+  if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { keys.add(k); e.preventDefault(); }
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => { keys.clear(); stickVec = { x: 0, y: 0 }; });
+{ // 手機：在畫面任意處按住拖曳出虛擬搖桿
+  let id = null, ox = 0, oy = 0;
+  const st = $('stick'), kn = $('knob');
+  addEventListener('pointerdown', e => { if (!TOUCH || id !== null || e.target.closest('button, .screen, .card, .choose')) return; id = e.pointerId; ox = e.clientX; oy = e.clientY; st.style.left = ox + 'px'; st.style.top = oy + 'px'; st.hidden = !playing; });
+  addEventListener('pointermove', e => { if (e.pointerId !== id) return; let dx = e.clientX - ox, dy = e.clientY - oy; const m = Math.hypot(dx, dy), R = 50; if (m > R) { dx = dx / m * R; dy = dy / m * R; } kn.style.transform = `translate(${dx}px, ${dy}px)`; stickVec = { x: dx / R, y: dy / R }; });
+  const up = e => { if (e.pointerId !== id) return; id = null; st.hidden = true; kn.style.transform = ''; stickVec = { x: 0, y: 0 }; };
+  addEventListener('pointerup', up); addEventListener('pointercancel', up);
+}
+
+function doDash() {
+  if (!playing || !V) return; const v = inputVec();
+  if (mode === 'offline') { if (Core.dash(L, 0, v)) { sfx.dash(); haptic.tap(); } return; }
+  const me = net1?.pl[V.myId ?? -1]; if (!me || !me.a || net1.phase !== 'running' || me.dc > .05 || V.dashLocal) return;
+  let x = v.x, y = v.y; if (!x && !y) { x = Math.cos(me.f); y = Math.sin(me.f); } const m = Math.hypot(x, y) || 1;
+  V.dashLocal = { t: Core.DASH.TIME, dx: x / m, dy: y / m }; net.send({ t: 'dash', x: Number((x / m).toFixed(2)), y: Number((y / m).toFixed(2)) }); sfx.dash(); haptic.tap();
+}
+$('dashBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); doDash(); });
+
+/* ---------- 傷害數字 ---------- */
+function floatText(x, y, text, cls) {
+  const host = document.body; if (host.querySelectorAll('.dmg').length > 50) return;
+  const v = new THREE.Vector3(x / S, .9, y / S).project(camera); if (v.z > 1 || Math.abs(v.x) > 1.1 || Math.abs(v.y) > 1.1) return;
+  const el = document.createElement('div'); el.className = 'dmg ' + cls; el.textContent = text;
+  el.style.left = ((v.x * .5 + .5) * innerWidth + (Math.random() - .5) * 18) + 'px'; el.style.top = ((-v.y * .5 + .5) * innerHeight - 6) + 'px';
+  host.append(el); setTimeout(() => el.remove(), 850);
+}
+
+/* ---------- 事件 ---------- */
+function onEvents(evs, s) {
+  if (!V) return; let n = 0;
+  const nums = (evs || []).filter(e => e.type === 'd').sort((a, b) => b.v - a.v).slice(0, 14);
+  for (const e of nums) floatText(e.x, e.y, e.v, e.d >= 1 ? 'chain' : e.v >= 60 ? 'big' : '');
+  for (const ev of evs || []) {
+    if (ev.type === 'd') continue;
+    if (++n > 60) break;
+    if (ev.type === 'pop') { addRing(ev.x, ev.y, ev.r, ev.d ? 0xffb04d : 0xff8fab, .35); sfx.pop(ev.d); }
+    else if (ev.type === 'wave') { addRing(ev.x, ev.y, ev.r, 0x7cc8ff, .5); if (ev.id === V.myId || mode === 'offline') sfx.wave(); }
+    else if (ev.type === 'poke') { addLine(ev.x, ev.y, ev.tx, ev.ty); sfx.poke(); }
+    else if (ev.type === 'level') { const p = V.players.get(ev.id); if (p) addRing(p.x, p.y, 70, 0xffd36b, .6); if (ev.id === (mode === 'offline' ? 0 : V.myId)) { sfx.level(); haptic.win(); } }
+    else if (ev.type === 'zone') addRing(ev.x, ev.y, ev.r, ev.kind === 'rain' ? 0x7cc8ff : 0xc86bff, ev.t, ev.kind === 'rain');
+    else if (ev.type === 'dash') { addRing(ev.x, ev.y, 46, 0xbfe9ff, .3); if (ev.id !== (mode === 'offline' ? 0 : V.myId)) tone(500, .1, 'sawtooth', .03, 2); }
+    else if (ev.type === 'hurt') { const hp = V.players.get(ev.id); if (hp && ev.v) floatText(hp.x, hp.y - 20, '-' + ev.v, 'me'); if (ev.id === (mode === 'offline' ? 0 : V.myId)) { sfx.hurt(); haptic.hit(); shake = .25; const v = $('vig'); v.classList.add('hit'); setTimeout(() => v.classList.remove('hit'), 180); } }
+    else if (ev.type === 'out') { sfx.out(); if (ev.id === (mode === 'offline' ? 0 : V.myId)) toast('你倒下了', 1600); }
+    else if (ev.type === 'boss') { toast('泡泡王出現！', 2200); sfx.boss(); }
+    else if (ev.type === 'ring') shake = Math.max(shake, .08);
+    else if (ev.type === 'end') showEnd(ev.result);
+  }
+}
+
+/* ---------- 單人版 ---------- */
+function startOffline() {
+  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = true;
+  try { TG?.MainButton?.hide(); } catch {}
+  L = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, ...setup }], solo: true });
+  buildView(Core.snapshot(L), 0); playing = true; solo = soloStart('survive', ID);
+  if (innerHeight > innerWidth * 1.1) toast('橫放手機，視野更寬', 2400);
+}
+function goOffline(why) {
+  mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null;
+  $('lobbyScreen').hidden = true; if (!playing) $('startScreen').hidden = false;
+  if (why) toast(why, 2200);
+}
+$('startBtn').addEventListener('click', () => { mode = 'offline'; startOffline(); });
+$('soloBtn').addEventListener('click', () => goOffline());
+
+function showEnd(r) {
+  if (!V || V.ended) return; V.ended = true; playing = false; $('choose').hidden = true; $('stick').hidden = true;
+  const online = mode === 'online', meId = online ? V.myId : 0, mine = r.players.find(p => p.id === meId);
+  $('endTitle').textContent = r.cleared ? (r.reason === 'boss' ? '打倒泡泡王，過關！' : '撐滿 5 分鐘，過關！') : '全員倒下了';
+  $('endSub').textContent = online ? (meId == null ? '觀戰結束，下一局一起玩' : `你撐了 ${Math.round(mine?.time ?? 0)} 秒，擊敗 ${mine?.kills ?? 0} 隻`) : `撐了 ${Math.round(mine?.time ?? 0)} 秒，擊敗 ${mine?.kills ?? 0} 隻，等級 ${mine?.level ?? 1}`;
+  $('rank').innerHTML = r.players.map(p => `<li><span>${p.rank}. ${esc(p.name)}${p.id === meId ? '（你）' : ''}</span><span>${Math.round(p.time)} 秒・${p.kills} 殺${online ? `・${p.points} 分` : ''}</span></li>`).join('');
+  $('againBtn').textContent = online ? '回大廳，再玩一局' : '再玩一局';
+  setTimeout(() => { $('endScreen').hidden = false; $('lobbyScreen').hidden = true; }, 900);
+  if (r.cleared) { haptic.win(); toast('過關！', 1400); }
+  if (online) net.wantIn = false;
+  const note = $('endNote'), seq = ++endSeq, s = solo; solo = null; note.hidden = true;
+  if (!online && s) showSoloNote(note, soloFinish(s, ID, Math.floor(mine?.time ?? 0), '泡泡倖存者', { field: 'time', extra: { kills: mine?.kills ?? 0 }, show: row => `${row.time} 秒・${row.kills} 殺` }), () => seq !== endSeq);
+  if (inTelegram && !online) { try { TG.MainButton.setText('再玩一局'); TG.MainButton.show(); } catch {} }
+}
+$('againBtn').addEventListener('click', () => {
+  if (mode === 'online') { $('endScreen').hidden = true; net.wantIn = true; playing = false; sendJoin(); showLobby(); }
+  else startOffline();
+});
+if (inTelegram) { try { TG.MainButton.onClick(() => { if (mode === 'offline') startOffline(); }); } catch {} }
+
+/* ---------- 連線版（Worker 房間） ---------- */
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0, lastIn: '', lastInAt: 0,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/survive/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return goOffline('連不上遊戲伺服器，先玩單人版'); }
+  net.ws = ws;
+  ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws || mode !== 'online') return;
+    if (e.code === 4000) { lobbyStatus('你在其他視窗開了遊戲，這裡已斷線'); return; }
+    if (e.code === 4001) {
+      lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入');
+      const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); };
+      addEventListener('keydown', back); addEventListener('pointerdown', back); return;
+    }
+    net.tries++;
+    if (!net.opened && net.tries >= 3) return goOffline('連不上遊戲伺服器，先玩單人版');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function tryJoin() {
+  if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
+  const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return;
+  net.lastJoin = Date.now(); sendJoin();
+}
+function onNet(m) {
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') {
+    buildView(m.s, m.me); net1 = m.s; V.newFrame = true; playing = true;
+    $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = true;
+    toast(m.me == null ? '觀戰中' : '選好武器就開打！', 1400);
+  }
+  else if (m.t === 's') {
+    if (!V) return; net1 = m.s; V.newFrame = true; V.snapAt = performance.now();
+    onEvents(m.ev, m.s);
+  }
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function renderLobby() {
+  const Lb = net.lobby; if (!Lb) return;
+  const slots = [];
+  for (let i = 0; i < Lb.max; i++) {
+    const p = Lb.players[i];
+    slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>等待玩家</span></li>`);
+  }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(Lb.phase === 'play' ? '這局進行中，結束後可加入（可先觀戰）' : Lb.phase === 'end' ? `上一局結算中，${Lb.endIn} 秒後開放新局` : Lb.players.length >= (Lb.min || 2) ? `${Lb.countdown} 秒後開局（滿 4 人立即開始）` : Lb.players.length ? `還差 ${(Lb.min || 2) - Lb.players.length} 人才開局` : `等待玩家加入（至少 ${Lb.min || 2} 人）`);
+  const joined = inLobby();
+  $('joinBtn').textContent = joined ? '離開' : '加入';
+  $('joinBtn').disabled = !joined && (Lb.phase === 'play' || Lb.players.length >= Lb.max);
+  if (!playing && $('endScreen').hidden) $('lobbyScreen').hidden = false;
+}
+$('joinBtn').addEventListener('click', () => {
+  if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); }
+  else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
+});
+
+window.BubbleSurvivors = { start: startOffline, get game() { return L; }, get online() { return mode === 'online'; }, get me() { return V?.myId ?? null; } };
+
+/* ---------- 主迴圈 ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  let s = null;
+  if (V) {
+    if (mode === 'offline' && L) {
+      if (playing) { const v = inputVec(); Core.setInput(L, 0, v); const evs = Core.step(L, dt); s = Core.snapshot(L, { full: false }); onEvents(evs, s); } else s = Core.snapshot(L, { full: false });
+    } else if (mode === 'online' && net1) {
+      s = net1;
+      if (playing && V.myId != null) { const v = inputVec(), k = v.x.toFixed(2) + ',' + v.y.toFixed(2), now = performance.now(); if (k !== net.lastIn || now - net.lastInAt > 400) { net.lastIn = k; net.lastInAt = now; net.send({ t: 'in', x: Number(v.x.toFixed(2)), y: Number(v.y.toFixed(2)) }); } }
+    }
+    if (s) { sync(s, dt, t); placeCamera(s, dt); hudAt -= dt; if (hudAt <= 0) { hudAt = .1; hud(s); } }
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- 外觀與進場 ---------- */
+function applyAppearance(a) {
+  Object.assign(setup, { color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush });
+  if (mode === 'online' && inLobby()) sendJoin();
+}
+async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
+$('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
+async function goOnline() {
+  if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
+  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true;
+  $('startScreen').hidden = $('endScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
+}
+$('onlineBtn').addEventListener('click', goOnline);
+
+{ // 開始畫面先擺一片空場地當背景
+  const demo = Core.createGame({ seed: 20261022, humans: [{ uid: 'me', name: myName }], solo: true });
+  L = demo; buildView(Core.snapshot(demo), 0); playing = false; $('hudbot').hidden = true; $('team').hidden = true;
+}
+(async () => {
+  const want = new URLSearchParams(location.search).get('mode');
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '先玩單人版' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a);
+  if (want === 'solo') { mode = 'offline'; startOffline(); }
+  else if (ID) goOnline();
+})();
+tick();
+</script>
+</body>
+</html>

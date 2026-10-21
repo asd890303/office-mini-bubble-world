@@ -26,6 +26,10 @@ class_name = "ArtilleryRoom"
 name = "RUN_ROOM"
 class_name = "RunRoom"
 
+[[durable_objects.bindings]]
+name = "SURVIVE_ROOM"
+class_name = "SurviveRoom"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["GameRoom"]
@@ -45,3 +49,7 @@ new_sqlite_classes = ["ArtilleryRoom"]
 [[migrations]]
 tag = "v5"
 new_sqlite_classes = ["RunRoom"]
+
+[[migrations]]
+tag = "v6"
+new_sqlite_classes = ["SurviveRoom"]

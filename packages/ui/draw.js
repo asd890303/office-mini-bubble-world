@@ -115,6 +115,15 @@ export const GAME_ART = {
     x.beginPath(); x.roundRect(30, 84, 36, 9, 4); inkPath(x, '#ffb04d');
     x.lineWidth = 4; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(10, 58); x.lineTo(20, 58); x.moveTo(6, 68); x.lineTo(18, 68); x.moveTo(12, 78); x.lineTo(22, 78); x.stroke();
   },
+  survive(x) { // 泡泡倖存者：中間的小傢伙，被泡泡包住的敵人與環繞的泡泡
+    x.beginPath(); x.arc(64, 70, 22, 0, Math.PI * 2); inkPath(x, '#fffdf7');
+    x.beginPath(); x.arc(54, 50, 8, 0, Math.PI * 2); inkPath(x, '#ffb3c7'); x.beginPath(); x.arc(74, 50, 8, 0, Math.PI * 2); inkPath(x, '#ffb3c7');
+    x.beginPath(); x.arc(58, 68, 3.2, 0, Math.PI * 2); x.fillStyle = INK; x.fill(); x.beginPath(); x.arc(70, 68, 3.2, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.arc(24, 34, 14, 0, Math.PI * 2); inkPath(x, '#8fd694'); x.beginPath(); x.arc(24, 34, 20, 0, Math.PI * 2); x.lineWidth = 4; x.strokeStyle = '#7cc8ff'; x.stroke();
+    x.beginPath(); x.arc(104, 98, 11, 0, Math.PI * 2); inkPath(x, '#ffcf6b'); x.beginPath(); x.arc(104, 98, 16, 0, Math.PI * 2); x.lineWidth = 4; x.strokeStyle = '#7cc8ff'; x.stroke();
+    x.beginPath(); x.arc(100, 30, 8, 0, Math.PI * 2); inkPath(x, '#bfe9ff'); shine(x, 97, 27, 2.5, 3.5);
+    x.beginPath(); x.arc(30, 100, 8, 0, Math.PI * 2); inkPath(x, '#bfe9ff'); shine(x, 27, 97, 2.5, 3.5);
+  },
   artillery(x) { // 泡泡砲戰：斜放的砲管 + 輪子 + 飛出去的水球
     x.save(); x.translate(44, 76); x.rotate(-.62); x.beginPath(); x.roundRect(-4, -12, 54, 24, 10); inkPath(x, '#4cd68a'); x.beginPath(); x.roundRect(40, -15, 12, 30, 5); inkPath(x, '#2fae6a'); x.restore();
     x.beginPath(); x.arc(40, 82, 15, 0, Math.PI * 2); inkPath(x, '#4a3b3b'); x.beginPath(); x.arc(40, 82, 5, 0, Math.PI * 2); x.fillStyle = '#fffdf8'; x.fill();

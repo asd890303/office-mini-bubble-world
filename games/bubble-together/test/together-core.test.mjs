@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as C from '../together-core.js';
 
 const SPRING_REACH = 2 * C.SPRING_V / C.GRAV * C.MOVE;
-const flat = (extra = {}) => ({ seed: 0, springs: [], type: 'run', mod: 'none', solids: [{ x: -5, y: -12, w: 80, h: 12 }], hidden: [], plates: [], doors: [], flags: [{ x: 3, y: 0, seg: 0, reveals: [] }], segs: [], spawn: { x: 2, y: 0 }, goal: { x: 70, y: 0, w: 2, h: 3 }, chaser: null, end: 75, top: 0, ...extra });
+const flat = (extra = {}) => ({ seed: 0, springs: [], noPlace: [], type: 'run', mod: 'none', solids: [{ x: -5, y: -12, w: 80, h: 12 }], hidden: [], plates: [], doors: [], flags: [{ x: 3, y: 0, seg: 0, reveals: [] }], segs: [], spawn: { x: 2, y: 0 }, goal: { x: 70, y: 0, w: 2, h: 3 }, chaser: null, end: 75, top: 0, ...extra });
 const mk = (level = flat(), n = 3) => { const g = C.createGame({ seed: 1, humans: Array.from({ length: n }, (_, i) => ({ uid: 'u' + i, name: 'p' + i })), level }); g.phase = 'run'; g.players.forEach((p, i) => { p.x = 10 + i * 2; p.y = 0; p.ground = true; }); return g; };
 const run = (g, secs, f) => { const all = []; for (let i = 0; i < secs / C.DT && !g.over; i++) { if (f) f(g, i * C.DT); all.push(...C.step(g, C.DT)); } return all; };
 const key = (g, id, o) => C.setInput(g, id, o);
@@ -28,7 +28,7 @@ test('genLevel: every obstacle is sized so one player cannot pass alone but a te
       if (seg.gap?.spring) { assert.ok(seg.gap.w >= C.SPRING_GAP[0] && seg.gap.w <= C.SPRING_GAP[1]); assert.ok(seg.gap.w > C.SOLO_RANGE + .6 && seg.gap.w < SPRING_REACH - 1.2); }
       else if (seg.gap) { assert.ok(seg.gap.w >= C.GAP_W[0] && seg.gap.w <= C.GAP_W[1]); assert.ok(seg.gap.w > C.SOLO_RANGE + .8 && seg.gap.w < C.THROW_RANGE - .6); }
     }
-    assert.ok(L.solids.every(b => b.w > 0 && b.h > 0)); assert.ok(L.flags.length >= 4); assert.ok(L.goal.x < L.end);
+    assert.ok(L.solids.every(b => b.w > 0 && b.h > 0)); assert.equal(L.noPlace.length, L.segs.filter(x => ['wall', 'gap', 'plate'].includes(x.kind) && !x.gap?.spring && !x.gap?.lever && !x.wall?.stairs).length, 'every cooperative section is off limits for placing'); assert.ok(L.flags.length >= 4); assert.ok(L.goal.x < L.end);
     assert.deepEqual(L.flags.map(f => f.x), [...L.flags.map(f => f.x)].sort((a, b) => a - b));
     for (const h of L.hidden) assert.ok(L.flags.some(f => f.reveals.includes(h.id)) || L.plates.some(pl => pl.reveals.includes(h.id)), 'hidden piece without a trigger');
     for (const d of L.doors) assert.equal(L.plates.filter(pl => L.doors[pl.door] === d).length, d.hold ? 1 : 2, d.hold ? 'a timed door has one plate' : 'two plates per door');
@@ -36,9 +36,9 @@ test('genLevel: every obstacle is sized so one player cannot pass alone but a te
   }
 });
 
-test('setup: 1 to 4 real players, no bot teammates, each player gets 3 block offers', () => {
+test('setup: 1 to 4 real players, no bot teammates, each player gets 3 blocks to place during the run', () => {
   const g = C.createGame({ seed: 3, humans: [{ uid: 'a', name: 'A' }, { uid: 'b', name: 'B' }] }); assert.equal(g.players.length, 2); assert.ok(g.players.every(p => p.human && p.bot === undefined));
-  assert.ok(g.players.every(p => p.offers.length === 3 && p.offers.every(k => C.BLOCKS[k]))); assert.equal(g.lives, C.LIVES);
+  assert.ok(g.players.every(p => p.items.length === C.ITEMS && p.items.every(k => C.BLOCKS[k]) && p.used.every(u => !u))); assert.equal(g.phase, 'countdown', 'no placement phase, straight to the countdown'); assert.deepEqual(Object.keys(C.BLOCKS), ['plat', 'spring'], 'no life block'); assert.equal(g.lives, C.LIVES);
   assert.equal(C.createGame({ seed: 3, humans: Array.from({ length: 5 }, (_, i) => ({ uid: 'u' + i })) }).players.length, 4); const one = C.createGame({ seed: 3, humans: [{ uid: 'solo' }] }); assert.equal(one.players.length, 1, 'a lone player plays alone'); assert.equal(one.level.solo, true); assert.equal(C.createGame({ seed: 3, humans: [] }).players.length, 1);
 });
 
@@ -104,18 +104,20 @@ test('win: everyone reaching the goal clears the run; 3 or more humans earn 5 po
   const part = mk(); part.players[0].x = 71; part.players[1].x = 71; run(part, .5); assert.equal(part.over, false, 'needs everybody');
 });
 
-test('placement: each player puts one block from their offers; blocked spots are refused; unplaced blocks are auto-placed when time is up', () => {
-  const g = C.createGame({ seed: 2, humans: [{ uid: 'a' }, { uid: 'b' }, { uid: 'c' }], level: flat() }); assert.equal(g.phase, 'place');
-  assert.equal(C.place(g, 0, 0, 30, 3), true); assert.equal(C.place(g, 0, 1, 40, 3), false, 'one per player'); assert.equal(C.place(g, 1, 0, 30, 3), false, 'overlaps the first');
-  assert.equal(C.place(g, 1, 0, 40, -3), false, 'inside the ground'); assert.equal(C.place(g, 1, 9, 40, 3), false, 'bad choice'); assert.equal(C.place(g, 1, 0, 2, 0), false, 'on the spawn');
-  for (let i = 0; i < (C.PLACE_TIME + 1) / C.DT; i++) C.step(g, C.DT); assert.equal(g.phase === 'countdown' || g.phase === 'run', true); assert.ok(g.players.every(p => p.placed));
+test('placing in the run: a key press drops the chosen block in front of you, each block once, never inside solids or cooperative sections', () => {
+  const g = mk(flat(), 2); const p = g.players[0]; p.items = ['plat', 'spring', 'plat']; p.x = 20; p.y = 0; p.face = 1;
+  assert.equal(C.place(g, 0, 1), true); const sp = g.placedBlocks.at(-1); assert.equal(sp.kind, 'spring'); assert.ok(sp.box.x > 20 && Math.abs(sp.box.y) < .4, 'beside your feet'); assert.equal(C.place(g, 0, 1), false, 'once only');
+  assert.equal(C.place(g, 0, 0), true); const pl = g.placedBlocks.at(-1); assert.equal(pl.kind, 'plat'); assert.ok(pl.box.y > 0 && pl.box.x > 20, 'floats ahead of you'); assert.equal(C.place(g, 0, 9), false);
+  p.face = -1; assert.equal(C.place(g, 0, 2), true); assert.ok(g.placedBlocks.at(-1).box.x < 20, 'follows the way you face');
+  const w = mk(flat({ noPlace: [{ x: 18, w: 8 }] }), 2); w.players[0].items = ['plat', 'plat', 'plat']; w.players[0].x = 20; assert.equal(C.place(w, 0, 0), false, 'cooperative sections are off limits');
+  const ph = C.createGame({ seed: 2, humans: [{ uid: 'a' }, { uid: 'b' }], level: flat() }); assert.equal(C.place(ph, 0, 0), false, 'not before the run starts');
+  const gone = mk(flat(), 2); gone.players[0].dead = true; assert.equal(C.place(gone, 0, 0), false, 'not while down');
 });
 
-test('placed blocks work: a platform is solid, a spring bounces, a life bubble adds a life once', () => {
-  const g = mk(); g.placedBlocks.push({ kind: 'plat', owner: 0, box: { x: 20, y: 1.5, w: 4, h: .4 }, used: false }, { kind: 'spring', owner: 0, box: { x: 30, y: 0, w: 1.2, h: .5 }, used: false }, { kind: 'life', owner: 0, box: { x: 40, y: 0, w: .9, h: .9 }, used: false });
-  g.players[0].x = 22; g.players[0].y = 3; g.players[0].vy = 0; g.players[1].x = 30.6; g.players[1].y = 1.5; g.players[1].vy = 0; g.players[2].x = 40.2; g.players[2].y = 0;
+test('placed blocks work: a platform is solid and a spring bounces', () => {
+  const g = mk(); g.placedBlocks.push({ kind: 'plat', owner: 0, box: { x: 20, y: 1.5, w: 4, h: .4 }, used: false }, { kind: 'spring', owner: 0, box: { x: 30, y: 0, w: 1.2, h: .5 }, used: false });
+  g.players[0].x = 22; g.players[0].y = 3; g.players[0].vy = 0; g.players[1].x = 30.6; g.players[1].y = 1.5; g.players[1].vy = 0; g.players[2].x = 50;
   let apex = 0; run(g, 1.2, g0 => { apex = Math.max(apex, g0.players[1].y); }); assert.ok(Math.abs(g.players[0].y - 1.9) < .05, 'rests on the platform'); assert.ok(apex > C.JUMP_H + 1.5, 'spring bounce ' + apex);
-  assert.equal(g.lives, C.LIVES + 1); run(g, 1); assert.equal(g.lives, C.LIVES + 1, 'only once');
 });
 
 test('ice: sliding keeps momentum, so stopping takes longer', () => {
@@ -123,9 +125,9 @@ test('ice: sliding keeps momentum, so stopping takes longer', () => {
   const xa = a.players[0].x, xb = b.players[0].x; run(a, .3); run(b, .3); assert.ok(b.players[0].x - xb > a.players[0].x - xa + 1, 'ice slides further');
 });
 
-test('snapshot: full carries the level and names; frames carry compact state and own offers until placed', () => {
+test('snapshot: full carries the level and names; frames carry compact state and the blocks each player has left', () => {
   const g = C.createGame({ seed: 4, humans: [{ uid: 'u0', name: 'Neo' }, { uid: 'u1', name: 'Kim' }] }); const f = C.snapshot(g), s = C.snapshot(g, { full: false });
-  assert.equal(f.pl[0].name, 'Neo'); assert.ok(f.level.solids.length > 3); assert.equal(s.level, undefined); assert.equal(s.pl[0].of.length, 3); assert.equal(s.lives, C.LIVES);
+  assert.equal(f.pl[0].name, 'Neo'); assert.ok(f.level.solids.length > 3); assert.equal(s.level, undefined); assert.equal(s.pl[0].it.length, 3); assert.equal(s.lives, C.LIVES);
 });
 
 test('forfeit: a player who leaves no longer blocks the win; a team with fewer than two left loses, a lone player leaving ends the run', () => {

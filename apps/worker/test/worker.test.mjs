@@ -879,18 +879,18 @@ test('bundle serves the party page and its rules file; the room is exported and 
   assert.equal(typeof Bundle.PartyRoom, 'function');
 });
 
-test('together room: needs two real players (no bots), placement then run, inputs are clamped, a leaver is dropped after the grace period, a win is scored and recorded', async () => {
+test('together room: needs two real players (no bots), straight to the countdown, inputs are clamped, blocks are placed during the run, a leaver is dropped after the grace period', async () => {
   const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
   const env = { LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
   const R = fakeRoom(TogetherRoom, env), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
   await R.msg(a, { t: 'join', color: '#a8d8ff', ear: 'fe' }); assert.equal(R.room.phase, 'lobby'); R.adv(30000); R.tick(); assert.equal(R.room.phase, 'lobby', 'one player alone never starts');
   await R.msg(b, { t: 'join' }); R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
-  const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.equal(st.s.pl.length, 2); assert.equal(st.s.pl[0].look.color, '#a8d8ff'); assert.ok(st.s.level.solids.length > 3); assert.equal(st.s.phase, 'place'); assert.equal(st.s.pl[0].of.length, 3);
+  const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.equal(st.s.pl.length, 2); assert.equal(st.s.pl[0].look.color, '#a8d8ff'); assert.ok(st.s.level.solids.length > 3); assert.equal(st.s.phase, 'countdown'); assert.equal(st.s.pl[0].it.length, 3);
   const g = R.room.game; assert.equal(g.players.length, 2);
-  await R.msg(a, { t: 'place', i: 0, x: 999, y: 3 }); assert.equal(g.players[0].placed, null, 'out of bounds is refused');
-  await R.msg(a, { t: 'place', i: 0, x: 30, y: g.level.top + 10 }); assert.ok(g.players[0].placed); await R.msg(b, { t: 'place', i: 1, x: 50, y: g.level.top + 10 });
-  R.tick(5); assert.equal(g.phase, 'countdown'); R.tick(70); assert.equal(g.phase, 'run');
+  await R.msg(a, { t: 'place', i: 0 }); assert.equal(g.placedBlocks.length, 0, 'not before the run starts');
+  R.tick(70); assert.equal(g.phase, 'run');
   await R.msg(a, { t: 'in', x: 9, j: true, a: false }); assert.equal(g.players[0].ix, 1, 'direction clamped'); assert.equal(g.players[0].jump, true);
+  const q = g.players[0]; q.x = 60; q.y = g.level.top; q.vy = 0; q.face = 1; g.level.noPlace = []; await R.msg(a, { t: 'place', i: 1 }); await R.msg(a, { t: 'place', i: 99 }); assert.ok(g.players[0].used[1] || g.placedBlocks.length === 0);
   const before = a.out.filter(m => m.t === 's').length; R.tick(20); assert.equal(a.out.filter(m => m.t === 's').length - before, 20, 'a snapshot every tick');
   const fr = a.out.findLast(m => m.t === 's').s; assert.equal(fr.level, undefined); assert.ok(Array.isArray(fr.pl) && fr.pr && fr.dr);
   const c = R.connect('3', 'Carol'); await R.msg(c, { t: 'join' }); assert.equal(c.out.find(m => m.t === 'start').me, null, 'late joiners spectate'); await R.msg(c, { t: 'in', x: 1 });

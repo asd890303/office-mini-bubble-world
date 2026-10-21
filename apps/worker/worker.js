@@ -706,7 +706,7 @@ export class TogetherRoom extends GameRoom {
   newGame(seed) { return this.core.createGame({ seed, humans: this.lobby }); }
   onInput(p, m) {
     if (m.t === 'in') this.core.setInput(this.game, p.id, { x: m.x, jump: !!m.j, act: !!m.a });
-    else if (m.t === 'place') this.core.place(this.game, p.id, Number(m.i) | 0, m.x, m.y);
+    else if (m.t === 'place') this.core.place(this.game, p.id, Number(m.i) | 0);
   }
   stopPlayer(p) { this.core.setInput(this.game, p.id, {}); }
   expire(p) { this.core.forfeit(this.game, p.id); }

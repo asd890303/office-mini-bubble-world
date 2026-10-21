@@ -29,19 +29,19 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .banner[hidden] { display: none; }
 .toast { position: fixed; left: 50%; top: 96px; transform: translateX(-50%); padding: 4px 16px; font-weight: 900; font-size: 15px; border-width: 2px; z-index: 7; pointer-events: none; opacity: 0; transition: opacity .2s; white-space: nowrap; }
 .toast.show { opacity: 1; }
-.offers { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 6; width: min(520px, calc(100% - 20px)); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-.offers[hidden] { display: none; }
-.offers h3 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; }
-.offers .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.card { border: 3px solid var(--ink); border-radius: 14px; background: var(--chip); padding: 8px 4px; text-align: center; cursor: pointer; font-weight: 900; line-height: 1.25; }
-.card small { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 700; }
-.card.on { background: var(--pink); }
+.items { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 6; padding: 6px 8px; display: flex; gap: 8px; }
+body.touch .items { bottom: calc(max(16px, env(safe-area-inset-bottom)) + 92px); }
+.items[hidden] { display: none; }
+.item { min-width: 84px; border: 3px solid var(--ink); border-radius: 14px; background: var(--chip); padding: 6px 8px; text-align: center; cursor: pointer; font-weight: 900; line-height: 1.2; font-size: 14px; }
+.item kbd { font: 900 11px inherit; border: 2px solid var(--ink); border-radius: 5px; padding: 0 4px; margin-right: 4px; background: #fff; }
+.item small { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 700; }
+.item:disabled { opacity: .35; cursor: default; }
+.item:not(:disabled):active { background: var(--pink); }
 .pad { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 6; display: none; gap: 10px; }
 body.touch .pad { display: flex; }
 .pad.l { left: 14px; } .pad.r { right: 14px; }
 .pad button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 80%, transparent); font-weight: 900; font-size: 22px; touch-action: none; box-shadow: var(--shadow); }
 .pad button:active, .pad button.on { background: var(--pink); }
-body.placing .pad { display: none; }
 .screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(74,59,59,.35); padding: 16px; }
 .screen[hidden] { display: none; }
 .screen .box { max-width: 420px; width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
@@ -64,7 +64,7 @@ a.btn { text-align: center; text-decoration: none; display: block; }
 <div class="team" id="team"></div>
 <div class="banner" id="banner" hidden></div>
 <div class="toast box" id="toast"></div>
-<div class="offers box" id="offers" hidden></div>
+<div class="items box" id="items" hidden></div>
 <div class="pad l"><button id="bL">◀</button><button id="bR">▶</button></div>
 <div class="pad r"><button id="bAct">抱</button><button id="bJump">跳</button></div>
 
@@ -101,7 +101,7 @@ import { mountKeyHelp } from '/shared/keyhelp.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, G, M, blob, withOutline, boxOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
 watchUpdates();
-mountKeyHelp({ rows: ['[A][D] 或 [←][→] 左右移動', '[W] 或 [空白] 跳躍', '[E] 或 [Shift] 抱起或丟出隊友', '站在隊友頭上再跳，可以過高牆', '放置階段：點方塊，再點地圖放下'], top: '110px' });
+mountKeyHelp({ rows: ['[A][D] 或 [←][→] 左右移動', '[W] 或 [空白] 跳躍', '[E] 或 [Shift] 抱起或丟出隊友', '站在隊友頭上再跳，可以過高牆', '[1][2][3] 放下方塊（遊戲中，放在面前，每個一次）'], top: '110px' });
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -126,11 +126,11 @@ addEventListener('resize', resize); resize();
 /* ---------- 一局的畫面 ---------- */
 let V = null; // { level, group, players: Map, hidden: [], doors: [], plates: [], flags: [], blocks: Map, chaser, myId }
 const dirtM = toon('#e9b98b'), grassM = toon('#8fd694'), iceM = toon('#bfe9ff'), ghostM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .28, depthWrite: false });
-function slab(s, mat, top) { const vh = Math.min(s.h, 4.5), g = new THREE.Group(); const body = new THREE.Mesh(G.box, mat); body.scale.set(s.w, vh, 3); body.position.set(s.x + s.w / 2, s.y + s.h - vh / 2, 0); boxOutline(body, s.w, vh, 3); g.add(body); if (top) { const t = new THREE.Mesh(G.box, top); t.scale.set(s.w, .22, 3.02); t.position.set(s.x + s.w / 2, s.y + s.h - .11, 0); g.add(t); } return g; }
+function slab(s, mat, top) { const vh = Math.min(s.h, 4.5), g = new THREE.Group(); const body = new THREE.Mesh(G.box, mat); body.scale.set(s.w, vh, 3); body.position.set(s.x + s.w / 2, s.y + s.h - vh / 2, 0); boxOutline(body, s.w, vh, 3); g.add(body); if (top) { const t = new THREE.Mesh(G.box, top); t.scale.set(s.w + .02, .22, 3.04); t.position.set(s.x + s.w / 2, s.y + s.h - .09, 0); g.add(t); } return g; }
 function buildView(snap, myId) {
   if (V) root.remove(V.group);
   const L = snap.level, group = new THREE.Group(); root.add(group);
-  V = { level: L, group, players: new Map(), hidden: [], doors: [], plates: [], flags: [], blocks: [], myId, seed: snap.seed, info: snap.pl, ended: false, placeAt: 0, pick: -1, hover: null, chaser: null, lastSnap: snap, newFrame: false };
+  itemsKey = ''; V = { level: L, group, players: new Map(), hidden: [], doors: [], plates: [], flags: [], blocks: [], myId, seed: snap.seed, info: snap.pl, ended: false, chaser: null, lastSnap: snap, newFrame: false };
   const cols = MODS[L.mod] || MODS.none; document.body.style.background = `linear-gradient(${cols[0]}, ${cols[1]})`;
   for (const s of L.solids) group.add(slab(s, s.h > 6 ? dirtM : dirtM, L.mod === 'ice' ? iceM : grassM));
   L.hidden.forEach(h => { const m = slab(h, toon('#d9a66c'), null); m.visible = true; m.traverse(o => { if (o.isMesh && o.material !== undefined && o.geometry === G.box) {} }); group.add(m); V.hidden.push({ g: m, ghost: ghostBox(h), h }); group.add(V.hidden[V.hidden.length - 1].ghost); m.visible = false; });
@@ -149,8 +149,8 @@ function ensurePlayer(sp) {
   addNameTag(c, sp.id === V.myId ? '你' : sp.name || `玩家${sp.id + 1}`); c.nameTag.scale.set(2.2, .55, 1); c.nameTag.position.y = 2.1; c.root.scale.setScalar(.8); c.root.rotation.y = Math.PI / 2;
   const g = new THREE.Group(); g.add(c.root); V.group.add(g); o = { g, c, x: sp.x, y: sp.y, yaw: Math.PI / 2, moving: false }; V.players.set(sp.id, o); return o;
 }
-const BLOCK_MESH = { plat: () => { const m = new THREE.Mesh(G.box, toon('#c9b6ff')); boxOutline(m, 1, 1, 1); return m; }, spring: () => { const m = new THREE.Mesh(G.cyl, toon('#ff8fab')); withOutline(m, 1.08); return m; }, life: () => { const m = new THREE.Mesh(G.sphere, M.bubble); const h = new THREE.Mesh(G.small, toon('#ff6b6b')); h.scale.setScalar(.3); m.add(h); return m; } };
-function blockMesh(kind, x, y) { const b = Core.BLOCKS[kind], m = BLOCK_MESH[kind](); if (kind === 'plat') m.scale.set(b.w, b.h, 2.4); else if (kind === 'spring') m.scale.set(b.w / 2, b.h / 2, 1); else m.scale.set(b.w / 2, b.h / 2, b.w / 2); m.position.set(x + b.w / 2, y + b.h / 2, 0); return m; }
+const BLOCK_MESH = { plat: () => { const m = new THREE.Mesh(G.box, toon('#c9b6ff')); boxOutline(m, 1, 1, 1); return m; }, spring: () => { const m = new THREE.Mesh(G.cyl, toon('#ff8fab')); withOutline(m, 1.08); return m; } };
+function blockMesh(kind, x, y) { const b = Core.BLOCKS[kind], m = BLOCK_MESH[kind](); if (kind === 'plat') m.scale.set(b.w, b.h, 2.4); else m.scale.set(b.w / 2, b.h / 2, 1); m.position.set(x + b.w / 2, y + b.h / 2, 0); return m; }
 
 /* ---------- 同步 ---------- */
 const FLAG_ON = new THREE.Color('#6ee07a');
@@ -174,40 +174,32 @@ function sync(s, dt, t) {
 const camL = { x: 0, y: 4 };
 function placeCamera(s, dt) {
   const aspect = innerWidth / innerHeight, L = V.level; let cx, cy, w;
-  if (s.phase === 'place') { cx = L.end / 2; cy = Math.max(2, L.top / 2 + 3); w = Math.min(L.end + 8, 100); if (aspect < 1) w = Math.min(w, 60); }
-  else { const live = s.pl.filter(p => !p.d && !p.gn && !p.dn); const all = live.length ? live : s.pl.filter(p => !p.gn); const me = s.pl[V.myId ?? -1]; const tgt = me && !me.d ? [me, ...all] : all; let sx = 0, sy = 0; for (const p of tgt) { sx += p.x; sy += p.y; } cx = sx / Math.max(1, tgt.length); cy = sy / Math.max(1, tgt.length) + 1.2; w = aspect < 1 ? 14 : 20; const spread = Math.max(...all.map(p => Math.abs(p.x - cx)), 0) * 2 + 8; w = Math.max(w, Math.min(60, spread)); }
+  { const live = s.pl.filter(p => !p.d && !p.gn && !p.dn); const all = live.length ? live : s.pl.filter(p => !p.gn); const me = s.pl[V.myId ?? -1]; const tgt = me && !me.d ? [me, ...all] : all; let sx = 0, sy = 0; for (const p of tgt) { sx += p.x; sy += p.y; } cx = sx / Math.max(1, tgt.length); cy = sy / Math.max(1, tgt.length) + 1.2; w = aspect < 1 ? 14 : 20; const spread = Math.max(...all.map(p => Math.abs(p.x - cx)), 0) * 2 + 8; w = Math.max(w, Math.min(60, spread)); }
   const k = Math.min(1, dt * 4); camL.x += (cx - camL.x) * k; camL.y += (cy - camL.y) * k; V.camW = (V.camW || w) + (w - (V.camW || w)) * k;
   const dist = (V.camW / 2) / (Math.tan(15 * Math.PI / 180) * aspect); camera.position.set(camL.x, camL.y + 1.5, dist); camera.lookAt(camL.x, camL.y, 0);
 }
 
-/* ---------- 放置階段 ---------- */
-const BLOCK_NAME = { plat: ['平台', '放在路上當踏腳石'], spring: ['彈簧', '踩上去彈很高'], life: ['生命泡泡', '碰到加 1 條命'] };
-let ghostMesh = null, mouseG = null;
-const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), ndc = new THREE.Vector2();
-function groundAt(cx, cy) { ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const p = new THREE.Vector3(); return ray.ray.intersectPlane(plane, p) ? { x: p.x, y: p.y } : null; }
-function renderOffers(me) {
-  const el = $('offers'); if (!me || !me.of || V.over) { el.hidden = true; document.body.classList.remove('placing'); if (ghostMesh) { V.group.remove(ghostMesh); ghostMesh = null; } return; }
-  document.body.classList.add('placing'); el.hidden = false;
-  const key = me.of.join(',') + '|' + V.pick; if (el.dataset.k === key) return; el.dataset.k = key;
-  el.innerHTML = '<h3><span>選一個方塊，點地圖放下</span><span id="placeLeft"></span></h3><div class="row">' + me.of.map((k, i) => `<div class="card ${V.pick === i ? 'on' : ''}" data-i="${i}">${BLOCK_NAME[k][0]}<small>${BLOCK_NAME[k][1]}</small></div>`).join('') + '</div>';
+/* ---------- 方塊：遊戲中按鍵放在自己面前，每個只能用一次 ---------- */
+const BLOCK_NAME = { plat: ['平台', '放在前方腰高'], spring: ['彈簧', '踩上去彈很高'] };
+let itemsKey = '', placeTry = null;
+function renderItems(me) {
+  const el = $('items'); if (!me || !me.it || V.over || V.lastSnap.phase !== 'run') { el.hidden = true; return; }
+  el.hidden = false; const key = me.it.join(',') + (me.d || me.dn ? 'x' : ''); if (key === itemsKey) return; itemsKey = key;
+  el.innerHTML = me.it.map((k, i) => `<button class="item" data-i="${i}" ${k && !me.d && !me.dn ? '' : 'disabled'}>${k ? `<kbd>${i + 1}</kbd>${BLOCK_NAME[k][0]}<small>${BLOCK_NAME[k][1]}</small>` : `<kbd>${i + 1}</kbd>已放`}</button>`).join('');
 }
-$('offers').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c || !V) return; V.pick = +c.dataset.i; $('offers').dataset.k = ''; updateGhost(); });
-function updateGhost() {
-  if (ghostMesh) { V.group.remove(ghostMesh); ghostMesh = null; }
-  const me = V.lastSnap.pl[V.myId ?? -1]; if (!me?.of || V.pick < 0) return;
-  ghostMesh = blockMesh(me.of[V.pick], 0, 0); ghostMesh.traverse(o => { if (o.material && !o.material.transparent) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .6; } }); V.group.add(ghostMesh);
+function doPlace(i) {
+  if (!V || V.myId == null || V.over || V.lastSnap.phase !== 'run') return;
+  const me = V.lastSnap.pl[V.myId]; if (!me?.it?.[i]) return;
+  if (mode === 'offline') { if (!Core.place(L, 0, i)) toast('這裡放不了：卡到東西，或在合作區段裡'); return; }
+  net.send({ t: 'place', i }); placeTry = { i, at: performance.now() };
+  setTimeout(() => { const m = V?.lastSnap.pl[V.myId]; if (placeTry && m?.it?.[placeTry.i] && performance.now() - placeTry.at > 450) toast('這裡放不了：卡到東西，或在合作區段裡'); placeTry = null; }, 500);
 }
-addEventListener('pointermove', e => { if (!V || V.pick < 0 || !ghostMesh) return; const p = groundAt(e.clientX, e.clientY); if (!p) return; const me = V.lastSnap.pl[V.myId ?? -1], kind = me?.of?.[V.pick]; if (!kind) return; const b = Core.BLOCKS[kind]; mouseG = { x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2 }; ghostMesh.position.set(mouseG.x - b.w / 2 + b.w / 2, mouseG.y + b.h / 2, 0); });
-$('scene').addEventListener('pointerdown', e => {
-  if (!V || V.pick < 0 || V.lastSnap.phase !== 'place') return; const me = V.lastSnap.pl[V.myId ?? -1]; if (!me?.of) return;
-  const p = groundAt(e.clientX, e.clientY); if (!p) return; const x = Math.round(p.x * 2) / 2, y = Math.round(p.y * 2) / 2;
-  if (mode === 'offline') Core.place(L, 0, V.pick, x, y); else net.send({ t: 'place', i: V.pick, x, y }); V.placeAt = performance.now(); setTimeout(() => { const m = V?.lastSnap.pl[V.myId ?? -1]; if (m?.of && performance.now() - V.placeAt > 500) toast('這裡放不了，換個位置'); }, 650);
-});
+$('items').addEventListener('click', e => { const b = e.target.closest('.item'); if (b && !b.disabled) doPlace(+b.dataset.i); });
 
 /* ---------- 輸入 ---------- */
 const keys = new Set(), touch = { l: false, r: false, j: false, a: false };
 const KM = { a: 'l', arrowleft: 'l', d: 'r', arrowright: 'r', w: 'j', arrowup: 'j', ' ': 'j', e: 'a', shift: 'a' };
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (KM[k]) { e.preventDefault(); keys.add(KM[k]); } });
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (KM[k]) { e.preventDefault(); keys.add(KM[k]); } else if (/^[1-3]$/.test(k) && !e.repeat) doPlace(+k - 1); });
 addEventListener('keyup', e => keys.delete(KM[e.key.toLowerCase()]));
 addEventListener('blur', () => keys.clear());
 for (const [id, k] of [['bL', 'l'], ['bR', 'r'], ['bJump', 'j'], ['bAct', 'a']]) { const el = $(id), on = v => e => { e.preventDefault(); touch[k] = v; el.classList.toggle('on', v); }; el.addEventListener('pointerdown', on(true)); el.addEventListener('pointerup', on(false)); el.addEventListener('pointercancel', on(false)); el.addEventListener('pointerleave', on(false)); }
@@ -217,20 +209,19 @@ const inputState = () => { const l = keys.has('l') || touch.l, r = keys.has('r')
 let toastT = 0; function toast(m, ms = 1600) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 function hud(s) {
-  $('lives').textContent = '♥ ' + Math.max(0, s.lives); $('clock').textContent = s.phase === 'place' ? '放置 ' + Math.max(0, Math.ceil(Core.PLACE_TIME - s.t)) : fmt(s.run);
+  $('lives').textContent = '♥ ' + Math.max(0, s.lives); $('clock').textContent = fmt(s.run);
   const L = V.level, me = s.pl[V.myId ?? -1], pos = s.pl.filter(p => !p.gn).map(p => p.x), lead = Math.max(...pos, 0);
   $('progFill').style.width = Math.min(100, lead / L.goal.x * 100) + '%'; $('progDot').style.left = Math.min(100, (me ? me.x : lead) / L.goal.x * 100) + '%'; $('progDot').style.background = Core.COLORS[V.myId ?? 0];
   $('team').querySelectorAll('.tm').forEach(el => { const p = s.pl[+el.dataset.id]; el.classList.toggle('me', +el.dataset.id === V.myId); el.classList.toggle('gone', !!p?.gn); el.textContent = ''; const i = document.createElement('i'); i.style.background = V.info[+el.dataset.id]?.look?.color || Core.COLORS[+el.dataset.id]; el.append(i, (p?.dn ? '✓ ' : p?.d ? '✗ ' : '') + (V.info[+el.dataset.id]?.name || '')); });
   const b = $('banner');
-  if (s.phase === 'place') { b.hidden = false; b.innerHTML = me?.of ? '放一個方塊<small>幫隊友，也小心別擋到路</small>' : '等其他人放置…'; if (me?.of) setTimeout(() => { if (b) b.hidden = true; }, 1800); }
-  else if (s.phase === 'countdown') { b.hidden = false; b.innerHTML = Math.max(1, Math.ceil(Core.COUNTDOWN - s.t)) + '<small>一起出發！</small>'; } else b.hidden = true;
-  renderOffers(s.phase === 'place' ? me : null);
+  if (s.phase === 'countdown') { b.hidden = false; b.innerHTML = Math.max(1, Math.ceil(Core.COUNTDOWN - s.t)) + '<small>一起出發！遊戲中按 1 2 3 放方塊</small>'; } else b.hidden = true;
+  renderItems(me);
 }
 function onEvents(evs) {
   for (const e of evs || []) {
     if (e.type === 'die') { if (e.id === V.myId) { haptic.hit(); toast('你倒下了，回到檢查點', 1400); } else toast(`${V.info[e.id]?.name || '隊友'} 倒下了`, 1000); }
     else if (e.type === 'flag') toast('檢查點！', 900);
-    else if (e.type === 'life') toast('撿到生命泡泡，+1 條命', 1400);
+    else if (e.type === 'place' && e.id !== V.myId) toast(`${V.info[e.id]?.name || '隊友'} 放了${BLOCK_NAME[e.kind]?.[0] || '方塊'}`, 1000);
     else if (e.type === 'done') toast(`${V.info[e.id]?.name || ''} 到終點了`, 1200);
     else if (e.type === 'gone') toast(`${V.info[e.id]?.name || '隊友'} 離開了`, 1600);
     else if (e.type === 'go') toast('出發！', 900);
@@ -239,7 +230,7 @@ function onEvents(evs) {
   }
 }
 function showEnd(r) {
-  if (!V || V.ended) return; V.ended = true; V.over = true; $('offers').hidden = true;
+  if (!V || V.ended) return; V.ended = true; V.over = true; $('items').hidden = true;
   const type = { run: '橫向闖關', rush: '追逐', climb: '攀爬' }[r.type] || r.type, mod = { none: '', ice: '・冰面', dark: '・黑暗' }[r.mod] || '';
   $('endTitle').textContent = r.win ? '全員過關！' : '挑戰失敗';
   $('endSub').textContent = `${type}${mod}・${fmt(r.time)}・剩 ${r.lives} 條命${V.myId == null ? '（觀戰）' : ''}`;
@@ -272,7 +263,7 @@ function tryJoin() { if (!net.wantIn || inLobby() || Date.now() - net.lastJoin <
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
-  else if (m.t === 'start') { buildView(m.s, m.me); V.lastSnap = m.s; net.snap = m.s; V.newFrame = true; playing = true; V.over = false; $('lobbyScreen').hidden = $('endScreen').hidden = true; toast(m.me == null ? '觀戰中' : '先放一個方塊！', 1600); }
+  else if (m.t === 'start') { buildView(m.s, m.me); V.lastSnap = m.s; net.snap = m.s; V.newFrame = true; playing = true; V.over = false; $('lobbyScreen').hidden = $('endScreen').hidden = true; toast(m.me == null ? '觀戰中' : '遊戲中按 1 2 3 放方塊', 1800); }
   else if (m.t === 's') { if (!V) return; V.lastSnap = m.s; net.snap = m.s; V.newFrame = true; onEvents(m.ev); }
   else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
 }
@@ -294,7 +285,7 @@ function startOffline() {
   mode = 'offline'; try { net.ws?.close(); } catch {} net.wantIn = false;
   $('lobbyScreen').hidden = $('endScreen').hidden = true;
   L = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: '你', ...setup }] });
-  buildView(Core.snapshot(L), 0); net.snap = Core.snapshot(L, { full: false }); V.lastSnap = net.snap; playing = true; V.over = false; toast('單人模式：先放一個方塊！', 1600);
+  buildView(Core.snapshot(L), 0); net.snap = Core.snapshot(L, { full: false }); V.lastSnap = net.snap; playing = true; V.over = false; toast('單人模式：遊戲中按 1 2 3 放方塊', 1800);
 }
 $('soloBtn').addEventListener('click', startOffline);
 

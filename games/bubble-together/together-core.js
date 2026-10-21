@@ -1,14 +1,15 @@
 // 泡泡Together：純規則（橫向捲軸物理、疊羅漢與抱丟、隨機關卡與區段、放置階段、共享生命），index.html（單人與畫面）和 worker.js（連線、伺服器判定）共用。
 // 不碰 DOM / Math.random：亂數全部來自種子，同一組種子與輸入會重播出同樣結果。
 // 座標單位是「格」，x 往右、y 往上；玩家是 0.8 寬 1 高的方塊，座標 (x, y) 是腳底中心。
-export const MIN_PLAYERS = 1, MAX_PLAYERS = 4, PLACE_TIME = 20, COUNTDOWN = 3, RUN_LIMIT = 360, LIVES = 5, DT = 1 / 30;
+export const MIN_PLAYERS = 1, MAX_PLAYERS = 4, COUNTDOWN = 3, RUN_LIMIT = 360, LIVES = 5, DT = 1 / 30;
 export const PW = .8, PH = 1, GRAV = 32, MOVE = 6.5, JUMP_V = 12.5, THROW_VX = 12, THROW_VY = 11, SPRING_V = 19, CARRY_SLOW = .85, REACH = 1.2;
 export const JUMP_H = JUMP_V * JUMP_V / (2 * GRAV), SOLO_RANGE = 2 * JUMP_V / GRAV * MOVE; // 單人跳高與水平跳遠；疊羅漢的跳高再加一個身高
 export const STACK_H = JUMP_H + PH, THROW_RANGE = 2 * THROW_VY / GRAV * THROW_VX;
 export const WALL_H = [2.8, 3.1], GAP_W = [6.2, 7.2], SPRING_GAP = [5.8, 6.3], DOOR_HOLD = 4, PIT_Y = -5; // 高牆與寬溝的尺寸範圍：單人過不去，兩人合作過得去；彈簧寬溝比單人跳遠還寬，但踩彈簧就過得去；限時門在離開壓力板後還會開 DOOR_HOLD 秒
 export const COOP_KINDS = ['plate', 'wall', 'gap'], SOLO_KINDS = ['timer', 'springGap', 'stairs', 'bridge']; // 一定要合作的區段；一個人就能解的謎題
 export const TYPES = ['run', 'rush', 'climb'], MODS = ['none', 'ice', 'dark'];
-export const BLOCKS = { plat: { name: '平台', w: 4, h: .4 }, spring: { name: '彈簧', w: 1.2, h: .5 }, life: { name: '生命泡泡', w: .9, h: .9 } };
+export const BLOCKS = { plat: { name: '平台', w: 3, h: .4 }, spring: { name: '彈簧', w: 1.2, h: .5 } };
+export const ITEMS = 3; // 每人開局拿到的方塊數，遊戲中按鍵放在自己面前，每個只能用一次
 export const CHASE = { rush: { speed: .5, start: -12 }, climb: { speed: .32, start: -8 } };
 export const POINTS = { win: 5, win2: 3, lose: 1 };
 export const COLORS = ['#ffb3c7', '#a8d8ff', '#ffe08a', '#a8e6cf', '#c9b6ff', '#ffc8a2', '#ff8a80', '#7fdbd0', '#8aa4ff', '#cfe88a', '#f29be0', '#c9a58a', '#ffffff', '#000000', '#ff0000'];
@@ -31,7 +32,7 @@ const pick = (rng, a) => a[Math.floor(rng() * a.length)], between = (rng, [a, b]
 export function genLevel(seed, type = null, mod = null, solo = false) {
   const rng = rngFrom(hashSeed(`together:${seed}`));
   type = type || pick(rng, TYPES); mod = mod || pick(rng, MODS);
-  const L = { seed, type, mod, solids: [], hidden: [], plates: [], doors: [], springs: [], solo, flags: [], segs: [], spawn: { x: 2, y: 0 }, goal: null, chaser: CHASE[type] ? { kind: type === 'climb' ? 'flood' : 'wall', speed: CHASE[type].speed, start: CHASE[type].start } : null };
+  const L = { seed, type, mod, solids: [], hidden: [], plates: [], doors: [], springs: [], noPlace: [], solo, flags: [], segs: [], spawn: { x: 2, y: 0 }, goal: null, chaser: CHASE[type] ? { kind: type === 'climb' ? 'flood' : 'wall', speed: CHASE[type].speed, start: CHASE[type].start } : null };
   let x = 0, y = 0; const solid = (x0, y0, w, h) => { const s = { x: r2(x0), y: r2(y0), w: r2(w), h: r2(h) }; L.solids.push(s); return s; };
   const ground = (x0, w, top) => solid(x0, top - 12, w, 12); // 地面是往下延伸的厚塊，頂面在 top
   ground(x, 8, y); x += 8; L.flags.push({ x: 4, y, seg: 0, reveals: [] });
@@ -47,15 +48,15 @@ export function genLevel(seed, type = null, mod = null, solo = false) {
       const pre = 5 + rng() * 2, h = r2(between(rng, WALL_H)), top = r2(y + h); ground(x, pre, y); const wx = x + pre; ground(wx, 1.8, top); const post = 5; ground(wx + 1.8, post, y);
       const steps = [0, 1, 2].map(k => ({ x: r2(wx - (3 - k) * .9), y: r2(y + (k + 1) * h / 3 - .05), w: .9, h: .1 + (k + 1) * h / 3 + 12 })); // 梯子：三級往牆頂的階梯
       const flag = { x: r2(wx + .9), y: top, seg: i + 1, reveals: [] }; L.flags.push(flag); steps.forEach(s => { L.hidden.push({ ...s, y: r2(s.y - 12), id: L.hidden.length }); flag.reveals.push(L.hidden.length - 1); });
-      seg.wall = { x: wx, h, top }; x = wx + 1.8 + post;
+      seg.wall = { x: wx, h, top }; L.noPlace.push({ x: wx - 4, w: 8 }); x = wx + 1.8 + post;
     } else if (kind === 'gap') {
       const pre = 4, w = between(rng, GAP_W), post = 5; ground(x, pre, y); const gx = x + pre; ground(gx + w, post, y);
       L.hidden.push({ x: r2(gx - .2), y: r2(y - .4), w: r2(w + .4), h: .4, id: L.hidden.length }); const flag = { x: r2(gx + w + .8), y, seg: i + 1, reveals: [L.hidden.length - 1] }; L.flags.push(flag);
-      seg.gap = { x: gx, w }; x = gx + w + post;
+      seg.gap = { x: gx, w }; L.noPlace.push({ x: gx - 2, w: w + 4 }); x = gx + w + post;
     } else if (kind === 'plate') {
       const len = 9; ground(x, len, y); const dx = x + 4.2;
       L.plates.push({ x: r2(x + 1.2), y, w: 1.4, h: .15, door: L.doors.length, reveals: [] }); L.plates.push({ x: r2(x + 6.6), y, w: 1.4, h: .15, door: L.doors.length, reveals: [] });
-      L.doors.push({ x: r2(dx), y, w: .6, h: 9 }); seg.door = L.doors.length - 1; x += len;
+      L.doors.push({ x: r2(dx), y, w: .6, h: 9 }); seg.door = L.doors.length - 1; L.noPlace.push({ x, w: len }); x += len;
       L.flags.push({ x: r2(x - 1), y, seg: i + 1, reveals: [] });
     }
     else if (kind === 'timer') {
@@ -85,24 +86,26 @@ export function genLevel(seed, type = null, mod = null, solo = false) {
 export function createGame({ seed = 1, humans = [], level = null } = {}) {
   const solo = humans.length <= 1, lv = level || genLevel(seed, null, null, solo), n = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, humans.length)), rng = rngFrom(hashSeed(`offer:${seed}`));
   const players = Array.from({ length: n }, (_, id) => {
-    const h = humans[id]; return { id, uid: h?.uid ?? null, human: true, gone: false, name: h?.name || `玩家${id + 1}`, look: { color: h?.color || null, ear: h?.ear || null, eye: h?.eye || null, body: h?.body || null, blush: h?.blush || null }, x: lv.spawn.x + id * .6, y: lv.spawn.y, vx: 0, vy: 0, face: 1, ground: false, on: null, carry: null, by: null, done: false, dead: false, rt: 0, ix: 0, jump: false, act: false, actEdge: false, coyote: 0, offers: [0, 1, 2].map(() => pick(rng, Object.keys(BLOCKS))), placed: null, deaths: 0 };
+    const h = humans[id]; return { id, uid: h?.uid ?? null, human: true, gone: false, name: h?.name || `玩家${id + 1}`, look: { color: h?.color || null, ear: h?.ear || null, eye: h?.eye || null, body: h?.body || null, blush: h?.blush || null }, x: lv.spawn.x + id * .6, y: lv.spawn.y, vx: 0, vy: 0, face: 1, ground: false, on: null, carry: null, by: null, done: false, dead: false, rt: 0, ix: 0, jump: false, act: false, actEdge: false, coyote: 0, items: Array.from({ length: ITEMS }, () => pick(rng, Object.keys(BLOCKS))), used: Array(ITEMS).fill(false), deaths: 0 };
   });
-  return { seed, level: lv, players, rng, phase: 'place', t: 0, run: 0, acc: 0, over: false, result: null, lives: LIVES, cp: 0, flagsHit: new Set(), revealed: new Set(), placedBlocks: [], events: [], chaser: lv.chaser ? lv.chaser.start : null, pressed: new Set(), doorOpen: lv.doors.map(() => false), doorT: lv.doors.map(() => 0) };
+  return { seed, level: lv, players, rng, phase: 'countdown', t: 0, run: 0, acc: 0, over: false, result: null, lives: LIVES, cp: 0, flagsHit: new Set(), revealed: new Set(), placedBlocks: [], events: [], chaser: lv.chaser ? lv.chaser.start : null, pressed: new Set(), doorOpen: lv.doors.map(() => false), doorT: lv.doors.map(() => 0) };
 }
 export function setInput(g, id, { x = 0, jump = false, act = false } = {}) {
   const p = g.players[id]; if (!p) return;
   p.ix = Math.max(-1, Math.min(1, Number(x) || 0)); p.jump = !!jump; if (act && !p.act) p.actEdge = true; p.act = !!act;
 }
-// 放置階段：從自己的 3 個選項挑 1 個放在 (x, y)。不能蓋在固態物、門、板、起點上
-export function place(g, id, idx, x, y) {
-  const p = g.players[id]; if (!p || g.phase !== 'place' || p.placed || !(idx >= 0 && idx < p.offers.length)) return false;
-  const kind = p.offers[idx], b = BLOCKS[kind]; x = Number(x); y = Number(y); if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  const box = { x: x - b.w / 2, y, w: b.w, h: b.h };
-  if (box.x < 0 || box.x + box.w > g.level.end || y < -2 || y > g.level.top + 12) return false;
+// 遊戲中放方塊：idx 是自己的第幾個方塊。放在面向的前方，平台飄在腰高，彈簧貼著腳下；擺不下就試別的高度。合作區段（高牆、寬溝、壓力板）裡不能放，不然一塊平台就把謎題繞過去
+export function place(g, id, idx) {
+  const p = g.players[id]; if (!p || g.phase !== 'run' || p.dead || p.done || p.gone || p.by != null || !(idx >= 0 && idx < p.items.length) || p.used[idx]) return false;
+  const kind = p.items[idx], b = BLOCKS[kind], cx = p.x + p.face * (PW / 2 + b.w / 2 + .3);
   const all = [...g.level.solids, ...g.level.hidden, ...g.level.doors, ...g.level.plates, ...g.placedBlocks.map(o => o.box)];
-  if (all.some(s => overlap(box, s))) return false;
-  if (overlap(box, { x: g.level.spawn.x - 1, y: g.level.spawn.y - .2, w: 4, h: 3 })) return false;
-  g.placedBlocks.push({ kind, owner: id, box: { x: r2(box.x), y: r2(box.y), w: b.w, h: b.h }, used: false }); p.placed = kind; g.events.push({ type: 'place', id, kind }); return true;
+  for (const dy of kind === 'plat' ? [.35, 1.3, 2.3] : [0, .35]) {
+    const box = { x: cx - b.w / 2, y: p.y + dy, w: b.w, h: b.h };
+    if (box.x < 0 || box.x + box.w > g.level.end || box.y < -2) continue;
+    if (all.some(o => overlap(box, o)) || g.level.noPlace.some(z => box.x < z.x + z.w && box.x + box.w > z.x)) continue;
+    g.placedBlocks.push({ kind, owner: id, box: { x: r2(box.x), y: r2(box.y), w: b.w, h: b.h }, used: false }); p.used[idx] = true; g.events.push({ type: 'place', id, kind, x: r2(cx), y: r2(box.y) }); return true;
+  }
+  return false;
 }
 const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 const pbox = p => ({ x: p.x - PW / 2, y: p.y, w: PW, h: PH });
@@ -158,7 +161,6 @@ function triggers(g) {
   g.level.plates.forEach((pl, i) => { if (pressed.has(i)) for (const r of pl.reveals || []) g.revealed.add(r); });
   g.level.doors.forEach((d, i) => { const on = g.level.plates.some((pl, k) => pl.door === i && pressed.has(k)); if (on) g.doorT[i] = d.hold || 0; else g.doorT[i] = Math.max(0, g.doorT[i] - DT); g.doorOpen[i] = on || g.doorT[i] > 0; });
   g.level.flags.forEach((f, i) => { if (g.flagsHit.has(i)) return; for (const p of g.players) if (!p.dead && Math.abs(p.x - f.x) < 1 && Math.abs(p.y - f.y) < 1.5) { g.flagsHit.add(i); if (i > g.cp) g.cp = i; for (const r of f.reveals) g.revealed.add(r); g.events.push({ type: 'flag', id: p.id, i }); break; } });
-  for (const b of g.placedBlocks) if (b.kind === 'life' && !b.used) for (const p of g.players) if (!p.dead && overlap(pbox(p), b.box)) { b.used = true; g.lives++; g.events.push({ type: 'life', id: p.id }); break; }
   const goal = g.level.goal; for (const p of g.players) if (!p.dead && !p.done && overlap(pbox(p), goal)) { p.done = true; if (p.by != null) { g.players[p.by].carry = null; p.by = null; } g.events.push({ type: 'done', id: p.id }); }
 }
 function chaserTick(g, dt) {
@@ -205,22 +207,16 @@ export function step(g, dt) {
   g.acc += dt;
   while (g.acc >= DT - 1e-9 && !g.over) {
     g.acc -= DT; g.t += DT;
-    if (g.phase === 'place') { if (g.players.every(p => p.placed) || g.t >= PLACE_TIME) { autoPlace(g); g.phase = 'countdown'; g.t = 0; g.events.push({ type: 'placed' }); } }
-    else if (g.phase === 'countdown') { if (g.t >= COUNTDOWN - 1e-9) { g.phase = 'run'; g.events.push({ type: 'go' }); } }
+    if (g.phase === 'countdown') { if (g.t >= COUNTDOWN - 1e-9) { g.phase = 'run'; g.events.push({ type: 'go' }); } }
     else if (g.phase === 'run') runTick(g, DT);
   }
   if (g.over) g.events.push({ type: 'end', result: g.result });
   return g.events;
 }
-// 時間到還沒放的人由系統代放：隨機試幾個位置
-function autoPlace(g) {
-  for (const p of g.players) if (!p.placed) for (let i = 0; i < 40 && !p.placed; i++) place(g, p.id, Math.floor(g.rng() * p.offers.length), 6 + g.rng() * (g.level.end - 12), g.level.top + g.rng() * 3);
-}
-
 export function snapshot(g, { full = true } = {}) {
   const o = {
     phase: g.phase, over: g.over, t: r1(g.t), run: r1(g.run), lives: g.lives, cp: g.cp, ch: g.chaser == null ? null : r1(g.chaser),
-    pl: g.players.map(p => ({ id: p.id, x: r2(p.x), y: r2(p.y), f: p.face, g: p.ground ? 1 : 0, c: p.carry, b: p.by, d: p.dead ? 1 : 0, dn: p.done ? 1 : 0, gn: p.gone ? 1 : 0, of: p.placed ? null : p.offers })),
+    pl: g.players.map(p => ({ id: p.id, x: r2(p.x), y: r2(p.y), f: p.face, g: p.ground ? 1 : 0, c: p.carry, b: p.by, d: p.dead ? 1 : 0, dn: p.done ? 1 : 0, gn: p.gone ? 1 : 0, it: p.items.map((k, i) => p.used[i] ? null : k) })),
     pr: [...g.pressed], dr: g.doorOpen.map(v => v ? 1 : 0), rv: [...g.revealed], fl: [...g.flagsHit], bl: g.placedBlocks.map(b => [b.kind, b.box.x, b.box.y, b.used ? 1 : 0]),
   };
   if (full) { o.seed = g.seed; o.level = g.level; g.players.forEach((p, i) => Object.assign(o.pl[i], { name: p.name, uid: p.uid, look: p.look })); }

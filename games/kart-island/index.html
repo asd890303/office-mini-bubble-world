@@ -54,6 +54,14 @@ body.foamed .foamfx i { animation: foamwob 1.4s ease-in-out infinite alternate; 
 .count[hidden] { display: none; }
 .wrongway { position: fixed; left: 50%; top: 30%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 900; padding: 6px 20px; color: #d0456b; pointer-events: none; white-space: nowrap; animation: ww .5s ease-in-out infinite alternate; }
 .wrongway[hidden] { display: none; }
+/* 被鎖定警示：紅色箭頭從攻擊來的方向指向自己的車，位置每幀算 */
+.lockwarn { position: fixed; left: 0; top: 0; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; z-index: 6; animation: lockblink .3s steps(2) infinite; }
+.lockwarn[hidden] { display: none; }
+.lockwarn i { width: 0; height: 0; border-left: 20px solid transparent; border-right: 20px solid transparent; border-bottom: 32px solid #ff3b5c; filter: drop-shadow(0 0 6px rgba(255,59,92,.85)); }
+.lockwarn b { font-size: 16px; font-weight: 900; color: #fff; background: #ff3b5c; border: 2px solid #3b2f2f; border-radius: 999px; padding: 1px 10px; white-space: nowrap; }
+@keyframes lockblink { 50% { opacity: .35; } }
+.hudr { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.hudr .btn[hidden] { display: none; }
 @keyframes ww { to { transform: translate(-50%, -50%) scale(1.08); } }
 .toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 84px); transform: translate(-50%, 0) scale(.8); font-size: 15px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; transition: opacity .15s, transform .15s; pointer-events: none; white-space: nowrap; }
 .toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
@@ -108,6 +116,7 @@ body.touch .keys { display: none; }
 .mapcard .best { display: block; font-size: 11px; font-weight: 900; font-style: normal; color: var(--pink-deep); }
 .diffs b { align-self: center; font-size: 13px; }
 .loadline { margin: -2px 0 0; font-size: 12px; color: var(--ink-soft); }
+.vcar { align-items: center; margin: 0 0 8px; } .vcar .loadline { margin: 0; } /* 選地圖畫面的選車列：從大廳直接進單人或連線都會經過這裡 */
 /* 選車：造型卡片 + 兩排能力 */
 #garageScreen .box { width: min(480px, calc(100% - 20px)); }
 .glabel { display: block; text-align: left; font-size: 14px; font-weight: 900; margin: 10px 0 4px; }
@@ -152,11 +161,12 @@ body.touch .keys { display: none; }
 <div class="hud">
   <div class="box rank" id="rank">-<small></small></div>
   <div class="box mid"><div id="lap">第 1/3 圈</div><b id="time">0:00.0</b></div>
-  <button class="btn mute" id="mute">音效 開</button>
+  <div class="hudr"><button class="btn mute" id="pauseBtn" hidden>暫停</button><button class="btn mute" id="mute">音效 開</button><button class="btn mute" id="resetBtn" hidden>回賽道</button></div>
 </div>
 <div class="box itembox"><span class="slots"><canvas id="slot" width="128" height="128"></canvas><canvas id="slot2" width="64" height="64" hidden></canvas></span><div><b id="itemName">沒有道具</b><span id="itemDesc">撞問號箱拿道具</span></div></div>
 <div class="count" id="count" hidden></div>
-<div class="wrongway box" id="wrongWay" hidden>逆向行駛，請迴轉</div>
+<div class="wrongway box" id="wrongWay" hidden>逆向行駛，請迴轉（R 回賽道）</div>
+<div class="lockwarn" id="lockWarn" hidden><i id="lockArrow"></i><b id="lockText"></b></div>
 <div class="speedfx"></div>
 <div class="feed" id="feed"></div>
 <div class="toast box" id="toast"></div>
@@ -169,7 +179,7 @@ body.touch .keys { display: none; }
     <button class="act gas" id="gasBtn">油門</button>
   </div>
 </div>
-<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣</div>
+<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣　<b>R</b> 回賽道　<b>Esc</b> 暫停（單人）</div>
 
 <section class="screen" id="startScreen">
   <div class="box">
@@ -201,6 +211,7 @@ body.touch .keys { display: none; }
     <h2>選地圖</h2>
     <div class="vtimer" id="vTimer">15</div>
     <p id="vNote">點一張地圖投票，票多的開跑，同票隨機。</p>
+    <div class="row vcar"><span class="loadline" id="vLoadLine"></span><button class="btn" id="vGarageBtn">選車</button></div>
     <div class="row diffs" id="modes"></div>
     <div class="row diffs" id="diffs" hidden></div>
     <div class="maps" id="maps"></div>
@@ -241,6 +252,16 @@ body.touch .keys { display: none; }
     <div class="endnote" id="lapLine" hidden></div>
     <div class="endnote" id="endNote" hidden></div>
     <button class="btn primary go" id="againBtn">再賽一場</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="pauseScreen" hidden>
+  <div class="box">
+    <h2>暫停</h2>
+    <p id="pauseNote"></p>
+    <button class="btn primary go" id="resumeBtn">繼續（Esc）</button>
+    <div class="row"><button class="btn" id="retryBtn">重來</button><button class="btn" id="quitBtn">跳出，回選地圖</button></div>
     <a class="btn back" href="/">回遊戲大廳</a>
   </div>
 </section>
@@ -409,6 +430,7 @@ function makeKart(d) {
   if (d.name) { addNameTag(critter, d.name); critter.nameTag.scale.set(3.4, .85, 1); critter.nameTag.position.y = 2.7; } // 車上的角色縮小過，名字放大回來
   const sparks = [];
   for (const s of [-1, 1]) { const m = new THREE.Mesh(G.small, new THREE.MeshBasicMaterial({ color: 0x5ab8ff })); m.scale.setScalar(.14); m.position.set(s * .52, .15, -.75); m.visible = false; body.add(m); sparks.push(m); }
+  const wind = []; for (const [x, y] of [[-.62, .35], [.62, .35], [-.4, .95], [.4, .95]]) { const m = new THREE.Mesh(G.box, WIND_MAT); m.scale.set(.03, .03, .9); m.position.set(x, y, 0); m.visible = false; body.add(m); wind.push(m); } // 尾流：車身兩側往後流的白線
   const trail = []; for (let i = 0; i < 5; i++) { const m = new THREE.Mesh(G.small, M.splash); m.scale.setScalar(.26 - i * .04); m.position.set(0, .32, -.9 - i * .32); m.visible = false; body.add(m); trail.push(m); }
   const shield = new THREE.Mesh(G.sphere, SHIELD_MAT); shield.scale.set(1.05, .85, 1.2); shield.position.y = .55; shield.visible = false; root.add(shield); // 泡泡盾：罩住整台車的粉色泡泡
   // 雷雨雲：頭上一朵雲加 4 滴往下掉的雨；燙手泡泡：黏在椅背上，上面浮著剩下的秒數
@@ -430,8 +452,9 @@ function makeKart(d) {
   const beam = new THREE.Group(); beam.visible = false; scene.add(beam); // 一串紅白小球，從被吸的車流向自己（線材在 WebGL 只有 1 像素寬，看不到）
   for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(G.small, i % 2 ? M.white : BEAM_MAT); m.scale.setScalar(.11); beam.add(m); }
   scene.add(root);
-  return { root, body, critter, sparks, trail, shield, cloud, rain, hot, hotNum, foam, rocket, flame, magnet, beam, spin: 0, scl: 1 };
+  return { root, body, critter, sparks, trail, wind, shield, cloud, rain, hot, hotNum, foam, rocket, flame, magnet, beam, spin: 0, scl: 1 };
 }
+const WIND_MAT = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75 });
 const FOAM_MAT = new THREE.MeshToonMaterial({ color: '#e8f4ff', gradientMap: grad, transparent: true, opacity: .85 }), ROCKET_MAT = toon('#ff8fab'), BEAM_MAT = toon('#ff6b6b');
 const MAGNET_GEO = new THREE.TorusGeometry(.25, .08, 8, 16, Math.PI); // 半圈環，轉向後就是 U 形磁鐵
 // 車身依造型組裝（只是外觀，碰撞一律是半徑 0.65 的圓），回傳小傢伙坐的高度
@@ -599,8 +622,15 @@ function drawSpeedo(v, boost, level = 0) {
 
 /* ---------- 操作 ---------- */
 const keys = new Set(); let stickX = 0, stickId = null, driftHeld = false, gasHeld = false;
-const KEY_L = ['a', 'arrowleft'], KEY_R = ['d', 'arrowright'], KEY_GAS = ['w', 'arrowup'], KEY_BRAKE = ['s', 'arrowdown'], KEY_DRIFT = ['shift', 'k'], KEY_ITEM = [' ', 'j'];
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if ([...KEY_L, ...KEY_R, ...KEY_GAS, ...KEY_BRAKE, ...KEY_DRIFT, ...KEY_ITEM].includes(k)) e.preventDefault(); if (KEY_ITEM.includes(k) && !keys.has(k)) pressItem(); keys.add(k); });
+const KEY_L = ['a', 'arrowleft'], KEY_R = ['d', 'arrowright'], KEY_GAS = ['w', 'arrowup'], KEY_BRAKE = ['s', 'arrowdown'], KEY_DRIFT = ['shift', 'k'], KEY_ITEM = [' ', 'j'], KEY_RESET = ['r'];
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if ([...KEY_L, ...KEY_R, ...KEY_GAS, ...KEY_BRAKE, ...KEY_DRIFT, ...KEY_ITEM].includes(k)) e.preventDefault(); if (KEY_ITEM.includes(k) && !keys.has(k)) pressItem(); if (KEY_RESET.includes(k) && !keys.has(k) && !e.metaKey && !e.ctrlKey) pressReset(); if (k === 'escape') setPaused(!paused); keys.add(k); });
+// 鍵盤轉向漸進：按下約 0.15 秒打滿，放開或換邊約 0.1 秒回正，直線上點一下只會微調（手機搖桿本來就是類比）
+const KB_STEER = { up: 1 / .15, back: 1 / .1 }; let kbSteer = 0;
+function rampSteer(dt) {
+  const want = (KEY_R.some(k => keys.has(k)) ? 1 : 0) - (KEY_L.some(k => keys.has(k)) ? 1 : 0);
+  const rate = want === 0 || Math.sign(want) !== Math.sign(kbSteer) ? KB_STEER.back : KB_STEER.up;
+  kbSteer += Math.max(-rate * dt, Math.min(rate * dt, want - kbSteer));
+}
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => { keys.clear(); stickX = 0; driftHeld = gasHeld = false; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); stickX = 0; driftHeld = gasHeld = false; } });
@@ -619,9 +649,14 @@ gBtn.addEventListener('pointerdown', e => { gBtn.setPointerCapture(e.pointerId);
 for (const t of ['pointerup', 'pointercancel']) gBtn.addEventListener(t, () => { gasHeld = false; gBtn.classList.remove('on'); });
 $('itemBtn').addEventListener('pointerdown', e => { e.preventDefault(); pressItem(); });
 function input() {
-  let steer = stickX; if (KEY_L.some(k => keys.has(k))) steer -= 1; if (KEY_R.some(k => keys.has(k))) steer += 1;
+  const steer = stickX + kbSteer;
   return { steer: Math.max(-1, Math.min(1, steer)), drift: driftHeld || KEY_DRIFT.some(k => keys.has(k)), gas: gasHeld || KEY_GAS.some(k => keys.has(k)), brake: KEY_BRAKE.some(k => keys.has(k)) };
 }
+function pressReset() { // 回到賽道：原地停 1 秒，再放回最近的路中間
+  if (!playing) return;
+  if (mode === 'offline' && local) Core.resetKart(local, 0); else if (mode === 'online') net.send({ t: 'reset' });
+}
+$('resetBtn').addEventListener('click', () => pressReset());
 function pressItem() {
   if (!playing) return;
   if (mode === 'offline' && local) Core.useItem(local, 0); else if (mode === 'online') net.send({ t: 'item' });
@@ -673,6 +708,8 @@ function onEvent(e) {
   else if (e.e === 'item' && mine) { sfx.item(); haptic.tap(); }
   else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了氮氣', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈', rocket: '坐上泡泡火箭', magnet: '拿出磁鐵', big: '變成巨大泡泡' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告；泡泡雲在 foam 事件公告蓋住誰
   else if (e.e === 'nitro' && mine) { sfx.item(); toast(`氮氣 +1（${e.n}/${Core.NITRO.max}）`, 800); }
+  else if (e.e === 'reset' && mine) toast(`${Core.RESET} 秒後回到賽道`, 1000);
+  else if (e.e === 'draft' && mine) { sfx.boost(1); haptic.tap(); toast('尾流加速！', 800); }
   else if (e.e === 'crash' && (e.a === me || e.b === me)) { sfx.bump(); haptic.tap(); }
   else if (e.e === 'hit') { feed(e.kind === 'hot' ? `${who(e.by)} 的燙手泡泡在 ${who(e.id)} 身上爆炸` : e.kind === 'storm' ? `${who(e.by)} 的雷雨雲淋到 ${who(e.id)}` : `${who(e.by)} 的${ITEM_NAME[e.kind] || '道具'}打中 ${who(e.id)}`, e.by, e.id); if (mine) { sfx.hit(); haptic.hit(); } }
   else if (e.e === 'block') { feed(`${who(e.id)} 的泡泡盾擋下 ${who(e.by)} 的${ITEM_NAME[e.kind] || '攻擊'}`, e.id, e.by); if (mine) { sfx.block(); haptic.tap(); } }
@@ -748,7 +785,7 @@ const SPARK = [0x5ab8ff, 0x5ab8ff, 0xffa63d, 0xff6fa8];
 function renderKarts(poses, dt, t) {
   for (const d of poses) {
     const k = V.karts.get(d.id); if (!k) continue;
-    k.root.visible = d.st !== 'out' && !(d.gh && Math.sin(t * 30) > .4); // 小幽靈透明：一閃一閃
+    k.root.visible = d.st !== 'out' && !(d.gh && Math.sin(t * 30) > .4) && !(d.rs && Math.sin(t * 20) > 0); // 小幽靈透明、回到賽道中：一閃一閃
     const { z, slope } = lift(k, d.x, d.y), i = k.eh ?? 0; k.z = z;
     k.root.position.copy(W(d.x, d.y, z));
     k.root.rotation.x = slope ? -Math.atan(slope * (TRACK.tx[i] * Math.cos(d.h) + TRACK.ty[i] * Math.sin(d.h))) : 0; // 沿車頭方向的坡度
@@ -766,6 +803,7 @@ function renderKarts(poses, dt, t) {
     animateCritter(k.critter, dt, t, false);
     for (const sp of k.sparks) { sp.visible = d.dr !== 0 && d.dl > 0 && Math.sin(t * 40 + sp.position.x) > -.3; sp.material.color.setHex(SPARK[d.dl] || SPARK[1]); }
     k.trail.forEach((m, i) => { m.visible = !!d.bo; if (d.bo) m.scale.setScalar((.26 - i * .04) * (1 + .35 * Math.sin(t * 30 + i))); });
+    k.wind.forEach((m, i) => { m.visible = d.df > 0; if (d.df > 0) { m.position.z = .9 - ((t * 3 + i * .37) % 1) * 2.2; m.scale.z = .4 + d.df * 1.2; } }); // 集得越多線越長
   }
   // 磁鐵的線：等每台車的位置都更新完，再從吸的人連到被吸的人
   for (const d of poses) {
@@ -777,10 +815,11 @@ function renderKarts(poses, dt, t) {
 }
 function followCam(d, dt) {
   const h = d ? d.h : 0;
-  V.camH = V.camH == null ? h : lerpA(V.camH, h, 1 - Math.exp(-dt * 5));
+  const fast = Math.max(1, Math.abs(d?.v || 0) / Core.KART.VMAX); // 高速時鏡頭跟得更緊：時速 240 時落後從約 2.5 格縮到約 0.6 格
+  V.camH = V.camH == null ? h : lerpA(V.camH, h, 1 - Math.exp(-dt * 5 * fast));
   const fx = Math.cos(V.camH), fy = Math.sin(V.camH), tx = d ? d.x : cx, ty = d ? d.y : cy, z = (d && V.karts.get(d.id)?.z) || 0, sc = (d && V.karts.get(d.id)?.scl) || 1; // 巨大泡泡：鏡頭跟著拉遠拉高
   const want = W(tx - fx * 5.2 * sc, ty - fy * 5.2 * sc, 3.1 * sc + z);
-  if (!V.camPos) V.camPos = want.clone(); else V.camPos.lerp(want, 1 - Math.exp(-dt * 8));
+  if (!V.camPos) V.camPos = want.clone(); else V.camPos.lerp(want, 1 - Math.exp(-dt * 8 * fast * fast));
   camera.position.copy(V.camPos); camera.lookAt(W(tx + fx * 3, ty + fy * 3, .6 + z));
   const fov = d?.bo ? 72 : 58; if (Math.abs(camera.fov - fov) > .1) { camera.fov += (fov - camera.fov) * (1 - Math.exp(-dt * 6)); camera.updateProjectionMatrix(); }
   document.body.classList.toggle('boosting', !!(d?.bo && d.id === V.myId));
@@ -793,6 +832,7 @@ function updateHud(s, me) {
   $('rank').innerHTML = k ? `${k.rank}<small> / ${n}</small>` : '<small>觀戰中</small>';
   $('lap').textContent = k ? (k.done ? `完賽 第 ${k.place} 名` : `第 ${k.lap}/${s.laps} 圈`) : `${s.laps} 圈`;
   $('time').textContent = fmtTime(s.time);
+  $('resetBtn').hidden = !(k && s.phase === 'race' && k.st === 'racing' && !k.done); $('pauseBtn').hidden = !canPause();
   if (s.mode === 'speed') { drawNitro(k?.ni || 0, k?.ga || 0); drawSlot2(null); } else { drawSlot(k?.item || null); drawSlot2(k?.i2 || null); }
   if (s.phase === 'countdown') { const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); sfx.beep(); } }
 }
@@ -816,7 +856,7 @@ renderModes(null);
 const PICK0 = { shape: 'classic', rperk: Object.keys(Core.RACE_PERKS)[0], iperk: Object.keys(Core.ITEM_PERKS)[0] };
 let kartPick = (() => { try { return Core.pickLoadout(JSON.parse(store.get('kt-kart')) || {}, PICK0); } catch { return { ...PICK0 }; } })();
 const loadText = () => `${Core.SHAPES[kartPick.shape].label}・${Core.RACE_PERKS[kartPick.rperk].label}・${Core.ITEM_PERKS[kartPick.iperk].label}`;
-function renderLoadLines() { $('loadLine').textContent = $('lLoadLine').textContent = `目前的車：${loadText()}`; }
+function renderLoadLines() { $('loadLine').textContent = $('lLoadLine').textContent = $('vLoadLine').textContent = `目前的車：${loadText()}`; }
 // 造型的側視小圖（128×80，地面在 y = 66）：車身、座椅上的小傢伙、輪子
 function drawKartIcon(x, shape, color) {
   x.clearRect(0, 0, 128, 80); x.lineJoin = x.lineCap = 'round';
@@ -852,24 +892,40 @@ function renderGarage() {
 }
 $('garageScreen').addEventListener('click', e => {
   const b = e.target.closest('[data-shape],[data-rperk],[data-iperk]'); if (!b) return; haptic.tap();
-  kartPick = Core.pickLoadout({ shape: b.dataset.shape, rperk: b.dataset.rperk, iperk: b.dataset.iperk }, kartPick); store.set('kt-kart', JSON.stringify(kartPick)); renderGarage();
+  kartPick = Core.pickLoadout({ shape: b.dataset.shape, rperk: b.dataset.rperk, iperk: b.dataset.iperk }, kartPick); store.set('kt-kart', JSON.stringify(kartPick)); renderGarage(); renderLoadLines();
+  if (mode === 'online' && inLobby()) net.send(joinMsg()); // 每點一次就送：連線選地圖的倒數到了會直接開跑，等按「完成」可能來不及
 });
 const openGarage = () => { renderGarage(); $('garageScreen').hidden = false; };
-$('garageBtn').addEventListener('click', openGarage); $('lGarageBtn').addEventListener('click', openGarage);
-$('garageDone').addEventListener('click', () => { $('garageScreen').hidden = true; renderLoadLines(); if (mode === 'online' && inLobby()) net.send(joinMsg()); });
+$('garageBtn').addEventListener('click', openGarage); $('lGarageBtn').addEventListener('click', openGarage); $('vGarageBtn').addEventListener('click', openGarage);
+$('garageDone').addEventListener('click', () => { $('garageScreen').hidden = true; });
 renderLoadLines();
 // 個人最佳：每張地圖、每個模式的最快完賽與最快一圈 { time, lap }，選地圖時顯示在卡片上（道具賽沿用舊的 key）
 const bestKey = (id, m) => 'kt-best-' + id + (m === 'speed' ? '-speed' : '');
 const bestOf = (id, m = raceMode) => { try { return JSON.parse(store.get(bestKey(id, m))) || null; } catch { return null; } };
 function startOffline(track = Core.TRACKS[0].id) {
   endSeq++;
-  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer();
+  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true;
   local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...kartPick }], track, diff, mode: raceMode });
   toast(`${Core.MODES[raceMode].label}：${Core.trackById(track).name}`, 1600);
   soloStart(track);
   acc = 0; prevLocal = null; buf.length = 0;
   buildView(Core.snapshot(local), 0); playing = true;
 }
+// 單人暫停：Esc 或右上角「暫停」，電腦和計時一起停；可以繼續、同一張地圖重來，或跳出回選地圖
+let paused = false;
+const canPause = () => mode === 'offline' && !!local && playing;
+function setPaused(on) {
+  if (on && !canPause()) return;
+  paused = on; $('pauseScreen').hidden = !on;
+  if (!on) return;
+  keys.clear(); stickX = 0; driftHeld = gasHeld = false; knob.style.transform = ''; // 叫出選單時放開的鍵收不到 keyup，先全部放開
+  $('pauseNote').textContent = `${Core.trackById(V.s.track).name}・${Core.MODES[V.s.mode].label}`;
+}
+$('pauseBtn').addEventListener('click', () => setPaused(true));
+$('resumeBtn').addEventListener('click', () => setPaused(false));
+$('retryBtn').addEventListener('click', () => { const track = V.s.track; setPaused(false); startOffline(track); });
+$('quitBtn').addEventListener('click', () => { setPaused(false); playing = false; local = null; solo = null; disposeView(); clearHud(); showVote(null); }); // 沒完賽，不送單人紀錄
+function clearHud() { $('rank').innerHTML = '-<small></small>'; $('time').textContent = fmtTime(0); $('speedo').hidden = true; mapX.clearRect(0, 0, 224, 224); drawSlot(null); drawSlot2(null); } // 回到剛進頁面的樣子
 function goOffline(why) { mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null; $('lobbyScreen').hidden = true; if (!playing) $('startScreen').hidden = false; if (why) toast(why, 2200); }
 $('startBtn').addEventListener('click', () => showVote(null));
 $('soloBtn').addEventListener('click', () => goOffline());
@@ -923,8 +979,8 @@ async function soloFinish(time) {
   } catch { return { text: '紀錄沒送出：連不上伺服器' }; }
 }
 
-/* ---------- 選地圖：連線時投票；單人時點了直接開跑，15 秒沒選就隨機 ---------- */
-let myVote = null, voteTimer = 0;
+/* ---------- 選地圖：連線時投票；單人時點了才開跑，不倒數 ---------- */
+let myVote = null;
 function drawTrackPreview(cv, T, color) {
   const x = cv.getContext('2d'), n = cv.width; let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (let j = 0; j < T.N; j++) { x0 = Math.min(x0, T.xs[j]); x1 = Math.max(x1, T.xs[j]); y0 = Math.min(y0, T.ys[j]); y1 = Math.max(y1, T.ys[j]); }
@@ -943,14 +999,11 @@ function renderMaps(counts) {
   }
   for (const b of el.children) { const pb = bestOf(b.dataset.track); b.querySelector('.best').textContent = pb ? `最佳 ${pb.time.toFixed(2)} 秒` : ''; b.setAttribute('aria-pressed', String(b.dataset.track === myVote)); b.querySelector('.votes').textContent = counts && counts[b.dataset.track] ? `${counts[b.dataset.track]} 票` : ''; }
 }
-function stopVoteTimer() { clearInterval(voteTimer); voteTimer = 0; }
 function showVote(v) {
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = true; $('voteScreen').hidden = false;
-  $('diffs').hidden = mode === 'online'; // 電腦難度只有單人賽有
+  $('diffs').hidden = mode === 'online'; $('vTimer').hidden = mode !== 'online'; // 電腦難度只有單人賽有；倒數只有連線有
   if (mode === 'online') { $('vNote').textContent = '選模式、點一張地圖投票，各自票多的開跑，同票隨機。沒人選模式就是道具賽。'; $('vTimer').textContent = v?.endsIn ?? ''; renderModes(v?.modes); renderMaps(v?.counts); return; }
-  myVote = null; renderModes(null); renderMaps(null); $('vNote').textContent = '選好模式，點一張地圖開跑，15 秒沒選就隨機。';
-  let left = 15; $('vTimer').textContent = left; stopVoteTimer();
-  voteTimer = setInterval(() => { left--; $('vTimer').textContent = left; if (left <= 0) startOffline(Core.TRACKS[Math.floor(Math.random() * Core.TRACKS.length)].id); }, 1000);
+  myVote = null; renderModes(null); renderMaps(null); $('vNote').textContent = '選好模式和難度，點一張地圖開跑。';
 }
 $('maps').addEventListener('click', e => {
   const b = e.target.closest('[data-track]'); if (!b) return; haptic.tap();
@@ -991,7 +1044,7 @@ function onNet(m) {
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
   else if (m.t === 'start') {
     net.base = m.s; resetClock(); buildView(m.s, m.me); playing = true;
-    $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = $('voteScreen').hidden = true; myVote = null;
+    $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = $('voteScreen').hidden = $('garageScreen').hidden = true; myVote = null;
     toast(`${Core.MODES[m.s.mode]?.label || '道具賽'}：${Core.trackById(m.s.track).name}`, 1600);
     if (m.me == null) toast('觀戰中', 1200);
   }
@@ -1035,6 +1088,18 @@ function wrongWay(d, dt) {
   $('wrongWay').hidden = ww.t < 1;
 }
 
+// 被鎖定警示：追著自己的水柱、燙手泡泡在 30 格內，或雷雨雲在 45 格內，畫面邊緣出現紅色箭頭指向自己，越近嗶得越快
+const LOCK = { 1: ['水柱追來了', 30], 2: ['雷雨雲飛來了', 45], 3: ['燙手泡泡飛來了', 30] }, lock = { beepAt: 0 };
+function lockWarn(d, t) {
+  let near = null;
+  if (d && d.st === 'racing' && !d.done) for (const [, x, y, code, target] of V.s.shots) { const L = LOCK[code], dist = Math.hypot(x - d.x, y - d.y); if (target === V.myId && L && dist < L[1] && (!near || dist < near.dist)) near = { x, y, dist, L }; }
+  $('lockWarn').hidden = !near; if (!near) return;
+  const h = V.camH ?? d.h, dx = near.x - d.x, dy = near.y - d.y, a = Math.atan2(-dx * Math.sin(h) + dy * Math.cos(h), dx * Math.cos(h) + dy * Math.sin(h)); // 0 = 正前方，往右為正
+  const el = $('lockWarn'); el.style.left = `${50 + Math.sin(a) * 38}%`; el.style.top = `${55 - Math.cos(a) * 32}%`;
+  $('lockArrow').style.transform = `rotate(${a + Math.PI}rad)`; $('lockText').textContent = near.L[0];
+  if (t - lock.beepAt > Math.max(.12, near.dist / near.L[1] * .6)) { lock.beepAt = t; tone(990, .06, 'square', .07); }
+}
+
 /* ---------- 主迴圈 ---------- */
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
@@ -1042,20 +1107,23 @@ let last = performance.now();
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(.05, (now - last) / 1000), t = now / 1000; last = now;
+  rampSteer(dt);
   if (mode === 'offline' && local && V) {
-    Core.setInput(local, 0, input());
-    acc += dt;
-    while (acc >= STEP_DT) { prevLocal = local.karts.map(k => ({ x: k.x, y: k.y, h: k.h })); const evs = Core.step(local, STEP_DT); applySnap(Core.snapshot(local), evs); acc -= STEP_DT; }
+    if (!paused) {
+      Core.setInput(local, 0, input());
+      acc += dt;
+      while (acc >= STEP_DT) { prevLocal = local.karts.map(k => ({ x: k.x, y: k.y, h: k.h })); const evs = Core.step(local, STEP_DT); applySnap(Core.snapshot(local), evs); acc -= STEP_DT; }
+    }
   } else sendInput();
   if (V) {
     const poses = kartPoses(dt); renderKarts(poses, dt, t);
     const meId = V.myId, mine = poses.find(d => d.id === meId) || [...poses].sort((a, b) => a.rank - b.rank)[0];
     followCam(mine, dt); updateHud(V.s, meId); drawMap(poses, meId);
     const own = meId != null ? poses.find(d => d.id === meId) : null; $('speedo').hidden = !own; if (own) drawSpeedo(own.v, own.bo, own.dr ? own.dl : 0);
-    wrongWay(own, dt); document.body.classList.toggle('foamed', !!own?.fo);
+    wrongWay(own, dt); lockWarn(own, t); document.body.classList.toggle('foamed', !!own?.fo);
     for (const [i, m] of V.boxes.entries()) { m.rotation.y = t * 1.6 + i; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + i) * .1; }
     for (const [id, m] of V.haz) if (m.userData.decoy) { m.rotation.y = t * 1.6 + id; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + id) * .1; }
-  } else { orbitCam(dt); $('wrongWay').hidden = true; document.body.classList.remove('foamed'); }
+  } else { orbitCam(dt); $('wrongWay').hidden = $('lockWarn').hidden = $('resetBtn').hidden = $('pauseBtn').hidden = true; document.body.classList.remove('foamed'); }
   renderer.render(scene, camera);
 }
 requestAnimationFrame(tick);
@@ -1069,7 +1137,7 @@ $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEvent
 // 連線對戰：沒有身分就先請玩家選 Telegram 登入或訪客
 async function goOnline() {
   if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
-  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true; local = null; stopVoteTimer();
+  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true; local = null;
   $('startScreen').hidden = $('endScreen').hidden = $('voteScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
 }
 $('onlineBtn').addEventListener('click', goOnline);

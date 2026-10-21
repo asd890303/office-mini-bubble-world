@@ -64,6 +64,10 @@ export const POINTS = [5, 3, 2, 1];
 // 單人賽電腦難度：speed + 0..spread 是最高速比例；chain 為 true 時看前方彎道主動漂移並連噴，否則只偶爾漂移
 export const DIFFS = { normal: { label: '普通', speed: .94, spread: .04, chain: false }, hard: { label: '困難', speed: .98, spread: .02, chain: true } };
 export const BOX_RESPAWN = 5, BOX_R = .8, IMMUNE = 1.5; // IMMUNE：被困住脫困後幾秒內不會再被困
+export const RESET = 1; // 回到賽道：原地停 RESET 秒，再放回最近的路中間、車頭朝前
+// 尾流：前方 near 到 far 格、橫向差 lat 格內有車（照自己車頭方向算），車速 minV 以上、沒在漂移、方向盤轉不到 steer 才累積（只在直線跟車時集，
+// 不會在髮夾彎前突然加速撞牆），集滿 charge 秒得到 boost 秒加速（倍率和漂移加速一樣）；離開後以 2 倍速度退掉
+export const DRAFT = { near: 1.5, far: 6, lat: 1.2, minV: 6, steer: .5, charge: 1.5, boost: 1 };
 
 export function rngFrom(seed) { // mulberry32
   let a = (seed >>> 0) || 1;
@@ -149,7 +153,7 @@ export function createGame({ seed = 1, humans = [], bots = true, laps = LAPS, tr
       id: g.karts.length, uid: h ? String(h.uid ?? i) : null, name: h ? String(h.name || '玩家').slice(0, 12) : names[i], human: !!h,
       color: h ? colors[i] : pickColor(null), ear: h && EARS[h.ear] ? h.ear : earKeys[(i + 1) % earKeys.length], eye: h ? (Object.hasOwn(EYES, h.eye) ? h.eye : 'dot') : EYE_KEYS[(i + 2) % EYE_KEYS.length], body: h && BODIES.includes(h.body) ? h.body : BODIES[0], blush: h && BLUSHES.includes(h.blush) ? h.blush : BLUSHES[0],
       x: p.x, y: p.y, h: p.h, v: 0, steer: 0, gas: false, brake: false, driftIn: false, drift: 0, charge: 0, level: 0, boost: 0, chain: 0, combo: 0, shoe: 0, trap: 0, immune: 0, spin: 0, shield: 0,
-      storm: 0, stormBy: null, hot: 0, hotBy: null, hotCD: 0, ghost: 0, gauge: 0, nitro: 0, foam: 0, rocket: 0, magnet: 0, magnetT: null, big: 0, ramCD: 0,
+      storm: 0, stormBy: null, hot: 0, hotBy: null, hotCD: 0, ghost: 0, gauge: 0, nitro: 0, foam: 0, rocket: 0, magnet: 0, magnetT: null, big: 0, ramCD: 0, reset: 0, draft: 0,
       item: null, item2: null, hint: loc.i, s: loc.s, total: s0, lap: 1, done: false, place: 0, finishT: null, state: 'racing', rank: i + 1, startPress: null,
       ai: h ? null : { lane: lat * .6, laneT: 1 + rng() * 3, drifting: false, itemT: .6 + rng(), speed: D.speed + rng() * D.spread, wob: 0, wobT: 0 },
     });
@@ -208,6 +212,13 @@ export function useItem(g, id) {
   else if (kind === 'magnet') { k.magnet = ITEMS.magnet.time; k.magnetT = magnetTarget(g, k)?.id ?? null; }
   else if (kind === 'big') k.big = ITEMS.big.time;
   ev(g, { e: 'use', id: k.id, kind });
+  return true;
+}
+// 回到賽道：卡在牆邊或轉不回來時用。比賽中、還在跑、沒被困住、不在泡泡火箭上才行；停下來的這 1 秒加速和磁鐵都會取消
+export function resetKart(g, id) {
+  const k = g.karts[id];
+  if (!k || g.phase !== 'race' || k.state !== 'racing' || k.done || k.reset > 0 || k.trap > 0 || k.rocket > 0) return false;
+  Object.assign(k, { reset: RESET, v: 0, spin: 0, drift: 0, charge: 0, level: 0, chain: 0, boost: 0, shoe: 0, magnet: 0, draft: 0 }); ev(g, { e: 'reset', id });
   return true;
 }
 export function forfeit(g, id) { const k = g.karts[id]; if (!k || k.state !== 'racing') return; k.state = 'out'; k.v = 0; k.item = null; k.item2 = null; k.shield = 0; k.storm = 0; k.hot = 0; k.foam = 0; k.rocket = 0; k.magnet = 0; k.big = 0; ev(g, { e: 'out', id }); }
@@ -329,6 +340,11 @@ function driveKart(g, k, dt, band) {
   // 雷雨雲下雨、燙手泡泡爆炸；剛好透明、坐泡泡火箭、被困住或剛脫困（immune）就沒事
   if (k.storm > 0 && (k.storm -= dt) <= 0) { k.storm = 0; if (k.ghost > 0 || k.rocket > 0 || k.trap > 0 || k.immune > 0) ev(g, { e: 'miss', id: k.id, by: k.stormBy, kind: 'storm' }); else trapKart(g, k, k.stormBy, 'storm', ITEMS.storm.trap); }
   if (k.hot > 0 && (k.hot -= dt) <= 0) { k.hot = 0; if (k.rocket > 0 || k.trap > 0 || k.immune > 0) ev(g, { e: 'miss', id: k.id, by: k.hotBy, kind: 'hot' }); else trapKart(g, k, k.hotBy, 'hot', ITEMS.hot.trap); }
+  if (k.reset > 0) { // 回到賽道：時間到才放回路中間，進度照放回的位置算
+    k.v = 0;
+    if ((k.reset -= dt) <= 0) { const loc = locate(k.x, k.y, k.hint, g.T), p = trackPoint(loc.s, 0, g.T); Object.assign(k, { reset: 0, x: p.x, y: p.y, h: p.h, wallHit: false }); advance(g, k, locate(k.x, k.y, loc.i, g.T)); }
+    return;
+  }
   if (k.rocket > 0) return rideRocket(g, k, dt);
   const stunned = k.trap > 0 || k.spin > 0;
   if (k.spin > 0) { k.spin = Math.max(0, k.spin - dt); k.v = Math.max(0, k.v - 6 * dt); }
@@ -346,6 +362,9 @@ function driveKart(g, k, dt, band) {
   }
   if (k.drift && !k.wallHit) { k.charge += dt * (k.boost > 0 ? DRIFT.CHAIN : 1) * (RACE_PERKS[k.rperk]?.charge || 1); k.level = DRIFT.LEVELS.filter(t => k.charge >= t).length; } // 擦著牆時火花暫停累積，不能靠磨牆集滿粉色
   if (g.mode === 'speed' && k.drift && !k.wallHit && !k.done && k.nitro < NITRO.max && (k.gauge += dt / NITRO.fill) >= 1) { k.gauge -= 1; k.nitro++; ev(g, { e: 'nitro', id: k.id, n: k.nitro }); } // 氮氣槽：存滿 max 個就停在原處
+  if (!k.done && !k.drift && Math.abs(steer) < DRAFT.steer && k.v >= DRAFT.minV && g.karts.some(o => o !== k && tangible(o) && !o.done && inDraft(k, o))) {
+    if ((k.draft += dt) >= DRAFT.charge) { k.draft = 0; k.boost = Math.max(k.boost, DRAFT.boost); ev(g, { e: 'draft', id: k.id }); }
+  } else k.draft = Math.max(0, k.draft - dt * 2);
   // 轉向：低速轉不動，高速轉得慢；漂移時固定往漂移方向彎，搖桿只調鬆緊
   const sp = Math.abs(k.v), tf = clamp(sp / 3, 0, 1) * (1 - .35 * Math.min(1, sp / KART.VMAX)) * (k.v < 0 ? -1 : 1); // 倒車時方向盤反過來
   const turn = k.drift ? k.drift * (.75 + .45 * steer * k.drift) : steer;
@@ -376,6 +395,11 @@ function driveKart(g, k, dt, band) {
     k.wallHit = true; loc = locate(k.x, k.y, loc.i, T);
   } else k.wallHit = false;
   advance(g, k, loc);
+}
+// 尾流範圍：o 在 k 車頭前方 near 到 far 格、橫向差 lat 格內
+function inDraft(k, o) {
+  const dx = o.x - k.x, dy = o.y - k.y, c = Math.cos(k.h), sn = Math.sin(k.h), fwd = dx * c + dy * sn, lat = -dx * sn + dy * c;
+  return fwd >= DRAFT.near && fwd <= DRAFT.far && Math.abs(lat) <= DRAFT.lat;
 }
 // 泡泡火箭：不管方向盤和油門，沿賽道往前衝、慢慢回到路中間，不會撞牆；撞到別的車在 step 的互撞那段處理
 function rideRocket(g, k, dt) {
@@ -542,8 +566,8 @@ export function step(g, dt) {
 // 連線每個 tick 送 full: false 的版本，約省一半流量：不送整場不變的資料（名字、顏色、耳朵、道具箱座標），值是 0 的欄位也省略。
 // 客戶端用 expandFrame 拿開局時的完整快照補回來
 const r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
-const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear', 'eye', 'body', 'blush', 'shape', 'rperk', 'iperk'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'cl', 'ho', 'gh', 'ni', 'ga', 'fo', 'ro', 'mg', 'mt', 'bg', 'i2', 'done', 'place'];
-// shots 第 4 欄的道具代碼（0 原本是水球，已移除）；haz 第 4 欄 1 = 假道具箱、0 = 水窪
+const KART_STATIC = ['uid', 'name', 'human', 'color', 'ear', 'eye', 'body', 'blush', 'shape', 'rperk', 'iperk'], KART_ZERO = ['dr', 'dl', 'bo', 'tr', 'sp', 'im', 'sh', 'cl', 'ho', 'gh', 'ni', 'ga', 'fo', 'ro', 'mg', 'mt', 'bg', 'i2', 'rs', 'df', 'done', 'place'];
+// shots 第 4 欄的道具代碼（0 原本是水球，已移除），第 5 欄是在追哪台車（-1 = 沒有目標，畫面用來做被鎖定警示）；haz 第 4 欄 1 = 假道具箱、0 = 水窪
 export const SHOT_CODE = { jet: 1, storm: 2, hot: 3 };
 export function snapshot(g, { full = true } = {}) {
   const s = fullSnapshot(g);
@@ -571,10 +595,12 @@ function fullSnapshot(g) {
       cl: k.storm > 0 ? 1 : 0, ho: Math.ceil(k.hot), gh: k.ghost > 0 ? 1 : 0, ni: k.nitro, ga: Math.round(k.gauge * 20) / 20,
       // fo：被泡泡雲蓋住；ro：坐泡泡火箭；mg：磁鐵中，mt：被吸的車 id + 1（0 = 還沒有目標）；bg：巨大泡泡
       fo: k.foam > 0 ? 1 : 0, ro: k.rocket > 0 ? 1 : 0, mg: k.magnet > 0 ? 1 : 0, mt: k.magnet > 0 && k.magnetT != null ? k.magnetT + 1 : 0, bg: k.big > 0 ? 1 : 0,
+      // rs：回到賽道中；df：尾流集了多少（每 25% 一格，平常 0）
+      rs: k.reset > 0 ? 1 : 0, df: Math.round(k.draft / DRAFT.charge * 4) / 4,
       lap: k.lap, tot: r2(k.total), item: k.item, i2: k.item2 || 0, done: k.done ? 1 : 0, place: k.place, rank: k.rank, st: k.state,
     })),
     boxes: g.boxes.map(b => [b.i, r3(b.x), r3(b.y), b.t > 0 ? 0 : 1]),
-    shots: g.shots.map(s => [s.id, r3(s.x), r3(s.y), SHOT_CODE[s.kind]]),
+    shots: g.shots.map(s => [s.id, r3(s.x), r3(s.y), SHOT_CODE[s.kind], s.target ?? -1]),
     haz: g.hazards.map(z => [z.id, r3(z.x), r3(z.y), z.kind === 'decoy' ? 1 : 0]),
   };
 }

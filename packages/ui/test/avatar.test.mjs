@@ -8,9 +8,10 @@ const grab = name => { const m = src.match(new RegExp(`export const ${name} = ([
 
 import * as Kart from '../../../games/kart-island/kart-core.js';
 import * as Artillery from '../../../games/artillery/artillery-core.js';
+import * as Party from '../../../games/party/party-core.js';
 
-test('avatar options match all three game cores (colors, ears, eyes, body, blush)', () => {
-  for (const C of [Core, Kart, Artillery]) {
+test('avatar options match the game cores (colors, ears, eyes, body, blush)', () => {
+  for (const C of [Core, Kart, Artillery, Party]) {
     assert.deepEqual(grab('COLORS'), C.COLORS);
     assert.deepEqual(grab('EARS'), C.EARS);
     assert.deepEqual(grab('EYES'), C.EYES);

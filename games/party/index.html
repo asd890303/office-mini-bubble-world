@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡派對</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%23e6dcff'/%3E%3Cellipse%20cx='32'%20cy='50'%20rx='26'%20ry='7'%20fill='%23c9b6ff'%20stroke='%233b2f2f'%20stroke-width='3'/%3E%3Cg%20stroke='%233b2f2f'%20stroke-width='3'%3E%3Ccircle%20cx='21'%20cy='36'%20r='11'%20fill='%23fffdf7'/%3E%3Ccircle%20cx='43'%20cy='36'%20r='11'%20fill='%23fffdf7'/%3E%3C/g%3E%3Cpath%20d='M32%2012l3%206%206%201-5%204%202%206-6-3-6%203%202-6-5-4%206-1z'%20fill='%23ffd23f'%20stroke='%233b2f2f'%20stroke-width='2.5'%20stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* HUD */
+.hud { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; z-index: 3; }
+.roundbox { padding: 3px 16px; display: flex; align-items: baseline; gap: 10px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.roundbox span { font-size: 14px; }
+.roundbox b { font-size: 24px; min-width: 2ch; text-align: right; }
+.hudr { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; z-index: 6; }
+.hudr .btn { padding: 4px 10px; font-size: 12px; }
+.hudr .btn[hidden] { display: none; }
+.board { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; width: 176px; display: flex; flex-direction: column; gap: 3px; pointer-events: none; z-index: 3; }
+.board[hidden] { display: none; }
+.pl { padding: 2px 8px; border-radius: 12px; font-size: 12px; line-height: 1.35; border-width: 2px; display: flex; justify-content: space-between; gap: 6px; }
+.pl span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pl i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 5px; vertical-align: -1px; }
+.pl b { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 11.5px; }
+.pl.me { background: var(--pink); color: #4a3b3b; }
+.pl.out { opacity: .5; }
+.pl.out b::after { content: '・出局'; color: #c0405f; }
+.count { position: fixed; left: 0; right: 0; top: 30%; text-align: center; font-size: 100px; font-weight: 900; color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; pointer-events: none; line-height: 1; z-index: 4; }
+.count[hidden] { display: none; }
+.count.pop { animation: pop .5s ease-out; }
+@keyframes pop { from { transform: scale(1.6); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+.intro { position: fixed; left: 50%; top: 13%; transform: translateX(-50%); padding: 10px 22px; text-align: center; pointer-events: none; z-index: 4; min-width: 220px; }
+.intro[hidden] { display: none; }
+.intro small { display: block; font-size: 13px; font-weight: 900; color: var(--ink-soft); }
+.intro b { display: block; font-size: 28px; font-weight: 900; }
+.intro span { display: block; font-size: 14px; font-weight: 700; margin-top: 2px; }
+.buffs { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(max(14px, env(safe-area-inset-bottom)) + 4px); display: flex; gap: 6px; pointer-events: none; z-index: 3; }
+body.touch .buffs { bottom: calc(max(18px, env(safe-area-inset-bottom)) + var(--stick) + 10px); }
+.buff { padding: 2px 10px; font-size: 13px; font-weight: 900; border-width: 2px; white-space: nowrap; }
+.buff.hot { background: #ff8a4c; color: #fff; animation: blink .4s infinite alternate; }
+@keyframes blink { to { filter: brightness(1.25); } }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0) scale(.8); font-size: 15px; font-weight: 900; padding: 4px 16px; border-width: 2px; max-width: calc(100% - 24px); white-space: nowrap; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.spectate { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(max(14px, env(safe-area-inset-bottom)) + 40px); padding: 3px 14px; font-weight: 900; font-size: 14px; pointer-events: none; z-index: 3; }
+.spectate[hidden] { display: none; }
+body.touch .spectate { bottom: calc(max(18px, env(safe-area-inset-bottom)) + var(--stick) + 14px); }
+
+/* 觸控：左邊搖桿、右邊兩顆按鈕 */
+body { --stick: 140px; --pad-x: 20px; }
+.pad { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 0; right: 0; display: none; justify-content: space-between; align-items: flex-end; padding: 0 var(--pad-x); pointer-events: none; z-index: 5; }
+body.touch .pad { display: flex; }
+.stick { flex: none; width: var(--stick); height: var(--stick); border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 70%, transparent); position: relative; pointer-events: auto; touch-action: none; }
+.knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: var(--pink); border: 3px solid var(--ink); }
+.acts { display: flex; gap: 12px; align-items: flex-end; pointer-events: auto; }
+.act { border: 3px solid var(--ink); border-radius: 50%; font-weight: 900; box-shadow: var(--shadow); touch-action: none; color: #2c3a4a; }
+.act.dash { width: 100px; height: 100px; background: #ffd58a; font-size: 18px; }
+.act.jump { width: 82px; height: 82px; background: #a8e6cf; font-size: 17px; margin-bottom: 76px; }
+.act.on { filter: brightness(.9); transform: scale(.95); }
+@media (max-width: 460px) {
+  body { --stick: 112px; --pad-x: 10px; }
+  .knob { width: 50px; height: 50px; margin: -25px 0 0 -25px; }
+  .act.dash { width: 86px; height: 86px; font-size: 16px; }
+  .act.jump { width: 70px; height: 70px; font-size: 15px; margin-bottom: 64px; }
+  .board { left: 8px; right: 8px; width: auto; top: calc(max(10px, env(safe-area-inset-top)) + 70px); flex-direction: row; flex-wrap: wrap; justify-content: center; } /* 直式：計分改成關卡名稱下面一排 3 格 */
+  .pl { font-size: 11px; width: calc(33.3% - 6px); box-sizing: border-box; padding: 1px 6px; }
+  .toast, .intro { top: calc(max(10px, env(safe-area-inset-top)) + 132px); }
+}
+
+/* 畫面 */
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
+.screen[hidden] { display: none; }
+.screen .box { width: min(420px, calc(100% - 28px)); padding: 20px; text-align: center; max-height: calc(100% - 28px); overflow: auto; }
+.screen h1 { margin: 0; font-size: 30px; font-weight: 900; }
+.screen h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
+.screen p { margin: 6px 0 10px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.row[hidden] { display: none; }
+.label { font-size: 12px; font-weight: 900; color: var(--ink-soft); margin: 10px 0 0; }
+.pick .btn { padding: 6px 12px; font-size: 14px; }
+.pick .btn.on { background: var(--pink); }
+.go { margin-top: 14px; width: 100%; padding: 10px; font-size: 17px; }
+.back { display: inline-block; margin-top: 10px; text-decoration: none; color: var(--ink); }
+.rank { text-align: left; margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.rank li { display: flex; justify-content: space-between; gap: 8px; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.rank li:last-child { border: 0; }
+.rank li.me { font-weight: 900; }
+.rank small { color: var(--ink-soft); font-weight: 700; }
+.slots i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; }
+.slots li.empty { color: var(--ink-soft); }
+#roundScreen { background: transparent; pointer-events: none; place-items: end center; }
+#roundScreen .box { margin-bottom: max(16px, env(safe-area-inset-bottom)); padding: 12px 16px; width: min(360px, calc(100% - 28px)); }
+#roundScreen h2 { font-size: 19px; margin: 0; }
+#roundScreen .rank { font-size: 13px; }
+#roundScreen .rank li { padding: 3px 4px; }
+.gain { color: var(--pink-deep); font-weight: 900; }
+.endnote { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+@media (max-height: 520px) and (orientation: landscape) {
+  .screen .box { width: min(560px, calc(100% - 20px)); max-height: calc(100% - 16px); padding: 12px 16px; }
+  .screen h1 { font-size: 22px; }
+  .screen p { display: none; }
+  .go { margin-top: 10px; padding: 7px; }
+  .count { font-size: 72px; top: 22%; }
+  .intro { top: 8%; }
+  .board { width: 150px; }
+  #roundScreen .box { width: min(320px, calc(100% - 340px)); }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div class="hud"><div class="box roundbox"><span id="roundName">泡泡派對</span><b id="clock"></b></div></div>
+<div class="hudr"><button class="btn" id="pauseBtn" hidden>暫停</button><button class="btn" id="mute">音效 開</button></div>
+<div class="board" id="board" hidden></div>
+<div class="count" id="count" hidden></div>
+<div class="intro box" id="intro" hidden><small id="introNo"></small><b id="introName"></b><span id="introRule"></span></div>
+<div class="buffs" id="buffs"></div>
+<div class="spectate box" id="spectate" hidden>觀戰中</div>
+<div class="toast box" id="toast"></div>
+
+<div class="pad">
+  <div class="stick" id="stick"><div class="knob" id="knob"></div></div>
+  <div class="acts">
+    <button class="act jump" id="jumpBtn">跳</button>
+    <button class="act dash" id="dashBtn">衝撞</button>
+  </div>
+</div>
+
+<section class="screen" id="startScreen">
+  <div class="box">
+    <h1>泡泡派對</h1>
+    <p>把別人擠下擂台！衝撞把人撞飛，同一關被撞越多次飛越遠。一場 3 關，每有 1 人比你早掉下去就得 1 分。</p>
+    <div class="label">玩什麼</div>
+    <div class="row pick" id="modeRow"></div>
+    <div class="label">電腦難度</div>
+    <div class="row pick" id="diffRow"></div>
+    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線對戰</button></div>
+    <button class="btn primary go" id="startBtn">開始</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="roundScreen" hidden>
+  <div class="box">
+    <h2 id="roundTitle"></h2>
+    <ul class="rank" id="roundRank"></ul>
+  </div>
+</section>
+
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="rank" id="endRank"></ul>
+    <p class="endnote" id="endNote" hidden></p>
+    <button class="btn primary go" id="againBtn">再玩一場</button>
+    <button class="btn" id="menuBtn" style="margin-top:10px">回選單</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="lobbyScreen" hidden>
+  <div class="box">
+    <h1>泡泡派對</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="rank slots" id="slots"></ul>
+    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button></div>
+    <button class="btn primary go" id="joinBtn">加入</button>
+    <button class="btn" id="soloBtn" style="margin-top:10px">先玩單人版</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="pauseScreen" hidden>
+  <div class="box">
+    <h2>暫停</h2>
+    <p id="pauseNote"></p>
+    <button class="btn primary go" id="resumeBtn">繼續（Esc）</button>
+    <div class="row"><button class="btn" id="retryBtn">重來</button><button class="btn" id="quitBtn">跳出，回選單</button></div>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './party-core.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, G, M, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+import { ITEM_ART } from '/shared/draw.js';
+watchUpdates();
+
+const WORKER_URL = location.origin;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- Telegram ---------- */
+const TG = window.Telegram?.WebApp;
+const inTelegram = !!(TG && TG.initData);
+const tgUser = inTelegram ? TG.initDataUnsafe?.user : null;
+if (inTelegram) {
+  try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {}
+  if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
+}
+const haptic = {
+  tap() { try { TG?.HapticFeedback?.impactOccurred('light'); } catch {} },
+  hit() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} },
+  win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} },
+};
+
+/* ---------- 音效 ---------- */
+let muted = store.get('bp-muted') === '1';
+let actx = null;
+function tone(freq, dur = .12, type = 'sine', vol = .15, slide = 0) {
+  if (muted) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch {}
+}
+const sfx = {
+  jump: () => tone(420, .14, 'sine', .1, 1.8),
+  dash: () => tone(220, .16, 'sawtooth', .06, 2.2),
+  hit: (near) => { tone(near ? 160 : 200, .22, 'square', near ? .12 : .05, .5); },
+  clash: () => { tone(300, .1, 'square', .08, .7); tone(450, .12, 'square', .06, .6); },
+  block: () => tone(880, .2, 'triangle', .1, 1.4),
+  fall: () => tone(520, .6, 'sine', .14, .25),
+  out: () => tone(260, .3, 'triangle', .05, .5),
+  item: () => { tone(660, .08, 'sine', .1); setTimeout(() => tone(990, .12, 'sine', .1), 70); },
+  spawn: () => tone(740, .08, 'sine', .04, 1.3),
+  boom: () => { tone(90, .45, 'sawtooth', .16, .4); tone(180, .3, 'square', .08, .3); },
+  beep: () => tone(1200, .07, 'square', .05),
+  warn: () => { tone(500, .12, 'square', .06); setTimeout(() => tone(500, .12, 'square', .06), 160); },
+  tick: () => tone(660, .1, 'square', .05),
+  go: () => { tone(880, .18, 'square', .06); tone(1320, .25, 'sine', .08); },
+  drop: () => tone(180, .18, 'triangle', .03, .5),
+  win: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, .16, 'triangle', .1), i * 110)); },
+};
+$('mute').textContent = muted ? '音效 關' : '音效 開';
+$('mute').addEventListener('click', e => { e.stopPropagation(); muted = !muted; store.set('bp-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+
+const loginErr = captureLogin();
+let ID = identity();
+let mode = 'offline';
+const TOUCH = matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch');
+if (TOUCH) document.body.classList.add('touch');
+mountKeyHelp({ rows: ['[W][A][S][D] 或方向鍵 移動', '[空白] 跳', '[Shift] 或 [J] 衝撞', '空中按衝撞 飛撲', '[Esc] 暫停（單人）'], top: '232px' });
+
+/* ---------- three.js ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(34, 1, .1, 200);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xd9ccff, 1.7));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(6, 20, 10); scene.add(sun);
+const root = new THREE.Group(); scene.add(root);
+const W = (x, y, z = 0) => new THREE.Vector3(x, z, -y); // 規則座標 (x 東, y 北, z 高) → three.js（-z 是北）
+const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x3b2f2f, side: THREE.BackSide });
+const outlined = (geo, mat, s = 1.04) => { const m = new THREE.Mesh(geo, mat); const o = new THREE.Mesh(geo, OUTLINE); o.scale.setScalar(s); m.add(o); return m; };
+
+// 道具圖示：用共用的 canvas 畫法做成貼圖
+const itemTex = {};
+for (const [k, art] of Object.entries({ speed: 'speed', shield: 'shield', giant: 'giant', hot: 'hot' })) {
+  const cv = document.createElement('canvas'); cv.width = cv.height = 128; const x = cv.getContext('2d');
+  (ITEM_ART[art] || ITEM_ART.shield)(x);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; itemTex[k] = t;
+}
+
+/* ---------- 擂台 ---------- */
+const PAL = { ring: ['#ffd6e4', '#f2a7c3'], sweep: ['#d6f0ff', '#9fcbe8'], hex: ['#fff1b8', '#e8b86d'] };
+const HEX_COLORS = ['#fff1b8', '#ffe39a', '#ffd88a'];
+const HEX_GEO = new THREE.CylinderGeometry(Core.HEX.size * .95, Core.HEX.size * .95, .8, 6); // 6 邊形，頂點朝南北，和規則的尖頂六角一致
+let A = null; // 目前擂台的畫面
+function buildArena(id) {
+  if (A) root.remove(A.group);
+  const def = Core.ARENAS[id], group = new THREE.Group(), v = { id, group, def };
+  const sea = new THREE.Mesh(new THREE.CircleGeometry(60, 40), new THREE.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: .55 })); sea.rotation.x = -Math.PI / 2; sea.position.y = -7; group.add(sea);
+  if (def.hex) {
+    v.tiles = Core.HEX.tiles.map((t, i) => {
+      const base = new THREE.Color(HEX_COLORS[(t.q - t.r + 30) % 3]), mat = new THREE.MeshToonMaterial({ color: base.clone(), gradientMap: toon('#fff').gradientMap });
+      const m = outlined(HEX_GEO, mat, 1.03); m.position.copy(W(t.x, t.y, -.4)); group.add(m);
+      return { m, mat, base, seen: null, gone: null, x: t.x, y: t.y };
+    });
+  } else {
+    const [top, side] = PAL[id] || PAL.ring;
+    const discGeo = new THREE.CylinderGeometry(1, 1, 1.2, 64), disc = new THREE.Mesh(discGeo, [toon(side), toon(top), toon(side)]); // 側面、頂面、底面
+    const rim = new THREE.Mesh(discGeo, OUTLINE); rim.scale.set(1.015, 1.04, 1.015); disc.add(rim);
+    disc.scale.set(def.r, 1, def.r); disc.position.y = -.6; group.add(disc); v.disc = disc;
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(1, .035, 8, 80), toon('#fffdf8')); lip.rotation.x = Math.PI / 2; lip.scale.setScalar(def.r - .25); lip.position.y = .01; group.add(lip); v.lip = lip;
+    const warn = new THREE.Mesh(new THREE.RingGeometry(.5, 1, 80), new THREE.MeshBasicMaterial({ color: 0xff5c7a, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false }));
+    warn.rotation.x = -Math.PI / 2; warn.position.y = .02; warn.visible = false; group.add(warn); v.warn = warn;
+    if (def.bar) {
+      const B = def.bar, hub = outlined(new THREE.CylinderGeometry(B.hub, B.hub * 1.1, 1.6, 24), toon('#ffd36b')); hub.position.y = .8; group.add(hub);
+      const cap = outlined(new THREE.SphereGeometry(B.hub * .9, 20, 12), toon('#ff8fab')); cap.position.y = 1.7; group.add(cap);
+      const bar = new THREE.Group(), len = B.len - B.hub, rod = outlined(new THREE.BoxGeometry(len, B.w, B.w), toon('#ff8fab'), 1.06);
+      rod.position.set(B.hub + len / 2, B.h - B.w / 2, 0); bar.add(rod);
+      for (let k = 1; k < 4; k++) { const st = new THREE.Mesh(new THREE.BoxGeometry(.16, B.w + .02, B.w + .02), toon('#fffdf8')); st.position.set(B.hub + len * k / 4, B.h - B.w / 2, 0); bar.add(st); }
+      const tip = outlined(new THREE.SphereGeometry(B.w * .9, 16, 10), toon('#ffd36b')); tip.position.set(B.len, B.h - B.w / 2, 0); bar.add(tip);
+      group.add(bar); v.bar = bar;
+    }
+  }
+  root.add(group); A = v; placeCamera();
+}
+// 下一次縮圈的時間（沒有就回傳 null）
+function nextShrink(id, rt, r) {
+  const d = Core.ARENAS[id]; if (!(d.shrinkAt >= 0) || r <= d.minR) return null;
+  return rt < d.shrinkAt ? d.shrinkAt : d.shrinkAt + (Math.floor((rt - d.shrinkAt) / d.every) + 1) * d.every;
+}
+function updateArena(S, dt, now) {
+  if (!A) return;
+  if (A.tiles) {
+    const life = Core.ARENAS.hex.hex.crack + Core.ARENAS.hex.hex.drop;
+    for (let i = 0; i < A.tiles.length; i++) {
+      const t = A.tiles[i], c = S.tl ? S.tl[i] : '0';
+      if (c === '0') { if (t.seen != null || t.gone != null) { t.seen = t.gone = null; t.m.visible = true; t.m.position.y = -.4; t.mat.color.copy(t.base); } continue; }
+      if (t.seen == null) t.seen = now;
+      if (c === '2' && t.gone == null) t.gone = now;
+      const k = Math.min(1, (now - t.seen) / life);
+      t.mat.color.copy(t.base).lerp(new THREE.Color('#ff8a80'), k);
+      const shake = k > .6 && t.gone == null ? Math.sin(now * 60 + i) * .05 : 0;
+      t.m.position.x = t.x + shake;
+      if (t.gone != null) { const f = now - t.gone; t.m.position.y = -.4 - f * f * 14; t.m.visible = f < .7; }
+    }
+    return;
+  }
+  const r = S.r ?? A.def.r;
+  A.disc.scale.set(r, 1, r); A.lip.scale.setScalar(Math.max(.5, r - .25));
+  const ns = nextShrink(A.id, S.rt, r);
+  if (ns != null && S.phase === 'play' && ns - S.rt < 2) { // 快縮圈：外圈要掉的那一圈閃紅
+    if (A.warnR !== r) { A.warnR = r; A.warn.geometry.dispose(); A.warn.geometry = new THREE.RingGeometry(Math.max(A.def.minR, r - 1), r, 80); }
+    A.warn.visible = Math.floor(now * 6) % 2 === 0;
+  } else A.warn.visible = false;
+  if (A.bar && S.ba != null) A.bar.rotation.y = S.ba;
+}
+
+/* ---------- 角色 ---------- */
+let P = new Map(); // id → 角色畫面
+const STAR_GEO = new THREE.OctahedronGeometry(.09);
+function buildPlayer(sp, mine) {
+  const c = makeCritter({ color: sp.color, ear: sp.ear, eye: sp.eye, body: sp.body, blush: sp.blush });
+  addNameTag(c, mine ? '你' : sp.name); c.nameTag.position.y = 1.6;
+  const shadow = new THREE.Mesh(G.disc, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .2, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; shadow.scale.setScalar(.42);
+  const stars = new THREE.Group(); for (let k = 0; k < 3; k++) { const s = new THREE.Mesh(STAR_GEO, toon('#ffd23f')); stars.add(s); } stars.position.y = 1.25; stars.visible = false; c.root.add(stars);
+  root.add(c.root); root.add(shadow);
+  let ring = null; // 自己腳下的粉紅圈，6 隻擠在一起時找得到自己
+  if (mine) { ring = new THREE.Mesh(new THREE.RingGeometry(.62, .78, 32), new THREE.MeshBasicMaterial({ color: 0xff6fa8, transparent: true, opacity: .9, depthWrite: false })); ring.rotation.x = -Math.PI / 2; root.add(ring); }
+  return { id: sp.id, c, shadow, stars, ring, mine, air: false, squash: 0, gone: false };
+}
+function clearPlayers() { for (const v of P.values()) { root.remove(v.c.root); root.remove(v.shadow); if (v.ring) root.remove(v.ring); v.c.nameTag?.material.map?.dispose(); } P = new Map(); }
+function updatePlayers(S, dt, t, myPos) {
+  for (const sp of S.players) {
+    let v = P.get(sp.id); if (!v) { v = buildPlayer(sp, sp.id === myId()); P.set(sp.id, v); }
+    const c = v.c, mine = sp.id === myId(), pos = mine && myPos ? myPos : sp;
+    if (sp.out) { c.root.visible = v.shadow.visible = false; if (v.ring) v.ring.visible = false; continue; }
+    c.root.visible = true;
+    const sz = sp.big > 0 ? Core.ITEMS.giant.scale : 1;
+    c.root.scale.setScalar(.86 * sz);
+    c.root.position.copy(W(pos.x, pos.y, pos.z));
+    c.root.rotation.y = sp.h + Math.PI / 2;
+    const speed = Math.hypot(sp.vx, sp.vy), air = pos.z > .05;
+    if (v.air && !air && !sp.fall) v.squash = .3;
+    v.air = air; v.squash = Math.max(0, v.squash - dt * 2.4);
+    animateCritter(c, dt, t, !air && speed > .6 && !sp.stun && !sp.prone);
+    c.pivot.rotation.x = 0; c.root.rotation.z = 0;
+    if (sp.dash) c.pivot.rotation.x = .55;
+    if (sp.dive || sp.prone) { c.pivot.rotation.x = 1.35; c.pivot.position.y = sp.prone ? -.15 : .1; }
+    if (air && !sp.dive) for (const a of c.arms) a.rotation.z = a.userData.side * 2.4;
+    if (sp.stun > 0) { c.root.rotation.z = Math.sin(t * 18) * .25; for (const e of c.eyes) e.scale.y = .01; }
+    if (v.squash > 0) { const q = 1 - v.squash; c.pivot.scale.set(1 + v.squash * .5, q * .3 + .7, 1 + v.squash * .5); }
+    v.stars.visible = sp.stun > 0;
+    if (v.stars.visible) v.stars.children.forEach((s, k) => { const a = t * 6 + k * 2.1; s.position.set(Math.cos(a) * .4, Math.sin(t * 9 + k) * .05, Math.sin(a) * .4); });
+    c.bubble.visible = sp.shield > 0; if (c.bubble.visible) c.bubble.scale.setScalar(.82 + Math.sin(t * 5) * .03);
+    v.shadow.visible = !sp.fall && pos.z > -.1;
+    v.shadow.position.copy(W(pos.x, pos.y, .02)); v.shadow.scale.setScalar(Math.max(.15, (.42 - pos.z * .1) * sz));
+    if (v.ring) { v.ring.visible = v.shadow.visible && playing; v.ring.position.copy(W(pos.x, pos.y, .03)); v.ring.scale.setScalar(sz); }
+  }
+}
+
+/* ---------- 道具與燙手泡泡 ---------- */
+const itemPool = [];
+function itemMesh(i) {
+  if (itemPool[i]) return itemPool[i];
+  const g = new THREE.Group(), ball = new THREE.Mesh(G.sphere, M.bubble); ball.scale.setScalar(.48); g.add(ball);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: itemTex.speed, transparent: true, depthWrite: false })); sp.scale.setScalar(.75); g.add(sp); g.userData.sprite = sp;
+  root.add(g); itemPool[i] = g; return g;
+}
+const hotMesh = (() => {
+  const g = new THREE.Group(), ball = outlined(new THREE.SphereGeometry(.3, 20, 14), toon('#ff8a4c')); g.add(ball);
+  const flame = outlined(new THREE.ConeGeometry(.12, .3, 10), toon('#ffd23f')); flame.position.y = .38; g.add(flame);
+  g.visible = false; root.add(g); return g;
+})();
+function updateItems(S, t) {
+  const list = S.items || [];
+  for (let i = 0; i < Math.max(list.length, itemPool.length); i++) {
+    const it = list[i], m = itemMesh(i);
+    if (!it) { m.visible = false; continue; }
+    m.visible = true; m.position.copy(W(it[1], it[2], .65 + Math.sin(t * 3 + i) * .1));
+    if (m.userData.k !== it[0]) { m.userData.k = it[0]; m.userData.sprite.material.map = itemTex[it[0]]; m.userData.sprite.material.needsUpdate = true; }
+  }
+  const h = S.hot;
+  hotMesh.visible = !!h;
+  if (!h) return;
+  if (h[0] === 0) hotMesh.position.copy(W(h[3], h[4], 1.3)), hotMesh.scale.setScalar(1);
+  else {
+    const p = S.players.find(q => q.id === h[1]), v = P.get(h[1]);
+    if (!p || !v) { hotMesh.visible = false; return; }
+    const sz = p.big > 0 ? Core.ITEMS.giant.scale : 1;
+    hotMesh.position.copy(v.c.root.position); hotMesh.position.y += 1.25 * sz + .2;
+    const rate = h[2] < 1.5 ? 16 : h[2] < 3 ? 9 : 5; hotMesh.scale.setScalar(1 + Math.max(0, Math.sin(t * rate)) * .25);
+  }
+}
+
+/* ---------- 鏡頭 ---------- */
+let shake = 0;
+// 鏡頭固定在南邊斜上方：從近往遠找，第一個能把整個擂台（含邊上的小傢伙頭頂）放進畫面的距離。
+// 上面留給計分和關卡名稱；手機直式下面再留給搖桿，擂台往上移
+function placeCamera() {
+  const aspect = innerWidth / innerHeight, Rv = 9.8, e = THREE.MathUtils.degToRad(56), portrait = aspect < .8;
+  const look = new THREE.Vector3(0, 0, portrait && TOUCH ? 2.4 : .8), low = portrait && TOUCH ? -.5 : -.92, pts = [];
+  for (let k = 0; k < 24; k++) { const a = k / 24 * Math.PI * 2; pts.push(new THREE.Vector3(Math.cos(a) * Rv, 0, Math.sin(a) * Rv), new THREE.Vector3(Math.cos(a) * Rv, 1.5, Math.sin(a) * Rv)); }
+  const v = new THREE.Vector3();
+  for (let D = 12; D < 160; D += .5) {
+    camera.position.set(0, D * Math.sin(e), look.z + D * Math.cos(e)); camera.lookAt(look); camera.updateMatrixWorld(); camera.updateProjectionMatrix();
+    if (pts.every(p => { v.copy(p).project(camera); return Math.abs(v.x) < .95 && v.y < .8 && v.y > low; })) break;
+  }
+  camera.userData.base = camera.position.clone(); camera.userData.look = look;
+}
+function updateCamera(dt) {
+  const b = camera.userData.base; if (!b) return;
+  shake = Math.max(0, shake - dt * 2.5);
+  const s = shake * shake * .35;
+  camera.position.set(b.x + (Math.random() - .5) * s, b.y + (Math.random() - .5) * s, b.z);
+  camera.lookAt(camera.userData.look);
+}
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); placeCamera(); }
+addEventListener('resize', resize); resize();
+if (inTelegram) { try { TG.onEvent('viewportChanged', resize); } catch {} }
+
+/* ---------- 狀態 ---------- */
+let L = null;          // 單人版：真的對局
+let S = null;          // 畫面用的狀態（單人：每格的快照；連線：內插後的快照）
+let playing = false, paused = false;
+const solo = { mode: store.get('party-mode') || 'party', diff: store.get('party-diff') || 'normal' };
+const setup = { color: Core.COLORS[0], ear: 'be', eye: 'dot', body: Core.BODIES[0], blush: Core.BLUSHES[0] };
+const myName = (ID?.name || tgUser?.first_name || store.get('bp-name') || '你').slice(0, 10);
+const myId = () => mode === 'offline' ? 0 : net.myId;
+let toastTimer = 0, lastCount = null, endShown = false;
+function toast(text, ms = 1400) {
+  const t = $('toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+const arenaName = id => Core.ARENAS[id]?.name || '';
+
+/* ---------- 開始畫面的選項 ---------- */
+const MODES = [['party', '派對 3 關'], ...Core.ARENA_IDS.map(id => [id, `練習：${arenaName(id)}`])];
+function renderPicks() {
+  $('modeRow').innerHTML = MODES.map(([k, label]) => `<button class="btn ${solo.mode === k ? 'on' : ''}" data-mode="${k}">${esc(label)}</button>`).join('');
+  $('diffRow').innerHTML = Object.entries(Core.DIFFS).map(([k, d]) => `<button class="btn ${solo.diff === k ? 'on' : ''}" data-diff="${k}">${esc(d.label)}</button>`).join('');
+}
+$('modeRow').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (!b) return; solo.mode = b.dataset.mode; store.set('party-mode', solo.mode); renderPicks(); });
+$('diffRow').addEventListener('click', e => { const b = e.target.closest('[data-diff]'); if (!b) return; solo.diff = b.dataset.diff; store.set('party-diff', solo.diff); renderPicks(); });
+renderPicks();
+
+/* ---------- HUD ---------- */
+let hudAt = 0;
+function updateHud(dt) {
+  const ct = $('count');
+  if (S.phase === 'intro' && playing) {
+    const left = Math.ceil(Core.INTRO - S.t - 1e-6);
+    if (left !== lastCount && left >= 1) { lastCount = left; ct.hidden = false; ct.textContent = left; ct.classList.remove('pop'); void ct.offsetWidth; ct.classList.add('pop'); sfx.tick(); }
+  } else if (S.phase === 'play' && lastCount !== 'go' && S.rt < .8 && playing) {
+    lastCount = 'go'; ct.hidden = false; ct.textContent = 'GO!'; ct.classList.remove('pop'); void ct.offsetWidth; ct.classList.add('pop'); sfx.go();
+    setTimeout(() => { ct.hidden = true; }, 700);
+  } else if (S.phase !== 'intro' && S.phase !== 'play') { ct.hidden = true; }
+  hudAt -= dt; if (hudAt > 0) return; hudAt = .1;
+  const n = S.rounds?.length || 1, practice = n === 1;
+  $('roundName').textContent = `${practice ? '練習' : `第 ${Math.min(S.round, n - 1) + 1}/${n} 關`}・${arenaName(S.arena)}`; // 打完最後一關 round 會等於關數
+  $('clock').textContent = S.phase === 'play' ? Math.max(0, Math.ceil(Core.ROUND_MAX - S.rt)) : '';
+  $('board').hidden = false;
+  const me = myId(), order = [...S.players].sort((a, b) => b.score - a.score || a.out - b.out || a.id - b.id);
+  $('board').innerHTML = order.map(p => `<div class="pl box ${p.id === me ? 'me' : ''} ${p.out ? 'out' : ''}"><span><i style="background:${p.color}"></i>${esc(p.id === me ? '你' : p.name)}</span><b>${p.score} 分</b></div>`).join('');
+  const mp = S.players.find(p => p.id === me), chips = [];
+  if (mp && !mp.out) {
+    if (S.hot && S.hot[0] === 1 && S.hot[1] === me) chips.push(`<span class="buff box hot">燙手泡泡 ${S.hot[2].toFixed(1)} 秒，快撞別人！</span>`);
+    if (mp.fast > 0) chips.push(`<span class="buff box">速度鞋 ${mp.fast.toFixed(1)}</span>`);
+    if (mp.shield > 0) chips.push(`<span class="buff box">泡泡盾 ${mp.shield.toFixed(1)}</span>`);
+    if (mp.big > 0) chips.push(`<span class="buff box">變大 ${mp.big.toFixed(1)}</span>`);
+  }
+  $('buffs').innerHTML = chips.join('');
+  $('spectate').hidden = !(playing && S.phase === 'play' && (me == null || mp?.out || mp?.fall));
+  $('pauseBtn').hidden = !canPause();
+}
+function showIntro(round, arena, n) {
+  const def = Core.ARENAS[arena]; if (!def) return;
+  $('introNo').textContent = n === 1 ? '練習' : `第 ${round + 1}/${n} 關`; $('introName').textContent = def.name; $('introRule').textContent = def.rule;
+  $('intro').hidden = false; lastCount = null;
+  clearTimeout(showIntro.t); showIntro.t = setTimeout(() => { $('intro').hidden = true; }, Core.INTRO * 1000 + 600);
+}
+function showRound(S, ev) {
+  const me = myId(), rows = S.players.map((p, i) => ({ p, rs: ev.rs[i], score: ev.score[i] })).sort((a, b) => b.rs - a.rs || b.score - a.score);
+  $('roundTitle').textContent = `第 ${ev.n + 1} 關結束`;
+  $('roundRank').innerHTML = rows.map(r => `<li class="${r.p.id === me ? 'me' : ''}"><span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid var(--ink);background:${r.p.color};margin-right:6px"></i>${esc(r.p.id === me ? '你' : r.p.name)}</span><span><span class="gain">+${r.rs}</span>　共 ${r.score} 分</span></li>`).join('');
+  if ((S.rounds?.length || 1) > 1) { $('roundScreen').hidden = false; setTimeout(() => { $('roundScreen').hidden = true; }, Core.ROUND_END * 1000 - 300); }
+}
+function showEnd(r) {
+  if (endShown) return; endShown = true; playing = false; paused = false; $('pauseScreen').hidden = true; $('roundScreen').hidden = true;
+  const me = myId(), online = mode === 'online', mine = r.players.find(p => p.id === me), practice = r.rounds.length === 1;
+  const won = mine && mine.rank === 1;
+  $('endTitle').textContent = me == null ? (r.winner ? `${r.winner.name} 獲勝` : '平手') : practice ? `練習結束：第 ${mine?.rank ?? '-'} 名` : won ? (r.winner ? '你是派對冠軍！' : '並列第一！') : `第 ${mine?.rank ?? '-'} 名`;
+  $('endSub').textContent = practice ? arenaName(r.rounds[0]) : r.rounds.map(arenaName).join('・');
+  $('endRank').innerHTML = r.players.map(p => `<li class="${p.id === me ? 'me' : ''}"><span>${p.rank}. ${esc(p.id === me ? '你' : p.name)}${p.bot ? ' <small>電腦</small>' : ''}</span><span>${p.score} 分 <small>（${p.rounds.join('・')}）</small>${online && !p.bot ? `・${p.points} 積分` : ''}</span></li>`).join(''); // 電腦不進總積分榜，不顯示積分
+  const note = $('endNote'); note.hidden = true;
+  if (!online && !practice) {
+    const key = `party-wins-${solo.diff}`, wins = Number(store.get(key) || 0) + (won ? 1 : 0); if (won) store.set(key, String(wins));
+    note.hidden = false; note.textContent = `${Core.DIFFS[solo.diff].label}電腦：派對冠軍 ${wins} 次（記在這個瀏覽器）`;
+  }
+  if (online && mine?.out) { note.hidden = false; note.textContent = '中途離開，這場不計分'; }
+  $('againBtn').textContent = online ? '回房間，再玩一場' : '再玩一場';
+  $('menuBtn').hidden = online;
+  if (won) { sfx.win(); haptic.win(); }
+  setTimeout(() => { $('endScreen').hidden = false; }, 700);
+  if (online) net.wantIn = false;
+}
+
+/* ---------- 事件 ---------- */
+function onEvents(evs) {
+  const me = myId();
+  for (const e of evs || []) {
+    const mine = e.id === me, toMe = e.to === me;
+    if (e.e === 'round') { buildArena(e.arena); resetArenaState(); showIntro(e.n, e.arena, S?.rounds?.length || L?.rounds.length || 1); }
+    else if (e.e === 'jump' && mine) sfx.jump();
+    else if ((e.e === 'dash' || e.e === 'dive') && mine) { sfx.dash(); haptic.tap(); }
+    else if (e.e === 'hit') {
+      sfx.hit(mine || toMe); if (toMe) { shake = 1; haptic.hit(); } else if (mine) shake = Math.max(shake, .5);
+      if (toMe && e.kind === 'bar') toast('被旋轉棒掃到了！');
+    }
+    else if (e.e === 'clash') sfx.clash();
+    else if (e.e === 'block') { sfx.block(); if (mine) toast(e.kind === 'hot' ? '泡泡盾擋掉了燙手泡泡！' : '泡泡盾擋下了！'); }
+    else if (e.e === 'fall') { if (mine) { sfx.fall(); toast('掉下去了！觀戰中', 1800); } }
+    else if (e.e === 'out' && !mine) sfx.out();
+    else if (e.e === 'shrink') { sfx.warn(); toast('擂台變小了！'); }
+    else if (e.e === 'faster') toast('旋轉棒加速！');
+    else if (e.e === 'drop') sfx.drop();
+    else if (e.e === 'spawn') sfx.spawn();
+    else if (e.e === 'item' && mine) { sfx.item(); if (e.k !== 'hot') toast(`${Core.ITEMS[e.k].label}！`); else toast('丟出燙手泡泡！'); }
+    else if (e.e === 'stick' && mine) { sfx.beep(); haptic.hit(); toast('燙手泡泡黏上來了！快撞別人傳出去', 1800); }
+    else if (e.e === 'pass') { sfx.beep(); if (mine) toast('燙手泡泡被傳過來了！'); else if (e.by === me) toast('傳出去了！'); }
+    else if (e.e === 'boom') { sfx.boom(); shake = Math.max(shake, mine ? 1.2 : .6); if (mine) toast('燙手泡泡爆炸了！'); }
+    else if (e.e === 'roundEnd') showRound(S, e);
+    else if (e.e === 'end') showEnd(e.result);
+  }
+}
+function resetArenaState() { if (A?.tiles) for (const t of A.tiles) { t.seen = t.gone = null; } }
+
+/* ---------- 輸入 ---------- */
+const keys = new Set(); let stickV = { x: 0, y: 0 }, stickId = null;
+const KEY = { up: ['w', 'arrowup'], down: ['s', 'arrowdown'], left: ['a', 'arrowleft'], right: ['d', 'arrowright'], jump: [' '], dash: ['shift', 'j', 'k'] };
+const any = list => list.some(k => keys.has(k));
+function readInput() { // 世界方向：畫面上方是北（+y）
+  let mx = stickV.x + (any(KEY.right) ? 1 : 0) - (any(KEY.left) ? 1 : 0), my = stickV.y + (any(KEY.up) ? 1 : 0) - (any(KEY.down) ? 1 : 0);
+  const m = Math.hypot(mx, my); if (m > 1) { mx /= m; my /= m; }
+  return { mx, my };
+}
+function pressJump() {
+  if (!playing || paused) return;
+  if (mode === 'offline') { if (L) { Core.setInput(L, 0, readInput()); Core.jump(L, 0); } }
+  else if (net.myId != null) { net.send({ t: 'jump' }); pred.jumpAt = performance.now(); }
+}
+function pressDash() {
+  if (!playing || paused) return;
+  if (mode === 'offline') { if (L) { Core.setInput(L, 0, readInput()); Core.dash(L, 0); } }
+  else if (net.myId != null) { sendInput(true); net.send({ t: 'dash' }); }
+}
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (e.target.closest?.('input, textarea')) return;
+  if (k === 'escape') { if (canPause() || paused) setPaused(!paused); return; }
+  if ([...KEY.up, ...KEY.down, ...KEY.left, ...KEY.right, ...KEY.jump, ...KEY.dash].includes(k)) e.preventDefault();
+  if (e.repeat) return;
+  if (KEY.jump.includes(k) && !keys.has(k)) pressJump();
+  if (KEY.dash.includes(k) && !keys.has(k)) pressDash();
+  keys.add(k);
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+addEventListener('blur', () => { keys.clear(); stickV = { x: 0, y: 0 }; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); stickV = { x: 0, y: 0 }; } });
+const stick = $('stick'), knob = $('knob');
+function stickMove(e) {
+  const r = stick.getBoundingClientRect(), R = r.width / 2, lim = R * .6;
+  let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const d = Math.hypot(dx, dy); if (d > lim) { dx *= lim / d; dy *= lim / d; }
+  knob.style.transform = `translate(${dx}px, ${dy}px)`;
+  stickV = d < R * .12 ? { x: 0, y: 0 } : { x: dx / lim, y: -dy / lim };
+}
+stick.addEventListener('pointerdown', e => { stickId = e.pointerId; stick.setPointerCapture(e.pointerId); stickMove(e); });
+stick.addEventListener('pointermove', e => { if (e.pointerId === stickId) stickMove(e); });
+const stickEnd = e => { if (e.pointerId !== stickId) return; stickId = null; stickV = { x: 0, y: 0 }; knob.style.transform = ''; };
+stick.addEventListener('pointerup', stickEnd); stick.addEventListener('pointercancel', stickEnd);
+for (const [id, fn] of [['jumpBtn', pressJump], ['dashBtn', pressDash]]) {
+  const b = $(id);
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('on'); fn(); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => b.classList.remove('on'));
+}
+
+/* ---------- 單人版 ---------- */
+function startSolo() {
+  mode = 'offline'; closeNet();
+  for (const id of ['startScreen', 'endScreen', 'lobbyScreen', 'roundScreen', 'pauseScreen']) $(id).hidden = true;
+  try { TG?.MainButton?.hide(); } catch {}
+  clearPlayers(); endShown = false; paused = false;
+  L = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, ...setup }], diff: solo.diff, arena: solo.mode === 'party' ? null : solo.mode });
+  S = Core.snapshot(L);
+  buildArena(L.arena); resetArenaState(); showIntro(0, L.arena, L.rounds.length);
+  playing = true;
+}
+function showMenu() {
+  playing = false; paused = false; L = null; mode = 'offline'; closeNet();
+  for (const id of ['endScreen', 'lobbyScreen', 'roundScreen', 'pauseScreen']) $(id).hidden = true;
+  $('intro').hidden = $('count').hidden = true; $('buffs').innerHTML = ''; $('spectate').hidden = true;
+  $('startScreen').hidden = false; demo();
+}
+$('startBtn').addEventListener('click', startSolo);
+$('soloBtn').addEventListener('click', showMenu);
+$('againBtn').addEventListener('click', () => {
+  $('endScreen').hidden = true;
+  if (mode === 'online') { endShown = false; net.wantIn = true; net.lastJoin = 0; tryJoin(); showLobby(); }
+  else startSolo();
+});
+$('menuBtn').addEventListener('click', showMenu);
+
+/* ---------- 暫停（只有單人） ---------- */
+const canPause = () => mode === 'offline' && !!L && playing && !endShown;
+function setPaused(on) {
+  if (on && !canPause()) return;
+  paused = on; $('pauseScreen').hidden = !on;
+  keys.clear(); stickV = { x: 0, y: 0 }; knob.style.transform = '';
+  if (on) $('pauseNote').textContent = `${L.rounds.length === 1 ? '練習' : `第 ${L.round + 1}/${L.rounds.length} 關`}・${arenaName(L.arena)}・${Core.DIFFS[solo.diff].label}電腦`;
+}
+$('pauseBtn').addEventListener('click', () => setPaused(true));
+$('resumeBtn').addEventListener('click', () => setPaused(false));
+$('retryBtn').addEventListener('click', () => { setPaused(false); startSolo(); });
+$('quitBtn').addEventListener('click', () => { setPaused(false); showMenu(); });
+
+/* ---------- 連線版（Worker 房間） ---------- */
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, myId: null, lobby: null, lastJoin: 0, base: null, frames: [], offset: null, lastIn: { mx: 0, my: 0, at: 0 },
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+function closeNet() { const ws = net.ws; net.ws = null; try { ws?.close(); } catch {} }
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/party/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return goOffline('連不上遊戲伺服器，先玩單人版'); }
+  net.ws = ws;
+  ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws || mode !== 'online') return;
+    if (e.code === 4000) { lobbyStatus('你在其他視窗開了遊戲，這裡已斷線'); return; }
+    if (e.code === 4001) {
+      lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入');
+      const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); };
+      addEventListener('keydown', back); addEventListener('pointerdown', back); return;
+    }
+    net.tries++;
+    if (!net.opened && net.tries >= 3) return goOffline('連不上遊戲伺服器，先玩單人版');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function goOffline(why) { showMenu(); if (why) toast(why, 2200); }
+function tryJoin() {
+  if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
+  const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return;
+  net.lastJoin = Date.now(); sendJoin();
+}
+// 送移動方向：有變才送，沒變每 400 ms 補送一次（伺服器才知道還按著）
+function sendInput(force) {
+  if (mode !== 'online' || net.myId == null || !playing) return;
+  const { mx, my } = readInput(), q = v => Math.round(v * 20) / 20, now = performance.now(), l = net.lastIn;
+  if (!force && q(mx) === l.mx && q(my) === l.my && now - l.at < 400) return;
+  net.lastIn = { mx: q(mx), my: q(my), at: now }; net.send({ t: 'in', mx: q(mx), my: q(my) });
+}
+function onNet(m) {
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') {
+    net.base = m.s; net.myId = m.me ?? null; net.frames = [{ time: m.s.time, s: m.s, at: performance.now() }]; net.offset = null;
+    clearPlayers(); endShown = false; S = m.s; playing = true; pred.reset();
+    for (const id of ['lobbyScreen', 'endScreen', 'startScreen', 'roundScreen']) $(id).hidden = true;
+    buildArena(m.s.arena); resetArenaState(); if (m.s.phase === 'intro') showIntro(m.s.round, m.s.arena, m.s.rounds.length);
+    toast(net.myId == null ? '觀戰中' : '派對開始！', 1200);
+  }
+  else if (m.t === 's') {
+    if (!net.base || !playing && !endShown) return;
+    const f = Core.expandFrame(m.s, net.base), now = performance.now();
+    net.frames.push({ time: f.time, s: f, at: now }); if (net.frames.length > 40) net.frames.shift();
+    const off = now / 1000 - f.time; net.offset = net.offset == null ? off : Math.min(off, net.offset + .002); // 走最快的封包；慢慢放寬，時鐘飄了也跟得上
+    if (f.arena !== A?.id) { buildArena(f.arena); resetArenaState(); }
+    S = S || f;
+    for (const e of m.ev || []) if (e.e === 'round') showIntro(e.n, e.arena, f.rounds.length); // 換擂台已經照快照的 arena 重建，這裡只顯示介紹
+    onEvents((m.ev || []).filter(e => e.e !== 'round'));
+  }
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+// 其他人畫在「伺服器時間減 100 ms」，用前後兩張快照內插；換關時不內插（站位會瞬移）
+const lerpAng = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
+function netState() {
+  const fr = net.frames; if (!fr.length) return S;
+  const t = performance.now() / 1000 - (net.offset ?? 0) - .1;
+  let i = fr.length - 1; while (i > 0 && fr[i - 1].time > t) i--;
+  const b = fr[i], a = fr[i - 1];
+  if (!a || a.time >= t || a.s.round !== b.s.round || b.time <= a.time) return b.s;
+  const k = Math.min(1, (t - a.time) / (b.time - a.time)), s = { ...b.s };
+  s.players = b.s.players.map(pb => { const pa = a.s.players.find(q => q.id === pb.id); if (!pa || pa.out !== pb.out) return pb; return { ...pb, x: pa.x + (pb.x - pa.x) * k, y: pa.y + (pb.y - pa.y) * k, z: pa.z + (pb.z - pa.z) * k, h: lerpAng(pa.h, pb.h, k) }; });
+  if (a.s.ba != null && b.s.ba != null) s.ba = lerpAng(a.s.ba, b.s.ba, k);
+  return s;
+}
+// 自己的角色：本機照搖桿先動，伺服器的位置來了再慢慢對齊；被撞飛、衝撞、趴下、掉落時直接照伺服器
+const pred = {
+  x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ok: false, jumpAt: 0,
+  reset() { this.ok = false; this.jumpAt = 0; },
+  step(dt) {
+    const fr = net.frames.at(-1); if (!fr || net.myId == null) return null;
+    const sp = fr.s.players.find(p => p.id === net.myId); if (!sp || sp.out) { this.ok = false; return null; }
+    const age = Math.min(.25, performance.now() / 1000 - (net.offset ?? 0) - fr.time + .05);
+    const tx = sp.x + sp.vx * age, ty = sp.y + sp.vy * age, B = Core.BODY;
+    const forced = sp.stun > 0 || sp.dash || sp.dive || sp.prone > 0 || sp.fall || Math.hypot(sp.vx, sp.vy) > B.WALK * 1.6 + .2;
+    if (!this.ok || forced || Math.hypot(tx - this.x, ty - this.y) > 2.5) { Object.assign(this, { x: tx, y: ty, vx: sp.vx, vy: sp.vy, ok: true }); }
+    else {
+      const { mx, my } = readInput(), Wk = B.WALK * (sp.fast > 0 ? Core.ITEMS.speed.mult : 1) * (sp.big > 0 ? Core.ITEMS.giant.walk : 1), air = sp.z > .05;
+      const dvx = mx * Wk - this.vx, dvy = my * Wk - this.vy, d = Math.hypot(dvx, dvy), lim = (Math.hypot(mx, my) > .1 ? B.ACC : B.STOP) * (air ? B.AIR : 1) * dt;
+      if (d <= lim) { this.vx += dvx; this.vy += dvy; } else { this.vx += dvx / d * lim; this.vy += dvy / d * lim; }
+      this.x += this.vx * dt; this.y += this.vy * dt;
+      const k = 1 - Math.exp(-dt * 5); this.x += (tx - this.x) * k; this.y += (ty - this.y) * k;
+    }
+    let z = sp.z; const since = (performance.now() - this.jumpAt) / 1000;
+    if (since < .62 && !forced) { const zj = B.JUMP * since - B.G * since * since / 2; z = Math.max(z, zj); } // 剛按跳：先照拋物線畫，伺服器的高度晚一點才到
+    return { x: this.x, y: this.y, z };
+  },
+};
+function showLobby() { if (!endShown && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function renderLobby() {
+  const Lb = net.lobby; if (!Lb) return;
+  const slots = [];
+  for (let i = 0; i < Lb.max; i++) {
+    const p = Lb.players[i];
+    slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>開賽時補電腦</span></li>`);
+  }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(Lb.phase === 'play' ? '這場進行中，結束後可加入（可先觀戰）' : Lb.phase === 'end' ? `上一場結算中，${Lb.endIn} 秒後開放新局` : Lb.players.length >= (Lb.min || 2) ? `${Lb.countdown} 秒後開始（滿 ${Lb.max} 人立即開始）` : Lb.players.length ? `還差 ${(Lb.min || 2) - Lb.players.length} 人才開始` : `等待玩家加入（至少 ${Lb.min || 2} 人）`);
+  const joined = inLobby();
+  $('joinBtn').textContent = joined ? '離開' : '加入';
+  $('joinBtn').disabled = !joined && (Lb.phase === 'play' || Lb.players.length >= Lb.max);
+  if (!playing && !endShown && mode === 'online') $('lobbyScreen').hidden = false; // 結算畫面還開著就不蓋上去
+}
+$('joinBtn').addEventListener('click', () => {
+  if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); }
+  else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
+});
+
+/* ---------- 主迴圈 ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, now = performance.now() / 1000;
+  let myPos = null;
+  if (mode === 'offline' && L) {
+    if (playing && !paused) { Core.setInput(L, 0, readInput()); const evs = Core.step(L, dt); S = Core.snapshot(L); onEvents(evs); }
+  } else if (mode === 'online' && net.base) {
+    sendInput(false); S = netState(); myPos = pred.step(dt);
+  }
+  if (S) { updateArena(S, dt, now); updatePlayers(S, dt, t, myPos); updateItems(S, t); if (playing || endShown) updateHud(dt); }
+  updateCamera(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- 外觀與進場 ---------- */
+function applyAppearance(a) {
+  Object.assign(setup, { color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush });
+  if (mode === 'online' && inLobby()) sendJoin();
+}
+async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) { applyAppearance(a); if (!playing && !L && mode === 'offline') demo(); } }
+$('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
+async function goOnline() {
+  if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
+  mode = 'online'; L = null; net.tries = 0; net.opened = false; net.wantIn = true; net.base = null; net.frames = [];
+  $('startScreen').hidden = $('endScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
+}
+$('onlineBtn').addEventListener('click', goOnline);
+
+// 選單背景：6 隻小傢伙在泡泡擂台上待著
+function demo() {
+  clearPlayers();
+  const g = Core.createGame({ seed: 20261021, humans: [{ uid: 'me', name: myName, ...setup }], arena: 'ring', items: false });
+  S = Core.snapshot(g); buildArena('ring'); $('board').hidden = true; $('roundName').textContent = '泡泡派對'; $('clock').textContent = '';
+}
+window.BubbleParty = { start: startSolo, get game() { return L; }, get state() { return S; }, get online() { return mode === 'online'; }, get me() { return myId(); }, net, pred, get views() { return P; } }; // 給測試和除錯用
+demo();
+tick();
+(async () => {
+  const want = new URLSearchParams(location.search).get('mode');
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '先玩單人版' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a); if (!playing && !L) demo(); // 選身分、外觀的視窗開著時就按了開始，不要把進行中的這場換成選單背景
+  if (want === 'solo') { $('startScreen').hidden = false; }
+  else if (want === 'online' && ID) goOnline();
+})();
+</script>
+</body>
+</html>

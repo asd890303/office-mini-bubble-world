@@ -36,6 +36,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | `/kart/ws` | 泡泡賽車 | 2 到 4 人，倒數後 15 秒選地圖與模式 |
 | `/artillery/ws` | 泡泡砲戰 | 3 對 3，倒數後 15 秒選地圖 |
 | `/survive/ws` | 泡泡倖存者 | 2 到 4 人合作；客戶端送 `in`（移動方向）、`dash`（衝刺方向）、`pick`（升級選擇）、`reroll`，快照每 100 毫秒一格 |
+| `/party/ws` | 泡泡派對 | 2 到 6 人，空位補電腦；客戶端送 `in`（`mx`、`my` 移動方向）、`jump`、`dash`；斷線時電腦接手 |
 | `/run/ws` | 泡泡跑跑 | 2 到 4 人同場，輸入只有 `{t:'jump'}`；開局快照帶種子，之後每格只送跳躍高度與生死 |
 | `/lobby/ws` | 大廳 | 位置同步、房間狀態、在線玩家 |
 
@@ -70,7 +71,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 客戶端送出 | `{t:'pos', x, y, f}` | 回報位置與朝向，間隔太短的會被忽略 |
 | 客戶端送出 | `{t:'look', color, ear, eye, body, blush}` | 換外觀 |
 | 客戶端送出 | `{t:'ping', at}` | 保活 |
-| 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`、`run`、`survive`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
+| 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`、`run`、`survive`、`party`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
 | 伺服器送出 | `{t:'hello', you, W, H}` | 連上後第一則，含大廳尺寸 |
 | 伺服器送出 | `{t:'snap', players}` | 所有人的位置；遊戲中的人多一個 `st:'play'` |
 | 伺服器送出 | `{t:'rooms', rooms}` | 各遊戲房間狀態（等待、選地圖、比賽中、結算中） |
@@ -155,6 +156,8 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | `/run/run-core.js` | 跑跑規則 |
 | `/survive/` | 泡泡倖存者頁面 |
 | `/survive/survivors-core.js` | 倖存者規則 |
+| `/party/` | 泡泡派對頁面 |
+| `/party/party-core.js` | 派對規則 |
 | `/shared/theme.css` | 共用配色、描邊、卡片、按鈕 |
 | `/shared/draw.js` | 圖示與徽章底的 canvas 繪製 |
 | `/shared/keyhelp.js` | 各遊戲共用的左側操作提示框 |

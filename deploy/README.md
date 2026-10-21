@@ -40,6 +40,13 @@ Durable Object 第一次被呼叫時，建在呼叫者附近的機房，之後�
 
 要再搬一次大廳：先把 `LOBBY_FROM` 改成目前的 `LOBBY_NAME`，再把 `LOBBY_NAME` 換新名字。
 
+新增遊戲時（約 2 分鐘）：
+
+1. 在 `wrangler.toml` 加一筆 `[[durable_objects.bindings]]`，填 `name`（例如 `XXX_ROOM`）與 `class_name`（例如 `XxxRoom`）。
+2. 再加一筆 `[[migrations]]`，`tag` 用 `wrangler.toml` 裡最新 tag 的下一個號碼，`new_sqlite_classes = ["XxxRoom"]`。
+3. 部署過的 tag 不能改、不能刪、不能重排，Cloudflare 靠它判斷哪些類別已經建立。
+4. 更新上面這段 Durable Object 清單。完整流程見 [`docs/new-game.md`](../docs/new-game.md)。
+
 ## 開啟網頁版 Telegram 登入（約 5 分鐘）
 
 不設定也能用：網頁玩家仍可用訪客身分連線，只是沒有「用 Telegram 登入」按鈕。

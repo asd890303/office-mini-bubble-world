@@ -1,4 +1,4 @@
-# agent.md
+# AGENTS.md
 
 給 AI 代理讀的專案規則。開工前先讀完。
 
@@ -21,9 +21,19 @@
 - 部署後頁面會自動比對 `/version` 並提醒玩家重新整理（`packages/ui/update.js`）。
 - 工作分支是 `dev`。部署用手動按鈕或 `npm run deploy`。
 
+## 新增遊戲
+
+照 [`docs/new-game.md`](docs/new-game.md) 逐步做，或執行 `/new-game <id> <dir> <中文名>`。`git grep -n "新增遊戲"` 列出程式註解裡要加一筆的位置。最常漏的 4 件事：
+
+- id 只能是 1 到 16 個小寫英文字母（`LobbyRoom.setRoom` 的 `/^[a-z]{1,16}$/`），和資料夾名可以不同。
+- `deploy/wrangler.toml` 要加 binding 和下一個 migration tag，部署過的 tag 不能改。
+- 房間照 `RunRoom` 寫，規則檔照 `games/bubble-run/run-core.js` 寫。
+- `worker.js` 只能匯出函式與類別，新常數不加 `export`。
+
+
 ## 文件撰寫規則
 
-寫或改 README、部署文件、`agent.md`、程式註解、commit 訊息之前，依序套用兩個 skill：
+寫或改 README、部署文件、`AGENTS.md`、程式註解、commit 訊息之前，依序套用兩個 skill：
 
 1. `i-have-adhd:i-have-adhd`
    - 第一行就是讀者能做的下一步。

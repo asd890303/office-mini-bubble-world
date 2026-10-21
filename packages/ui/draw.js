@@ -105,6 +105,7 @@ export function badgeFrame(x, color) {
 }
 
 // 遊戲房間招牌用的大圖示（128x128 座標，畫在徽章白圈內）
+// 新增遊戲：加 <id>(x)，apps/hub/index.html 的 ROOMS 用 art(x) { GAME_ART.<id>(x); } 呼叫
 export const GAME_ART = {
   kart(x) { // 泡泡賽車：粉紅小車 + 兩個輪子 + 方向盤
     x.beginPath(); x.roundRect(26, 40, 76, 28, 12); inkPath(x, '#ff8fab');

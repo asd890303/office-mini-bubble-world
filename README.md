@@ -128,9 +128,13 @@ npm run deploy    # build + wrangler deploy
 
 ## 新增一款遊戲
 
-1. 在 `games/<name>/` 放 `index.html`（載入 `/shared/theme.css`，需要圖示就 import `/shared/draw.js`，操作提示用 `/shared/keyhelp.js` 的 `mountKeyHelp`，固定在畫面左側）。
-2. 規則檔放 `games/<name>/<name>-core.js`，只用 `export`；在 `deploy/build.mjs` 的 `GAMES` 加一筆 `{ id, dir }`。
-3. 在 `apps/hub/index.html` 的 `ROOMS` 加一筆同 id 的房間，指定位置與招牌圖示。
-4. 在本檔的「遊戲」表格加一列，並在表格下面加一段簡單介紹（人數、玩法、操作、特色，不超過 6 行）。
-5. 新增路徑、WebSocket 訊息或第三方呼叫時，同步更新 `docs/api.md`。
-6. 執行 `npm test`，通過後再部署。
+在 Claude Code 或 Cursor 執行 `/new-game <id> <dir> <中文名>`（例：`/new-game dodge bubble-dodge 泡泡閃避`）。逐步清單在 [`docs/new-game.md`](docs/new-game.md)。改完跑 `npm test`，約 1 分鐘。
+
+硬規則（漏了會在大廳或部署時出錯）：
+
+- **id**：1 到 16 個小寫英文字母。`LobbyRoom.setRoom` 用 `/^[a-z]{1,16}$/`，含數字或連字號的 id 在大廳不顯示房間狀態。
+- **資料夾** `games/<dir>/` 可與 id 不同（例：`bubble-survivors` 對 id `survive`）。
+- **規則檔** 只 `export`、不 `import`；`deploy/build.mjs` 內嵌進 Worker。不用 DOM、不用 `Math.random`。
+- **Worker** 只匯出函式與類別；`wrangler.toml` migration tag 用下一號，部署過的 tag 不能改。
+
+程式註解還有哪些檔要改：在 repo 根目錄跑 `git grep -n "新增遊戲"`。

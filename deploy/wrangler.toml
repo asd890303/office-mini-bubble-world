@@ -6,6 +6,8 @@ compatibility_date = "2025-01-01"
 # 選填：[vars] GROUP_ID = "<Telegram 群組 id>" 與 secret BOT_TOKEN 都設了，對戰結束才會把名次貼到群組
 # 選填：[vars] ALLOWED_ORIGIN = "https://<你的網址>"：只允許這個網址連線
 
+# 新增遊戲：加一筆 [[durable_objects.bindings]]，再加一筆 [[migrations]] 用下一個 tag；部署過的 tag 不能改
+
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "GameRoom"

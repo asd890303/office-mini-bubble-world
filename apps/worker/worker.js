@@ -1,5 +1,6 @@
 // 泡泡碰碰島 — Cloudflare Worker + Durable Object (single room "main"), server-authoritative.
 // Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、TOGETHER_ROOM (class TogetherRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
+// 新增遊戲：照下面的格式加一行 import，路徑以 ../../games/ 開頭，deploy/build.mjs 才找得到並內嵌
 import * as Core from '../../games/bubble-island/game-core.js';
 import * as KartCore from '../../games/kart-island/kart-core.js';
 import * as ArtilleryCore from '../../games/artillery/artillery-core.js';
@@ -270,6 +271,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(env) });
+    // 新增遊戲：加 '/<id>/ws': 'XXX_ROOM'，deploy/wrangler.toml 也要加同名 binding 與下一個 migration tag
     const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/together/ws': 'TOGETHER_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
     if (binding) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
@@ -726,12 +728,14 @@ export class TogetherRoom extends GameRoom {
   }
 }
 
-// /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS。新遊戲在這裡加一個欄位
+// /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS
+// 新增遊戲（有紀錄榜才加）：加 <id>: { <欄位>: [] }，gameBoard() 讀出同一個欄位
 function emptyGameBoard() {
   return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [], speed: [], speedHard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] }, run: { score: [] }, survive: { time: [] }, together: { time: [] } };
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
+// 新增遊戲：在 GAMES 加 id，大廳才接受 {t:'playing', game}
 const LOBBY = { W: 18, H: 26, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party', 'together'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
 export class LobbyRoom {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
@@ -796,6 +800,7 @@ export class LobbyRoom {
     this.boardCache = null; this.gameCache = null;
   }
   // 單人賽紀錄：只更新各遊戲紀錄，不加總積分。回傳這位玩家在前 RECORD_TOP 名的名次（不在榜上是 null）與目前榜單
+  // 新增遊戲（有單人紀錄才加）：白名單加 id，top 加上這款的欄位格式，addRecords() 也要加一段
   async addSoloRecord(body) {
     if (!body || !['kart', 'bubble', 'artillery', 'run', 'survive'].includes(body.game) || !Array.isArray(body.entries) || body.entries.length !== 1) return Response.json({ error: 'body' }, { status: 400 });
     const uid = String(body.entries[0]?.uid || ''), now = this.now();

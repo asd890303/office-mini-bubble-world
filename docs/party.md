@@ -144,7 +144,7 @@
 2. `deploy/wrangler.toml` 加 `PARTY_ROOM` 綁定和 migration `v7`（`v5` 是泡泡跑跑、`v6` 是泡泡倖存者）；`deploy/build.mjs` 的 `GAMES` 加一筆。
 3. `apps/hub/index.html`：`ROOMS` 加第 6 間（`x 7–11`、`y 13.6–17.4`），其他房間不動。
 4. `packages/ui/draw.js`：招牌圖示 `GAME_ART.party`、道具圖示 `ITEM_ART.giant`。
-5. 文件與測試：README、`agent.md`、`docs/api.md`；`apps/worker/test/worker.test.mjs` 加 3 項房間測試，`packages/ui/test/avatar.test.mjs` 檢查派對的外觀選項。
+5. 文件與測試：README、`AGENTS.md`、`docs/api.md`；`apps/worker/test/worker.test.mjs` 加 3 項房間測試，`packages/ui/test/avatar.test.mjs` 檢查派對的外觀選項。
 
 ### 重用的東西
 

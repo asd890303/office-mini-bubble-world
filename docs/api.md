@@ -56,7 +56,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 房間 | 訊息 |
 |---|---|
 | 泡泡碰碰島 | `in`（方向輸入，欄位 `d`）、`bomb`（放水球） |
-| 泡泡賽車 | `vote`（`track` 選地圖、`mode` 選 `item` 道具賽或 `speed` 競速賽，可只帶其中一個；票沒變不廣播）、`in`（`steer`、`drift`、`gas`、`brake`）、`item`（用道具，競速賽是用氮氣） |
+| 泡泡賽車 | `vote`（`track` 選地圖、`mode` 選 `item` 道具賽或 `speed` 競速賽，可只帶其中一個；票沒變不廣播）、`in`（`steer`、`drift`、`gas`、`brake`）、`item`（用道具，競速賽是用氮氣）、`reset`（回到賽道：停 1 秒後放回最近的路中間） |
 | 泡泡砲戰 | `vote`（`plains`、`twin`、`canyon`）、`ready`、`seat`（`slot`）、`bot`（`slot`）、`move`（`dir`）、`jump`（`dir`，-1 左、1 右、0 朝面向的方向）、`aim`（`angle`、`power`、`item`、`charging`）、`buy`（`item`）、`refresh`、`use`（`item`，瞬間移動另帶 `x`、`y`）、`fire`（`angle`、`power`、`item`）、`mark`（`kind`、`x`、`y`）、`say`（`msg`） |
 
 砲戰的標記與快捷訊息只轉發給同隊，每人每回合各最多 3 則。標記種類是 `attack`、`danger`、`heal`，快捷訊息編號 0 到 5。

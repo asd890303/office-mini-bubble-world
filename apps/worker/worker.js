@@ -454,7 +454,7 @@ export class KartRoom extends GameRoom {
     }
     return super.webSocketMessage(ws, raw);
   }
-  onInput(p, m) { if (m.t === 'in') this.core.setInput(this.game, p.id, { steer: m.steer, drift: m.drift, gas: m.gas, brake: m.brake }); else if (m.t === 'item') this.core.useItem(this.game, p.id); }
+  onInput(p, m) { if (m.t === 'in') this.core.setInput(this.game, p.id, { steer: m.steer, drift: m.drift, gas: m.gas, brake: m.brake }); else if (m.t === 'item') this.core.useItem(this.game, p.id); else if (m.t === 'reset') this.core.resetKart(this.game, p.id); }
   frame() { return this.core.snapshot(this.game, { full: false }); } // 每個 tick 送精簡版，名字、顏色、道具箱座標只在開局（start）送一次
   stopPlayer(p) { this.core.setInput(this.game, p.id, {}); }
   alive(p) { return p.state === 'racing' && !p.done; }

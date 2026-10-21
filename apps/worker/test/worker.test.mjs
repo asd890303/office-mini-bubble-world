@@ -210,6 +210,7 @@ test('kart room: lobby → countdown → race with steering and items → result
   R.tick(70); assert.equal(R.room.game.phase, 'race', 'countdown over');
   await R.msg(a, { t: 'in', steer: .5, drift: 1, gas: 1 }); assert.equal(R.room.game.karts[0].steer, .5); assert.equal(R.room.game.karts[0].driftIn, true); assert.equal(R.room.game.karts[0].gas, true);
   R.room.game.karts[1].item = 'shoe'; await R.msg(b, { t: 'item' }); assert.ok(R.room.game.karts[1].shoe > 0, 'item used');
+  await R.msg(a, { t: 'reset' }); assert.ok(R.room.game.karts[0].reset > 0, 'reset to track'); R.tick(25); assert.equal(R.room.game.karts[0].reset, 0, 'back on the road after 1 s');
   assert.ok(a.out.some(m => m.t === 's' && Array.isArray(m.s.karts)), 'snapshots broadcast');
   const fr = a.out.findLast(m => m.t === 's').s, back = KartCore.expandFrame(fr, st.s);
   assert.equal(fr.full, 0); assert.equal(fr.karts[0].name, undefined, 'frames skip names and colors'); assert.equal(typeof fr.boxes, 'string', 'boxes as availability bits');

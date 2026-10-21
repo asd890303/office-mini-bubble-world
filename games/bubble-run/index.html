@@ -37,8 +37,6 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .biome { position: fixed; left: 0; right: 0; top: calc(max(10px, env(safe-area-inset-top)) + 46px); text-align: center; pointer-events: none; opacity: 0; transition: opacity .4s; }
 .biome span { display: inline-block; padding: 2px 16px; font-weight: 900; font-size: 16px; }
 .biome.show { opacity: 1; }
-.keys { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 6px 12px; white-space: nowrap; }
-body.touch .keys { display: none; }
 .tapzone { position: fixed; inset: 0; z-index: 1; }
 .tapzone[hidden] { display: none; }
 
@@ -92,7 +90,6 @@ body.touch .keys { display: none; }
 <div class="count" id="count" hidden></div>
 <div class="biome" id="biome"><span class="box" id="biomeName"></span></div>
 <button class="btn mute" id="mute">音效 開</button>
-<div class="keys box"><b>空白鍵</b> 跳躍　空中再按一次 二連跳</div>
 <div class="toast box" id="toast"></div>
 
 <section class="screen" id="startScreen">
@@ -137,6 +134,7 @@ import * as THREE from 'three';
 import * as Core from './run-core.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
 import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, G, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
@@ -188,6 +186,8 @@ const sfx = {
 };
 $('mute').textContent = muted ? '音效 關' : '音效 開';
 $('mute').addEventListener('click', e => { e.stopPropagation(); muted = !muted; store.set('bp-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+
+mountKeyHelp({ rows: ['[空白] 跳躍（[↑]、[W] 也可以）', '空中再按一次 二連跳', '手機：點螢幕跳'], top: '150px' });
 
 const U = 50;               // 1 個世界單位 = 50 點
 const LANE = 3;           // 跑道間距

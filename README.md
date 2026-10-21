@@ -104,7 +104,7 @@ npm run deploy    # build + wrangler deploy
 
 ## 新增一款遊戲
 
-1. 在 `games/<name>/` 放 `index.html`（載入 `/shared/theme.css`，需要圖示就 import `/shared/draw.js`）。
+1. 在 `games/<name>/` 放 `index.html`（載入 `/shared/theme.css`，需要圖示就 import `/shared/draw.js`，操作提示用 `/shared/keyhelp.js` 的 `mountKeyHelp`，固定在畫面左側）。
 2. 規則檔放 `games/<name>/<name>-core.js`，只用 `export`；在 `deploy/build.mjs` 的 `GAMES` 加一筆 `{ id, dir }`。
 3. 在 `apps/hub/index.html` 的 `ROOMS` 加一筆同 id 的房間，指定位置與招牌圖示。
 4. 在本檔的「遊戲」表格加一列，並在表格下面加一段簡單介紹（人數、玩法、操作、特色，不超過 6 行）。

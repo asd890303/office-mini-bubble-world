@@ -152,6 +152,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | `/run/run-core.js` | 跑跑規則 |
 | `/shared/theme.css` | 共用配色、描邊、卡片、按鈕 |
 | `/shared/draw.js` | 圖示與徽章底的 canvas 繪製 |
+| `/shared/keyhelp.js` | 各遊戲共用的左側操作提示框 |
 | `/shared/three-kit.js` | 卡通材質與小傢伙角色 |
 | `/shared/avatar.js` | 外觀資料、儲存、選擇視窗 |
 | `/shared/session.js` | 身分、登入視窗 |

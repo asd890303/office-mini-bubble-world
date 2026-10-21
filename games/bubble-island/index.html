@@ -36,8 +36,6 @@ body.touch .pad { display: flex; }
 .acts { display: flex; flex-direction: column; gap: 12px; align-items: center; pointer-events: auto; }
 .act { border: 3px solid var(--ink); border-radius: 50%; font-weight: 900; box-shadow: var(--shadow); touch-action: none; }
 .act.bomb { width: 96px; height: 96px; background: var(--blue); font-size: 18px; color: #2c3a4a; }
-.keys { position: fixed; bottom: 12px; right: 12px; font-size: 12px; padding: 6px 12px; }
-body.touch .keys { display: none; }
 
 /* 畫面 */
 .screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
@@ -119,7 +117,6 @@ body.touch .keys { display: none; }
     <button class="act bomb" id="bombBtn">水球</button>
   </div>
 </div>
-<div class="keys box"><b>WASD / 方向鍵</b> 移動　<b>空白</b> 水球</div>
 
 <div class="toast box" id="toast"></div>
 <div class="me-tag" id="meTag" hidden>你</div>
@@ -173,6 +170,7 @@ import * as Core from './game-core.js';
 import { INK, ITEM_ART, badgeFrame } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
 import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
@@ -202,6 +200,8 @@ const haptic = {
   hit() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} },
   win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} },
 };
+
+mountKeyHelp({ rows: ['[W][A][S][D] 或 [方向鍵] 移動', '[空白] 放水球'], top: '100px' });
 
 /* ---------- 音效 ---------- */
 let muted = store.get('bp-muted') === '1';
@@ -612,7 +612,6 @@ function freeRect(w, h) {
   } else {
     r.top = Math.max(r.top, hud.bottom + 8);
     if (touch) r.bottom = Math.min(r.bottom, document.querySelector('.stick').getBoundingClientRect().top - 8);
-    else r.bottom = Math.min(r.bottom, document.querySelector('.keys').getBoundingClientRect().top - 6);
   }
   if (r.right - r.left < 120) { r.left = 6; r.right = w - 6; }
   if (r.bottom - r.top < 120) { r.top = 6; r.bottom = h - 6; }

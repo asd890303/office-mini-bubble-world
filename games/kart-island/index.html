@@ -87,8 +87,6 @@ body.touch .pad { display: flex; }
   .act.drift { width: 66px; height: 66px; font-size: 14px; margin-bottom: 58px; }
   .act.item { width: 58px; height: 58px; font-size: 13px; margin-bottom: 124px; }
 }
-.keys { position: fixed; bottom: 12px; right: 12px; font-size: 12px; padding: 6px 12px; }
-body.touch .keys { display: none; }
 
 /* 畫面 */
 .screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
@@ -180,7 +178,6 @@ body.touch .keys { display: none; }
     <button class="act gas" id="gasBtn">油門</button>
   </div>
 </div>
-<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣　<b>R</b> 回賽道　<b>Esc</b> 暫停（單人）</div>
 
 <section class="screen" id="startScreen">
   <div class="box">
@@ -276,7 +273,9 @@ import * as Core from './kart-core.js';
 import { ITEM_ART, badgeFrame, INK } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
+mountKeyHelp({ rows: ['[W] 油門　[S] 煞車', '[A][D] 轉向', '[Shift] 漂移', '[空白] 道具／氮氣', '[R] 回賽道', '[Esc] 暫停（單人）'], top: '150px' });
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, grad, G, M, blob, boxOutline, withOutline, makeCritter, animateCritter, addNameTag } from '/shared/three-kit.js';
 

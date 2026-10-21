@@ -23,10 +23,6 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .top > * { pointer-events: auto; }
 .left { display: flex; flex-direction: column; gap: 6px; width: 210px; }
 .teams { display: flex; flex-direction: column; gap: 6px; }
-.keys { border-width: 2px; border-radius: 14px; padding: 4px 8px 6px; font-size: 11.5px; font-weight: 700; line-height: 1.7; }
-.keys h4 { margin: 0; font-size: 12px; font-weight: 900; display: flex; justify-content: space-between; align-items: center; }
-.keys kbd { display: inline-block; min-width: 16px; padding: 0 4px; margin-right: 2px; text-align: center; font: 900 10.5px inherit; border: 2px solid var(--ink); border-radius: 6px; background: #fff; }
-.keys.fold .keylist { display: none; }
 .team { border-width: 2px; border-radius: 14px; padding: 4px 8px 5px; font-size: 12px; font-weight: 900; }
 .team h4 { margin: 0 0 3px; font-size: 12px; display: flex; justify-content: space-between; }
 .mem { display: grid; grid-template-columns: 1fr 70px; gap: 6px; align-items: center; padding: 1px 3px; border-radius: 8px; white-space: nowrap; }
@@ -132,7 +128,7 @@ canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: bl
 .list li:last-child { border: 0; }
 .pcnotice { position: fixed; left: 50%; top: 8px; transform: translateX(-50%); z-index: 50; font-size: 13px; font-weight: 900; padding: 6px 16px; }
 .pcnotice[hidden] { display: none; }
-body.idle :is(.teams, .keys, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingbar, .feed) { visibility: hidden; }
+body.idle :is(.teams, .keyhelp, .top .center, .me, .shop, .hotwrap, .power, .hint, .pingbar, .feed) { visibility: hidden; }
 </style>
 </head>
 <body class="idle">
@@ -140,7 +136,7 @@ body.idle :is(.teams, .keys, .top .center, .me, .shop, .hotwrap, .power, .hint, 
 <div class="box pcnotice" id="pcnotice" hidden>請用電腦玩</div>
 
 <div class="top">
-  <div class="left"><div class="teams" id="teams"></div><div class="box keys" id="keys"><h4><span>操作</span><button class="btn foldbtn" data-fold="keys" data-label=""></button></h4><div class="keylist"><div><kbd>A</kbd><kbd>D</kbd> 左右移動　<kbd>空白</kbd> 跳（耗體力）</div><div><kbd>滑鼠</kbd> 瞄準</div><div><kbd>左鍵</kbd> 按住蓄力，放開發射</div><div><kbd>右鍵</kbd> 取消蓄力</div><div><kbd>1</kbd>到<kbd>0</kbd> 選攻擊道具</div><div><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd><kbd>V</kbd><kbd>B</kbd> 支援道具</div><div><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> 買　<kbd>R</kbd> 刷新</div><div><kbd>Shift</kbd>＋點地面 標記隊友</div></div></div></div>
+  <div class="left"><div class="teams" id="teams"></div></div>
   <div class="center">
     <div class="box banner" id="banner">第 1 / 10 輪</div>
     <div class="timer" id="timer">20</div>
@@ -234,9 +230,11 @@ import { INK, inkPath, shine, badgeFrame } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
 import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 import { toon, G, M, blob, boxOutline, makeCritter, animateCritter } from '/shared/three-kit.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
+mountKeyHelp({ parent: document.querySelector('.left'), rows: ['[A][D] 左右移動　[空白] 跳（耗體力）', '[滑鼠] 瞄準', '[左鍵] 按住蓄力，放開發射', '[右鍵] 取消蓄力', '[1]到[0] 選攻擊道具', '[Z][X][C][V][B] 支援道具', '[Q][W][E] 買　[R] 刷新', '[Shift]＋點地面 標記隊友']  });
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

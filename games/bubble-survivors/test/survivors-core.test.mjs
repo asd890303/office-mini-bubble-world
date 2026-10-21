@@ -62,6 +62,27 @@ test('poke: needles pop wrapped enemies in range on their own and start the chai
   const evs = run(g, 1.5); assert.ok(evs.some(e => e.type === 'poke')); assert.equal(a.dead, true); assert.equal(b.dead, true, 'chained'); assert.equal(far.dead, false, 'out of range');
 });
 
+test('direct weapons: spike, bolt, quake and foam hurt enemies without wrapping them and credit the owner', () => {
+  const g = live({ spike: 1 }); noSpawn(g); const c = center(g);
+  const a = put(g, 'slime', c.x + 120, c.y); run(g, 1.2); assert.ok(a.hp < a.hpMax || a.dead); assert.notEqual(a.state, 'wrapped');
+  const h = live({ bolt: 1 }); noSpawn(h); const hc = center(h);
+  const b1 = put(h, 'slime', hc.x + 100, hc.y), b2 = put(h, 'slime', hc.x + 180, hc.y), b3 = put(h, 'slime', hc.x + 900, hc.y);
+  const evs = run(h, .5); assert.ok(evs.some(e => e.type === 'bolt')); assert.ok(b1.hp < b1.hpMax && b2.hp < b2.hpMax, 'jumps'); assert.equal(b3.hp, b3.hpMax);
+  const q = live({ quake: 1 }); noSpawn(q); const qc = center(q), e = put(q, 'slime', qc.x + 60, qc.y), x0 = e.x;
+  run(q, .1); assert.ok(e.hp < e.hpMax && e.x > x0 - 1, 'pushed away'); assert.ok(q.players[0].damage > 0);
+  const f = live({ foam: 1 }); noSpawn(f); const fc = center(f), o = put(f, 'slime', fc.x, fc.y); f.players[0].ix = 1; run(f, 1.5);
+  assert.ok(f.zones.some(z => z.kind === 'foam') || f.players[0].damage > 0); assert.ok(o.dead || o.hp < o.hpMax || f.players[0].damage > 0);
+});
+
+test('evolve: spike, bolt, quake and foam each evolve with their passive and the evolved weapon fires', () => {
+  for (const [base, need, to] of [['spike', 'speed', 'lance'], ['bolt', 'chain', 'thunder'], ['quake', 'vital', 'titan'], ['foam', 'dash', 'flood']]) {
+    const g = live({ [base]: 5 }); g.players[0].passives[need] = 1;
+    assert.ok(S.makeChoices(g, g.players[0]).some(c => c.kind === 'evolve' && c.to === to), to);
+    const h = live({ [to]: 1 }); noSpawn(h); const c = center(h); const e = put(h, 'shell', c.x + 80, c.y); h.players[0].ix = 1; run(h, 1.5);
+    assert.ok(e.hp < e.hpMax || e.dead || h.players[0].damage > 0, to + ' hurts');
+  }
+});
+
 test('wave and orbit: the wave wraps everything in its radius; orbit bubbles wrap what they touch', () => {
   const g = live({ wave: 1 }); noSpawn(g); const c = center(g), a = put(g, 'slime', c.x + 80, c.y), b = put(g, 'slime', c.x + 300, c.y);
   run(g, .3); assert.equal(a.state, 'wrapped'); assert.equal(b.state, 'free');

@@ -284,15 +284,15 @@ function makeEnemy(type) {
   return { g, body, bubble, armor, r, x: 0, y: 0, wrapped: 0, seed: Math.random() * 6, flash: 0, mat: body.material, bs: body.scale.clone(), type };
 }
 const flashMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-const bulletGeo = G.sphere, bulletMat = toon('#bfe9ff', { transparent: true, opacity: .85 }), ebMat = toon('#ff6b6b'), shardMat = toon('#ffd36b');
+const bulletGeo = G.sphere, bulletMat = toon('#bfe9ff', { transparent: true, opacity: .85 }), ebMat = toon('#ff6b6b'), spikeMat = toon('#ffd36b'), shardMat = toon('#ffd36b');
 const ringGeo = new THREE.RingGeometry(.88, 1, 40);
 const fx = [];
 function addRing(x, y, r, color, dur = .35, grow = true) {
   const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .8, side: THREE.DoubleSide, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x / S, .06, y / S); m.scale.setScalar(grow ? .1 : r / S); V.group.add(m);
   fx.push({ m, t: 0, dur, r: r / S, grow });
 }
-function addLine(x, y, tx, ty) {
-  const dx = tx - x, dy = ty - y, d = Math.hypot(dx, dy) / S, m = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .9 }));
+function addLine(x, y, tx, ty, color = 0xff8fab) {
+  const dx = tx - x, dy = ty - y, d = Math.hypot(dx, dy) / S, m = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .9 }));
   m.scale.set(d, .08, .08); m.position.set((x + tx) / 2 / S, .8, (y + ty) / 2 / S); m.rotation.y = -Math.atan2(dy, dx); V.group.add(m); fx.push({ m, t: 0, dur: .16, line: true });
 }
 
@@ -384,7 +384,7 @@ function sync(s, dt, t) {
   for (const [id, o] of V.enemies) if (!seen.has(id)) { V.group.remove(o.g); V.enemies.delete(id); addRing(o.x, o.y, o.r * S * 1.6, 0xffffff, .25); }
   // 子彈與碎片
   const age = Math.min(.15, (performance.now() - V.snapAt) / 1000);
-  pool(V.bullets, s.b, () => { const m = new THREE.Mesh(bulletGeo, bulletMat); m.scale.setScalar(.26); return m; }, (m, b) => m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .55, (b[1] + (online ? (b[3] || 0) * age : 0)) / S));
+  pool(V.bullets, s.b, () => { const m = new THREE.Mesh(bulletGeo, bulletMat); m.scale.setScalar(.26); return m; }, (m, b) => { m.material = b[4] ? spikeMat : bulletMat; m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .55, (b[1] + (online ? (b[3] || 0) * age : 0)) / S); });
   pool(V.ebullets, s.eb, () => { const m = new THREE.Mesh(bulletGeo, ebMat); m.scale.setScalar(.2); withOutline(m, 1.1); return m; }, (m, b) => m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .5, (b[1] + (online ? (b[3] || 0) * age : 0)) / S));
   pool(V.shards, s.sh, () => { const m = new THREE.Mesh(G.star, shardMat); m.scale.setScalar(.2); withOutline(m, 1.15); return m; }, (m, b) => { m.position.set(b[0] / S, .3 + Math.sin(t * 4 + b[0]) * .05, b[1] / S); m.rotation.y = t * 2; });
   V.newFrame = false;
@@ -542,10 +542,11 @@ function onEvents(evs, s) {
     if (ev.type === 'd') continue;
     if (++n > 60) break;
     if (ev.type === 'pop') { chainAdd(ev); addRing(ev.x, ev.y, ev.r, ev.d ? 0xffb04d : 0xff8fab, .35); sfx.pop(ev.d); shake = Math.max(shake, Math.min(.4, .05 + ev.d * .035)); }
-    else if (ev.type === 'wave') { addRing(ev.x, ev.y, ev.r, 0x7cc8ff, .5); if (ev.id === V.myId || mode === 'offline') sfx.wave(); }
+    else if (ev.type === 'bolt') { for (let k = 1; k < ev.pts.length; k++) addLine(ev.pts[k - 1][0], ev.pts[k - 1][1], ev.pts[k][0], ev.pts[k][1], 0xfff27a); sfx.poke(); }
+    else if (ev.type === 'wave') { addRing(ev.x, ev.y, ev.r, ev.k ? 0xffd36b : 0x7cc8ff, .5); if (ev.id === V.myId || mode === 'offline') sfx.wave(); }
     else if (ev.type === 'poke') { addLine(ev.x, ev.y, ev.tx, ev.ty); sfx.poke(); }
     else if (ev.type === 'level') { const p = V.players.get(ev.id); if (p) addRing(p.x, p.y, 70, 0xffd36b, .6); if (ev.id === (mode === 'offline' ? 0 : V.myId)) { sfx.level(); haptic.win(); } }
-    else if (ev.type === 'zone') addRing(ev.x, ev.y, ev.r, ev.kind === 'rain' ? 0x7cc8ff : 0xc86bff, ev.t, ev.kind === 'rain');
+    else if (ev.type === 'zone') addRing(ev.x, ev.y, ev.r, ev.kind === 'rain' ? 0x7cc8ff : ev.kind === 'foam' ? 0xffb3e6 : 0xc86bff, ev.t, ev.kind !== 'pull');
     else if (ev.type === 'dash') { addRing(ev.x, ev.y, 46, 0xbfe9ff, .3); if (ev.id !== (mode === 'offline' ? 0 : V.myId)) tone(500, .1, 'sawtooth', .03, 2); }
     else if (ev.type === 'hurt') { const hp = V.players.get(ev.id); if (hp && ev.v) floatText(hp.x, hp.y - 20, '-' + ev.v, 'me'); if (ev.id === (mode === 'offline' ? 0 : V.myId)) { sfx.hurt(); haptic.hit(); shake = .25; const v = $('vig'); v.classList.add('hit'); setTimeout(() => v.classList.remove('hit'), 180); } }
     else if (ev.type === 'out') { sfx.out(); if (ev.id === (mode === 'offline' ? 0 : V.myId)) toast('你倒下了', 1600); }

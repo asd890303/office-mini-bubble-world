@@ -28,17 +28,25 @@ export const WEAPONS = {
   gun: { name: '泡泡槍', desc: '朝最近的敵人射出泡泡', max: 5, cd: [1, .9, .8, .7, .6], n: [1, 1, 2, 2, 3], spd: 340, life: 1.1, r: 8 },
   orbit: { name: '環繞泡泡', desc: '泡泡繞著你轉，碰到的敵人被包住', max: 5, n: [2, 2, 3, 3, 4], radius: 70, spin: 2.4, r: 10, recheck: .5 },
   wave: { name: '水波', desc: '定時擴散一圈，範圍內的敵人全被包住', max: 5, cd: [6, 5.5, 5, 4.5, 4], radius: [110, 125, 140, 155, 170] },
-  poke: { name: '戳針', desc: '自動戳破附近被包住的敵人，引爆連鎖', max: 5, cd: [1.6, 1.45, 1.3, 1.15, 1], n: [1, 1, 2, 2, 3], range: 320 },
+  poke: { name: '戳針', desc: '自動戳破附近被包住的敵人，引爆連鎖', max: 5, cd: [2, 1.8, 1.6, 1.4, 1.2], n: [1, 1, 2, 2, 2], range: 280 },
+  spike: { name: '尖刺泡', desc: '射出尖刺，直接造成傷害並穿透', max: 5, cd: [.9, .8, .7, .65, .6], n: [1, 1, 2, 2, 3], dmg: [12, 14, 16, 18, 22], spd: 420, life: .9, pierce: 2 },
+  bolt: { name: '閃電泡', desc: '電擊最近的敵人，再跳到旁邊的敵人', max: 5, cd: [1.8, 1.6, 1.5, 1.4, 1.3], jumps: [3, 3, 4, 5, 6], dmg: [16, 18, 20, 22, 26], reach: 300, hop: 140 },
+  quake: { name: '震盪波', desc: '向外震開一圈，直接傷害並推開敵人', max: 5, cd: [4, 3.7, 3.4, 3.1, 2.8], radius: [100, 110, 120, 130, 145], dmg: [12, 14, 16, 19, 24], push: 60 },
+  foam: { name: '泡沫軌跡', desc: '走過的地方留下泡沫，敵人踩到持續受傷', max: 5, cd: [.5, .5, .45, .45, .4], life: [2, 2.5, 3, 3.5, 4], radius: [34, 36, 38, 40, 44], dmg: [4, 5, 6, 8, 10], tick: .4 },
   rain: { name: '泡泡雨', desc: '在敵人頭上降下泡泡區，稍後包住範圍內的敵人', max: 5, cd: [5, 4.5, 4, 3.6, 3.2], n: [1, 1, 2, 2, 3], radius: [70, 80, 90, 100, 110], delay: .6, reach: 300 },
   ball: { name: '磁吸球', desc: '把附近的敵人吸成一團，方便一次連鎖', max: 5, cd: [7, 6.5, 6, 5.5, 5], radius: [150, 165, 180, 195, 210], dur: [1.5, 1.8, 2.1, 2.4, 2.7], pull: 150, reach: 320 },
-  needle: { name: '連環針', desc: '戳針進化：一次戳 5 隻，距離更遠', max: 1, cd: [.7], n: [5], range: 420, evolved: true },
+  needle: { name: '連環針', desc: '戳針進化：一次戳 4 隻，距離更遠', max: 1, cd: [1], n: [4], range: 340, evolved: true },
   storm: { name: '暴風雨', desc: '泡泡雨進化：更大更密的泡泡區', max: 1, cd: [2.6], n: [4], radius: [120], delay: .5, reach: 340, evolved: true },
+  lance: { name: '貫穿長槍', desc: '尖刺泡進化：穿透 5 隻，傷害更高', max: 1, cd: [.5], n: [3], dmg: [30], spd: 480, life: 1, pierce: 5, evolved: true },
+  thunder: { name: '雷暴泡', desc: '閃電泡進化：連跳 9 次，間隔更短', max: 1, cd: [1], jumps: [9], dmg: [32], reach: 360, hop: 170, evolved: true },
+  titan: { name: '巨震波', desc: '震盪波進化：範圍更大，推得更遠', max: 1, cd: [2.2], radius: [190], dmg: [40], push: 100, evolved: true },
+  flood: { name: '泡沫洪流', desc: '泡沫軌跡進化：更大、更久、更痛', max: 1, cd: [.3], life: [5], radius: [56], dmg: [14], tick: .35, evolved: true },
   pearl: { name: '連珠泡', desc: '泡泡槍進化：泡泡穿透 3 隻敵人', max: 1, cd: [.6], n: [3], spd: 380, life: 1.2, r: 8, pierce: 3, evolved: true },
   hole: { name: '黑洞泡泡', desc: '環繞泡泡進化：把附近敵人吸過來', max: 1, n: [4], radius: 85, spin: 2.8, r: 11, recheck: .4, pull: 170, pullSpd: 60, evolved: true },
 };
 export const STARTERS = ['gun', 'orbit', 'wave'];
-export const BASE_WEAPONS = ['gun', 'orbit', 'wave', 'poke', 'rain', 'ball'];
-export const EVOLVE = { gun: { need: 'chain', to: 'pearl' }, orbit: { need: 'magnet', to: 'hole' }, poke: { need: 'dur', to: 'needle' }, rain: { need: 'area', to: 'storm' } }; // 武器升滿 5 級且持有該被動，就能進化
+export const BASE_WEAPONS = ['gun', 'orbit', 'wave', 'poke', 'rain', 'ball', 'spike', 'bolt', 'quake', 'foam'];
+export const EVOLVE = { gun: { need: 'chain', to: 'pearl' }, orbit: { need: 'magnet', to: 'hole' }, poke: { need: 'dur', to: 'needle' }, rain: { need: 'area', to: 'storm' }, spike: { need: 'speed', to: 'lance' }, bolt: { need: 'chain', to: 'thunder' }, quake: { need: 'vital', to: 'titan' }, foam: { need: 'dash', to: 'flood' } }; // 武器升滿 5 級且持有該被動，就能進化
 export const PASSIVES = {
   area: { name: '包泡範圍', desc: '戳破、水波與環繞泡泡的範圍 +15%' },
   dur: { name: '包泡時間', desc: '被包住的時間 +25%' },
@@ -149,6 +157,12 @@ function wrapEnemy(g, e, p) {
   g.events.push({ type: 'wrap', x: r1(e.x), y: r1(e.y) });
   return true;
 }
+function hitEnemy(g, e, p, dmg) {
+  if (e.dead || e.popping) return;
+  const v = e.armor > 0 ? dmg * .5 : dmg; e.hp -= v; p.damage += Math.min(v, e.hp + v);
+  g.events.push({ type: 'd', x: r1(e.x), y: r1(e.y), v: Math.round(v), d: 0, k: e.hp <= 0 ? 1 : 0, i: e.id });
+  if (e.hp <= 0) killEnemy(g, e, p.id);
+}
 function schedulePop(g, e, depth, owner, delay, chain) {
   if (e.popping) return; e.popping = true;
   g.pops.push({ e, depth, owner, t: delay, chain: chain ?? ++g.chainSeq }); // chain：同一串連鎖共用的編號，畫面用它合計傷害
@@ -233,6 +247,26 @@ function fireWeapons(g, p, dt) {
       if (!near.length) { p.cds[id] = .3; continue; }
       p.cds[id] = w.cd[i]; const R = w.radius[i] * s.area;
       for (let k = 0; k < w.n[i]; k++) { const t = near[Math.floor(g.rng() * near.length)]; g.zones.push({ kind: 'rain', x: t.x, y: t.y, r: R, t: w.delay, owner: p.id }); g.events.push({ type: 'zone', kind: 'rain', x: r1(t.x), y: r1(t.y), r: Math.round(R), t: w.delay }); }
+    } else if (id === 'spike' || id === 'lance') {
+      const t = nearest(g.enemies.filter(e => !e.dead && !e.popping), p.x, p.y); if (!t) { p.cds[id] = .1; continue; }
+      p.cds[id] = w.cd[i]; const base = Math.atan2(t.y - p.y, t.x - p.x), n = w.n[i];
+      for (let k = 0; k < n; k++) { const a = base + (k - (n - 1) / 2) * .18; g.bullets.push({ x: p.x, y: p.y, vx: Math.cos(a) * w.spd, vy: Math.sin(a) * w.spd, life: w.life, owner: p.id, pierce: w.pierce, dmg: w.dmg[i], hit: new Set() }); }
+    } else if (id === 'bolt' || id === 'thunder') {
+      const live = g.enemies.filter(e => !e.dead && !e.popping), first = nearest(live.filter(e => Math.hypot(e.x - p.x, e.y - p.y) <= w.reach), p.x, p.y);
+      if (!first) { p.cds[id] = .2; continue; }
+      p.cds[id] = w.cd[i]; const hit = new Set([first]), seg = [[p.x, p.y], [first.x, first.y]]; let cur = first;
+      for (let k = 0; k < w.jumps[i]; k++) { const nx = nearest(live.filter(e => !hit.has(e) && Math.hypot(e.x - cur.x, e.y - cur.y) <= w.hop * s.area), cur.x, cur.y); if (!nx) break; hit.add(nx); seg.push([nx.x, nx.y]); cur = nx; }
+      g.events.push({ type: 'bolt', id: p.id, pts: seg.map(q => [r1(q[0]), r1(q[1])]) });
+      for (const e of hit) hitEnemy(g, e, p, w.dmg[i]);
+    } else if (id === 'quake' || id === 'titan') {
+      const R = w.radius[i] * s.area, near = g.enemies.filter(e => !e.dead && !e.popping && Math.hypot(e.x - p.x, e.y - p.y) <= R + e.r);
+      if (!near.length) { p.cds[id] = .2; continue; }
+      p.cds[id] = w.cd[i]; g.events.push({ type: 'wave', id: p.id, x: r1(p.x), y: r1(p.y), r: Math.round(R), k: 1 });
+      for (const e of near) { const d = Math.hypot(e.x - p.x, e.y - p.y) || 1; if (e.type !== 'boss') { e.x = clamp(e.x + (e.x - p.x) / d * w.push, 0, ARENA.W); e.y = clamp(e.y + (e.y - p.y) / d * w.push, 0, ARENA.H); } hitEnemy(g, e, p, w.dmg[i]); }
+    } else if (id === 'foam' || id === 'flood') {
+      p.cds[id] = w.cd[i]; if (!p.ix && !p.iy && p.dashT <= 0) continue;
+      const R = w.radius[i] * s.area; g.zones.push({ kind: 'foam', x: p.x, y: p.y, r: R, t: w.life[i], tick: 0, dmg: w.dmg[i], every: w.tick, owner: p.id });
+      g.events.push({ type: 'zone', kind: 'foam', x: r1(p.x), y: r1(p.y), r: Math.round(R), t: w.life[i] });
     } else if (id === 'ball') {
       const t = nearest(free.filter(e => e.type !== 'boss' && Math.hypot(e.x - p.x, e.y - p.y) <= w.reach), p.x, p.y);
       if (!t) { p.cds[id] = .3; continue; }
@@ -245,6 +279,7 @@ function runZones(g, dt) {
   for (let i = g.zones.length - 1; i >= 0; i--) {
     const z = g.zones[i]; z.t -= dt;
     if (z.kind === 'pull') for (const e of g.enemies) { if (e.dead || e.state !== 'free' || e.type === 'boss') continue; const d = Math.hypot(z.x - e.x, z.y - e.y); if (d < z.r && d > 4) { e.x += (z.x - e.x) / d * z.pull * dt; e.y += (z.y - e.y) / d * z.pull * dt; } }
+    if (z.kind === 'foam') { z.tick -= dt; if (z.tick <= 0) { z.tick = z.every; const p = g.players[z.owner]; for (const e of g.enemies) if (!e.dead && !e.popping && Math.hypot(z.x - e.x, z.y - e.y) <= z.r + e.r) hitEnemy(g, e, p, z.dmg); } }
     if (z.t > 0) continue;
     g.zones.splice(i, 1);
     if (z.kind === 'rain') { const p = g.players[z.owner]; for (const e of g.enemies) if (!e.dead && e.state === 'free' && Math.hypot(z.x - e.x, z.y - e.y) <= z.r + e.r) wrapEnemy(g, e, p); }
@@ -255,8 +290,8 @@ function moveBullets(g, dt) {
     b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt;
     const p = g.players[b.owner];
     for (const e of g.enemies) {
-      if (e.dead || e.state !== 'free' || b.hit.has(e) || b.pierce <= 0) continue;
-      if (Math.hypot(e.x - b.x, e.y - b.y) <= e.r + 8) { b.hit.add(e); b.pierce--; wrapEnemy(g, e, p); }
+      if (e.dead || e.popping || (!b.dmg && e.state !== 'free') || b.hit.has(e) || b.pierce <= 0) continue;
+      if (Math.hypot(e.x - b.x, e.y - b.y) <= e.r + 8) { b.hit.add(e); b.pierce--; if (b.dmg) hitEnemy(g, e, p, b.dmg); else wrapEnemy(g, e, p); }
     }
     if (b.pierce <= 0 || b.x < 0 || b.y < 0 || b.x > ARENA.W || b.y > ARENA.H) b.life = 0;
   }
@@ -387,7 +422,7 @@ export function snapshot(g, { full = true } = {}) {
     phase: g.phase, over: g.over, t: r1(g.t), run: r1(g.run), solo: g.solo ? 1 : 0, cleared: g.cleared ? 1 : 0,
     pl: g.players.map(p => ({ id: p.id, x: q(p.x), y: q(p.y), f: r1(p.face), hp: q(p.hp), mh: stats(p).maxHp, dc: r1(p.dashCd), ds: p.dashT > 0 ? 1 : 0, wc: Object.fromEntries(Object.entries(p.cds).filter(([id]) => p.weapons[id]).map(([id, v]) => [id, r1(Math.max(0, v))])), a: p.alive ? 1 : 0, lv: p.level, xp: q(p.xp), need: xpNeed(p.level), w: p.weapons, ps: p.passives, ch: p.choices, rr: p.rerolls, k: p.kills, dm: q(p.damage), q: p.queue })),
     en: g.enemies.map(e => [e.id, e.type, q(e.x), q(e.y), e.state === 'wrapped' ? 1 : 0, Math.max(1, q(e.hp / e.hpMax * 100)), e.armor ? 1 : 0]),
-    b: g.bullets.map(b => [q(b.x), q(b.y), q(b.vx), q(b.vy)]), eb: g.ebullets.map(b => [q(b.x), q(b.y), q(b.vx), q(b.vy)]), sh: g.shards.map(s => [q(s.x), q(s.y)]),
+    b: g.bullets.map(b => [q(b.x), q(b.y), q(b.vx), q(b.vy), b.dmg ? 1 : 0]), eb: g.ebullets.map(b => [q(b.x), q(b.y), q(b.vx), q(b.vy)]), sh: g.shards.map(s => [q(s.x), q(s.y)]),
     boss: g.boss ? { hp: q(g.boss.hp), max: q(g.boss.hpMax) } : null,
   };
   if (full) { o.seed = g.seed; g.players.forEach((p, i) => Object.assign(o.pl[i], { name: p.name, uid: p.uid, look: p.look })); }

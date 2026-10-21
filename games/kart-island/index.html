@@ -283,6 +283,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
 const STEP_DT = .05, INTERP_MS = 100;
+const perf = { ema: 1 / 60, at: 0, gaps: [], lastSnap: 0, rtt: null, debug: new URLSearchParams(location.search).has('debug'), el: null, shown: 0 }; // 掉幀診斷與自動降解析度
 
 /* ---------- Telegram ---------- */
 const TG = window.Telegram?.WebApp, inTelegram = !!(TG && TG.initData), tgUser = inTelegram ? TG.initDataUnsafe?.user : null;
@@ -530,15 +531,21 @@ function makePuddle() { const g = new THREE.Group(); const ring = new THREE.Mesh
 let mapScale = 1;
 const mapCv = $('map'), mapX = mapCv.getContext('2d');
 const mp = (x, y) => [12 + (x - bx0) * mapScale, 12 + (y - by0) * mapScale];
-function drawMap(karts, me) {
-  mapX.clearRect(0, 0, 224, 224);
-  mapX.beginPath(); for (let j = 0; j <= TRACK.N; j++) { const [x, y] = mp(TRACK.xs[j % TRACK.N], TRACK.ys[j % TRACK.N]); j ? mapX.lineTo(x, y) : mapX.moveTo(x, y); }
-  mapX.lineJoin = 'round'; mapX.lineWidth = 16; mapX.strokeStyle = INK; mapX.stroke(); mapX.lineWidth = 10; mapX.strokeStyle = '#fff1dc'; mapX.stroke();
+let mapBase = null, mapBaseKey = '';
+function mapLayer() { // 賽道底圖只畫一次，每幀只貼圖再畫車點
+  const key = `${trackId}|${mapScale}|${bx0}|${by0}`; if (key === mapBaseKey) return mapBase;
+  mapBaseKey = key; mapBase = document.createElement('canvas'); mapBase.width = mapBase.height = 224; const c = mapBase.getContext('2d');
+  c.beginPath(); for (let j = 0; j <= TRACK.N; j++) { const [x, y] = mp(TRACK.xs[j % TRACK.N], TRACK.ys[j % TRACK.N]); j ? c.lineTo(x, y) : c.moveTo(x, y); }
+  c.lineJoin = 'round'; c.lineWidth = 16; c.strokeStyle = INK; c.stroke(); c.lineWidth = 10; c.strokeStyle = '#fff1dc'; c.stroke();
   if (ELEV) { // 高架路段用橋面顏色標出來
-    mapX.beginPath(); let on = false;
-    for (let j = 0; j <= TRACK.N; j++) { const i = j % TRACK.N, [x, y] = mp(TRACK.xs[i], TRACK.ys[i]); if (EL[i] > 1) { on ? mapX.lineTo(x, y) : mapX.moveTo(x, y); on = true; } else on = false; }
-    mapX.strokeStyle = Core.trackById(trackId).theme.deck; mapX.stroke();
+    c.beginPath(); let on = false;
+    for (let j = 0; j <= TRACK.N; j++) { const i = j % TRACK.N, [x, y] = mp(TRACK.xs[i], TRACK.ys[i]); if (EL[i] > 1) { on ? c.lineTo(x, y) : c.moveTo(x, y); on = true; } else on = false; }
+    c.strokeStyle = Core.trackById(trackId).theme.deck; c.stroke();
   }
+  return mapBase;
+}
+function drawMap(karts, me) {
+  mapX.clearRect(0, 0, 224, 224); mapX.drawImage(mapLayer(), 0, 0);
   for (const k of [...karts].sort((a, b) => (a.id === me) - (b.id === me))) { const [x, y] = mp(k.x, k.y); mapX.beginPath(); mapX.arc(x, y, k.id === me ? 9 : 6.5, 0, Math.PI * 2); mapX.fillStyle = k.color; mapX.fill(); mapX.lineWidth = 3; mapX.strokeStyle = INK; mapX.stroke(); }
 }
 const ITEM_ICON = {
@@ -1048,9 +1055,11 @@ function onNet(m) {
     toast(`${Core.MODES[m.s.mode]?.label || '道具賽'}：${Core.trackById(m.s.track).name}`, 1600);
     if (m.me == null) toast('觀戰中', 1200);
   }
+  else if (m.t === 'pong') perf.rtt = Math.round(performance.now() - m.at);
   else if (m.t === 's') {
     if (m.s.full === 0) { if (net.base?.seed !== m.s.seed) return; m.s = Core.expandFrame(m.s, net.base); } // 精簡快照：用開局的完整快照補回名字、顏色、道具箱座標
     if (!V || V.s.seed !== m.s.seed) { resetClock(); buildView(m.s, null); playing = !m.s.over; }
+    { const t = performance.now(); if (perf.lastSnap) { perf.gaps.push(t - perf.lastSnap); if (perf.gaps.length > 60) perf.gaps.shift(); } perf.lastSnap = t; }
     syncClock(m.s); buf.push({ s: m.s }); if (buf.length > 12) buf.shift();
     applySnap(m.s, m.ev || []);
   }
@@ -1104,8 +1113,20 @@ function lockWarn(d, t) {
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 let last = performance.now();
+function perfTick(now, raw) {
+  if (raw < .2) perf.ema += (raw - perf.ema) * .05; // 切分頁或載入卡頓的長幀不算
+  if (now - perf.at < 1000) return; perf.at = now;
+  const dpr = renderer.getPixelRatio(); // 連續偏慢就一次降 0.25 倍解析度，最低 1 倍
+  if (perf.ema > .026 && dpr > 1.01 && V) { renderer.setPixelRatio(Math.max(1, dpr - .25)); resize(); perf.ema = 1 / 60; }
+  if (net.ws?.readyState === 1 && perf.debug) net.send({ t: 'ping', at: performance.now() });
+  if (!perf.debug) return;
+  if (!perf.el) { perf.el = document.createElement('div'); perf.el.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99;font:11px/1.4 monospace;background:rgba(0,0,0,.65);color:#9f9;padding:4px 8px;border-radius:6px;pointer-events:none;white-space:pre'; document.body.append(perf.el); }
+  const g = perf.gaps, avg = g.length ? g.reduce((a, c) => a + c, 0) / g.length : 0, max = g.length ? Math.max(...g) : 0, i = renderer.info.render;
+  perf.el.textContent = `fps ${(1 / perf.ema).toFixed(0)}  dpr ${renderer.getPixelRatio().toFixed(2)}\ncalls ${i.calls}  tris ${(i.triangles / 1000).toFixed(0)}k\n封包間隔 平均 ${avg.toFixed(0)} 最大 ${max.toFixed(0)} ms\nRTT ${perf.rtt ?? '-'} ms`;
+}
 function tick(now) {
   requestAnimationFrame(tick);
+  perfTick(now, (now - last) / 1000);
   const dt = Math.min(.05, (now - last) / 1000), t = now / 1000; last = now;
   rampSteer(dt);
   if (mode === 'offline' && local && V) {
@@ -1126,6 +1147,7 @@ function tick(now) {
   } else { orbitCam(dt); $('wrongWay').hidden = $('lockWarn').hidden = $('resetBtn').hidden = $('pauseBtn').hidden = true; document.body.classList.remove('foamed'); }
   renderer.render(scene, camera);
 }
+window.BubbleKart = { renderer, scene };
 requestAnimationFrame(tick);
 
 /* ---------- 外觀與進場：外觀由大廳設定；沒設定過就先跳選擇視窗 ---------- */

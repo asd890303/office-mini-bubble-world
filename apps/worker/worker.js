@@ -1,11 +1,12 @@
 // 泡泡碰碰島 — Cloudflare Worker + Durable Object (single room "main"), server-authoritative.
-// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
+// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、TOGETHER_ROOM (class TogetherRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
 import * as Core from '../../games/bubble-island/game-core.js';
 import * as KartCore from '../../games/kart-island/kart-core.js';
 import * as ArtilleryCore from '../../games/artillery/artillery-core.js';
 import * as RunCore from '../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../games/bubble-survivors/survivors-core.js';
 import * as PartyCore from '../../games/party/party-core.js';
+import * as TogetherCore from '../../games/bubble-together/together-core.js';
 
 const TICK_MS = 50, LOBBY_MS = 20000, END_MS = 8000, AUTH_MAX_AGE = 86400, LOBBY_PUSH_MS = 500;
 // 線上房間只給真人玩：湊滿 MIN_PLAYERS 才倒數開局；斷線超過 GRACE_MS 判出局
@@ -23,7 +24,7 @@ const RECORD_PREFIX = 'best:', RECORD_TOP = 3, KART_MIN_TIME = 5;
 // 泡泡賽車單人紀錄：開跑時發的票 SOLO_TICKET_MS 內有效；同一人兩次送出至少隔 RECORD_GAP_MS
 const SURVIVE_SOLO_TTL = 30 * 60 * 1000; // 泡泡倖存者單人紀錄：票的有效時間
 const RUN_SOLO_TTL = 30 * 60 * 1000, RUN_SLACK = 3; // 泡泡跑跑單人紀錄：票的有效時間；成績不能超過「票發出後經過的時間跑得出的最大距離」再多 RUN_SLACK 公尺
-const SOLO_TICKET_MS = 10 * 60 * 1000, RECORD_GAP_MS = 5000;
+const SOLO_TICKET_MS = 10 * 60 * 1000, RECORD_GAP_MS = 5000, TOGETHER_MIN_TIME = 20;
 // 泡泡島與泡泡砲戰單人紀錄（單場擊敗數）：max 單場最多能擊敗幾人，perKill 每擊敗一人至少要花的秒數，ttl 票的有效時間。單人版在瀏覽器裡跑，伺服器只能擋明顯不合理的成績
 const KILL_SOLO = { bubble: { max: 3, perKill: 5, ttl: 15 * 60 * 1000 }, artillery: { max: 3, perKill: 8, ttl: 40 * 60 * 1000 } };
 // 泡泡砲戰：每人每回合最多送幾個標記、幾句快捷訊息
@@ -262,7 +263,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(env) });
-    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
+    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/together/ws': 'TOGETHER_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
     if (binding) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
       const origin = req.headers.get('Origin');
@@ -271,7 +272,7 @@ export default {
       if (!u) return new Response('unauthorized', { status: 401 });
       const h = new Headers(req.headers); h.set('X-TG-User', encodeURIComponent(JSON.stringify(u)));
       const room = env[binding];
-      return room.get(room.idFromName('main')).fetch(new Request(req, { headers: h }));
+      return room.get(room.idFromName('main'), binding === 'TOGETHER_ROOM' ? { locationHint: 'apac' } : undefined).fetch(new Request(req, { headers: h })); // 新房間建在亞太區，降低延遲
     }
     if (url.pathname === '/kart/solo' || url.pathname === '/kart/record') return handleKartSolo(req, url, env);
     if (url.pathname === '/run/solo' || url.pathname === '/run/record') return handleRunSolo(req, url, env);
@@ -698,13 +699,34 @@ export class PartyRoom extends GameRoom {
   }
 }
 
+/* ---------- 泡泡Together 房間：沿用 GameRoom 的大廳、倒數、斷線寬限、掛機踢除；只有真人，2 到 4 人，沒有電腦補位 ---------- */
+export class TogetherRoom extends GameRoom {
+  constructor(ctx, env) { super(ctx, env); this.core = TogetherCore; this.gameId = 'together'; }
+  gamePlayers() { return this.game?.players || []; }
+  newGame(seed) { return this.core.createGame({ seed, humans: this.lobby }); }
+  onInput(p, m) {
+    if (m.t === 'in') this.core.setInput(this.game, p.id, { x: m.x, jump: !!m.j, act: !!m.a });
+    else if (m.t === 'place') this.core.place(this.game, p.id, Number(m.i) | 0, m.x, m.y);
+  }
+  stopPlayer(p) { this.core.setInput(this.game, p.id, {}); }
+  expire(p) { this.core.forfeit(this.game, p.id); }
+  frame() { return this.core.snapshot(this.game, { full: false }); }
+  alive(p) { return !p.gone; }
+  isWin(r) { return !!r.win; }
+  recordStats(p) { return p.win && !p.gone && p.time >= TOGETHER_MIN_TIME ? { time: p.time, n: p.n } : null; }
+  resultText(r) {
+    const type = { run: '橫向闖關', rush: '追逐', climb: '攀爬' }[r.type] || r.type;
+    return `🫧 泡泡Together ${r.win ? '過關' : '失敗'}（${type}・${Math.round(r.time)} 秒）\n` + r.players.map(p => `${p.done ? '✅' : '❌'} ${p.name}｜倒下 ${p.deaths} 次｜${p.points} 分`).join('\n');
+  }
+}
+
 // /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS。新遊戲在這裡加一個欄位
 function emptyGameBoard() {
-  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [], speed: [], speedHard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] }, run: { score: [] }, survive: { time: [] } };
+  return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [], speed: [], speedHard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] }, run: { score: [] }, survive: { time: [] }, together: { time: [] } };
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
-const LOBBY = { W: 18, H: 20, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
+const LOBBY = { W: 18, H: 26, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party', 'together'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
 export class LobbyRoom {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
   async fetch(req) {
@@ -788,6 +810,10 @@ export class LobbyRoom {
         const m = Number(e.stats.score), sec = Number(e.stats.time);
         if (!Number.isInteger(m) || m < 1 || !Number.isFinite(sec) || sec <= 0 || sec > RunCore.MAX_TIME || m > RunCore.scoreOf(RunCore.distAt(sec)) + RUN_SLACK) continue;
         rows.push({ key: `${RECORD_PREFIX}run:score`, uid: String(e.uid), name, v: m, t: Math.round(sec * 100) / 100, low: false });
+      } else if (body.game === 'together') {
+        const sec = Number(e.stats.time), n = Number(e.stats.n);
+        if (!Number.isFinite(sec) || sec < TOGETHER_MIN_TIME || sec > TogetherCore.RUN_LIMIT || !Number.isInteger(n) || n < TogetherCore.MIN_PLAYERS || n > TogetherCore.MAX_PLAYERS) continue;
+        rows.push({ key: `${RECORD_PREFIX}together:time`, uid: String(e.uid), name, v: Math.round(sec * 100) / 100, k: n, low: true });
       } else if (body.game === 'bubble') {
         const k = Number(e.stats.kills);
         if (!Number.isInteger(k) || k < 1 || k > 50) continue;
@@ -820,6 +846,7 @@ export class LobbyRoom {
     out.bubble.kills = ((await st.get(`${RECORD_PREFIX}bubble:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));
     out.artillery.kills = ((await st.get(`${RECORD_PREFIX}artillery:kills`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, kills: x.v }));
     out.survive.time = ((await st.get(`${RECORD_PREFIX}survive:time`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.t, kills: x.k }));
+    out.together.time = ((await st.get(`${RECORD_PREFIX}together:time`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, time: x.v, n: x.k }));
     out.run.score = ((await st.get(`${RECORD_PREFIX}run:score`)) || []).map((x, i) => ({ rank: i + 1, name: x.name, score: x.v, time: x.t }));
     this.gameCache = out; this.gameAt = this.now();
     return out;

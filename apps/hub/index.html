@@ -13,63 +13,68 @@ html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: non
 canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 .top { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; pointer-events: none; }
 .top > * { pointer-events: auto; }
-.title { padding: 4px 14px; font-weight: 900; font-size: 15px; border-width: 2px; }
-.chip { cursor: pointer; padding: 2px 12px; font-size: 12px; font-weight: 700; border-width: 2px; border-radius: 999px; }
+.title { padding: 5px 16px; font-weight: 900; font-size: 19px; border-width: 2px; }
+.chip { cursor: pointer; padding: 3px 14px; font-size: 15px; font-weight: 700; border-width: 2px; border-radius: 999px; }
 .pad { position: fixed; bottom: max(18px, env(safe-area-inset-bottom)); left: 22px; display: none; pointer-events: none; }
 body.touch .pad { display: block; }
 .stick { width: 140px; height: 140px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 70%, transparent); position: relative; pointer-events: auto; touch-action: none; }
 .knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: var(--pink); border: 3px solid var(--ink); }
-.keys { position: fixed; bottom: 12px; left: 12px; font-size: 12px; padding: 6px 12px; }
+.keys { position: fixed; bottom: 12px; left: 12px; font-size: 15px; padding: 8px 14px; }
+.top .btn { font-size: 16px; padding: 7px 18px; }
 body.touch .keys { display: none; }
-.zone { position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); transform: translate(-50%, 140%); width: min(340px, calc(100% - 24px)); padding: 14px 16px; text-align: center; transition: transform .22s; z-index: 5; }
-body.touch .zone { bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; transform: translate(0, 300%); width: min(250px, calc(100% - 190px)); padding: 10px 12px; }
-.zone.show { transform: translate(-50%, 0); }
+.zone { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(400px, calc(100% - 28px)); padding: 20px 22px; text-align: left; transition: transform .22s; z-index: 5; }
+body.touch .zone { bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); top: auto; left: auto; text-align: center; right: 12px; transform: translate(0, 300%); width: min(250px, calc(100% - 190px)); padding: 10px 12px; }
+.zone.show { transform: translate(0, 0); }
 body.touch .zone.show { transform: translate(0, 0); }
-.zone h2 { margin: 0; font-size: 20px; font-weight: 900; }
-.zone p { margin: 2px 0 8px; font-size: 12.5px; color: var(--ink-soft); }
-.zone .btn { display: block; width: 100%; margin-top: 6px; padding: 9px; font-size: 16px; font-weight: 900; }
+body.touch .zone h2 { font-size: 22px; }
+body.touch .zone p { font-size: 14px; margin: 4px 0 8px; }
+body.touch .zone .btn { font-size: 18px; padding: 9px; }
+body.touch .zstat { font-size: 15px; }
+.zone h2 { margin: 0; font-size: 30px; font-weight: 900; }
+.zone p { margin: 8px 0 12px; font-size: 17px; line-height: 1.55; color: var(--ink); }
+.zone .btn { display: block; width: 100%; margin-top: 8px; padding: 12px; font-size: 21px; font-weight: 900; text-align: center; }
 .zone .btn[disabled] { opacity: .5; cursor: default; }
-.zstat { font-size: 14px; font-weight: 900; margin: -2px 0 6px; }
+.zstat { font-size: 18px; font-weight: 900; margin: 0 0 8px; padding: 6px 12px; background: var(--chip); border: 2px solid var(--line); border-radius: 12px; }
 .zstat:empty { display: none; }
-.zone small { display: block; margin-top: 6px; font-size: 11.5px; color: var(--ink-soft); }
-.who { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 44px); right: 10px; width: min(200px, calc(100% - 20px)); max-height: 45vh; overflow: auto; padding: 6px 10px; border-width: 2px; border-radius: 14px; font-size: 13px; z-index: 4; }
+.zone small { display: block; margin-top: 10px; font-size: 14px; color: var(--ink-soft); }
+.who { position: fixed; top: calc(max(10px, env(safe-area-inset-top)) + 44px); right: 10px; width: min(240px, calc(100% - 20px)); max-height: 45vh; overflow: auto; padding: 6px 10px; border-width: 2px; border-radius: 14px; font-size: 16px; z-index: 4; }
 .who[hidden] { display: none; }
 .who div { display: flex; align-items: center; gap: 6px; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .who small.play { color: #e0557a; font-weight: 900; }
 .who-tip { position: fixed; z-index: 7; width: 148px; padding: 8px 8px 10px; text-align: center; pointer-events: none; }
 .who-tip[hidden] { display: none; }
 .who-tip .slot { width: 132px; height: 132px; margin: 0 auto; border-radius: 50%; background: radial-gradient(circle at 50% 62%, var(--chip) 0 55%, transparent 70%); }
-.who-tip b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.who-tip small { display: block; font-size: 12px; color: var(--ink-soft); }
+.who-tip b { display: block; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who-tip small { display: block; font-size: 14px; color: var(--ink-soft); }
 .who i { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); flex: none; }
 .who small { color: var(--ink-soft); }
-.board { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(460px, calc(100% - 28px)); max-height: calc(100% - 150px); overflow: auto; padding: 16px 20px; z-index: 6; transition: transform .22s; }
+.board { position: fixed; left: 14px; top: calc(max(10px, env(safe-area-inset-top)) + 56px); transform: translate(-130%, 0); width: min(520px, calc(100% - 28px)); max-height: calc(100% - 150px); overflow: auto; padding: 16px 20px; z-index: 6; transition: transform .22s; }
 .board.show { transform: translate(0, 0); }
 body.touch .board { top: auto; bottom: max(176px, calc(env(safe-area-inset-bottom) + 160px)); left: auto; right: 12px; width: min(300px, calc(100% - 190px)); max-height: 42%; transform: translate(0, 300%); }
 body.touch .board.show { transform: translate(0, 0); }
-.board h2 { margin: 0; font-size: 26px; font-weight: 900; text-align: center; }
-.board p { margin: 4px 0 10px; font-size: 14px; color: var(--ink-soft); text-align: center; }
-.board ol { list-style: none; margin: 0; padding: 0; font-size: 17px; }
+.board h2 { margin: 0; font-size: 30px; font-weight: 900; text-align: center; }
+.board p { margin: 4px 0 10px; font-size: 16px; color: var(--ink-soft); text-align: center; }
+.board ol { list-style: none; margin: 0; padding: 0; font-size: 20px; }
 .board li { display: flex; justify-content: space-between; gap: 8px; padding: 7px 4px; border-bottom: 1px dashed var(--line); }
 .board li:last-child { border: 0; }
 .board li b { font-variant-numeric: tabular-nums; }
 .board li span small { color: var(--ink-soft); margin-left: 6px; }
 .board .tabs { display: flex; gap: 6px; justify-content: center; margin: 10px 0 6px; }
-.board .tabs button { flex: 1; min-width: 0; padding: 7px 4px; font: inherit; font-size: 15px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.board .tabs button { flex: 1; min-width: 0; padding: 8px 4px; font: inherit; font-size: 17px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
 .board .tabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
-.board h3 { margin: 10px 0 2px; font-size: 17px; font-weight: 900; }
+.board h3 { margin: 10px 0 2px; font-size: 20px; font-weight: 900; }
 .board .subtabs { display: flex; gap: 6px; justify-content: center; margin: 4px 0 8px; }
-.board .subtabs button { padding: 4px 18px; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
+.board .subtabs button { padding: 5px 20px; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink-soft); background: transparent; border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; }
 .board .subtabs button.on { color: var(--ink); background: var(--chip); border-color: var(--ink); }
 .board h3:first-child { margin-top: 0; }
-.board .ver { text-align: center; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
-.board .news { list-style: none; margin: 4px 0 0; padding: 0; font-size: 15px; }
+.board .ver { text-align: center; font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; letter-spacing: .04em; }
+.board .news { list-style: none; margin: 4px 0 0; padding: 0; font-size: 17px; }
 .board .news > li { display: block; padding: 8px 4px; border-bottom: 1px dashed var(--line); }
 .board .news > li:last-child { border: 0; }
-.board .news b { display: block; font-size: 15px; margin-bottom: 2px; }
-.board .news em { font-style: normal; font-size: 12px; font-weight: 900; padding: 0 7px; margin-right: 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--chip); }
-.board .news p { margin: 3px 0; text-align: left; font-size: 14px; color: var(--ink); line-height: 1.45; }
-.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 14px; font-weight: 900; padding: 4px 16px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
+.board .news b { display: block; font-size: 18px; margin-bottom: 2px; }
+.board .news em { font-style: normal; font-size: 14px; font-weight: 900; padding: 0 7px; margin-right: 6px; border: 1.5px solid var(--ink); border-radius: 999px; background: var(--chip); }
+.board .news p { margin: 3px 0; text-align: left; font-size: 16px; color: var(--ink); line-height: 1.5; }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 46px); transform: translate(-50%, 0); font-size: 18px; font-weight: 900; padding: 6px 20px; border-width: 2px; opacity: 0; pointer-events: none; transition: opacity .2s; white-space: nowrap; }
 .toast.show { opacity: 1; }
 </style>
 </head>
@@ -89,7 +94,7 @@ body.touch .board.show { transform: translate(0, 0); }
 </div>
 <div class="who box" id="who" hidden></div>
 <div class="who-tip box" id="whoTip" hidden><div class="slot" id="tipSlot"></div><b id="tipName"></b><small id="tipLook"></small></div>
-<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button><button data-tab="run">跑跑</button><button data-tab="survive">倖存者</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
+<div class="board box" id="board"><h2 id="boardTitle">總積分榜</h2><div class="tabs" id="boardTabs"><button data-tab="total" class="on">總積分</button><button data-tab="kart">賽車</button><button data-tab="bubble">泡泡島</button><button data-tab="artillery">砲戰</button><button data-tab="run">跑跑</button><button data-tab="together">Together</button><button data-tab="survive">倖存者</button></div><p id="boardNote">連線對戰才計分，每場依名次給 5、3、2、1 分</p><div id="boardGames" hidden></div><ol id="boardList"><li>載入中…</li></ol></div>
 <div class="board box" id="notice"><h2>布告欄</h2><p>目前版本</p><div class="ver" id="noticeVer">載入中…</div><h3>更新資訊</h3><ul class="news" id="noticeNews"></ul></div>
 <div class="toast box" id="toast"></div>
 
@@ -98,7 +103,7 @@ body.touch .board.show { transform: translate(0, 0); }
 </script>
 <script type="module">
 import * as THREE from 'three';
-import { toon, G, boxOutline, makeCritter, animateCritter, addNameTag } from '/shared/three-kit.js';
+import { toon, G, boxOutline, makeCritter, makeLiteCritter, animateCritter, addNameTag } from '/shared/three-kit.js';
 import { ITEM_ART, GAME_ART, badgeFrame, INK } from '/shared/draw.js';
 import { loadAppearance, openAvatarPicker, createCritterPreview, EARS, EYES } from '/shared/avatar.js';
 import { watchUpdates } from '/shared/update.js';
@@ -107,7 +112,7 @@ import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const W = 18, H = 20; // 大廳大小（格），與 apps/worker/worker.js 的 LOBBY 一致
+const W = 18, H = 26; // 大廳大小（格），與 apps/worker/worker.js 的 LOBBY 一致
 const SPEED = 4.2;
 
 /* ---------- Telegram ---------- */
@@ -121,6 +126,7 @@ const ROOMS = [
   { id: 'artillery', title: '泡泡砲戰', blurb: '3 對 3 輪流砲擊，2–6 人，電腦遊玩', color: '#4cd68a', x0: 13.2, x1: 17.2, y0: .8, y1: 4.6, path: '/artillery/', art(x) { GAME_ART.artillery(x); } },
   { id: 'run', title: '泡泡跑跑', blurb: '一直往前跑，跳過障礙，越遠越高分，單人或 2–4 人同場', color: '#ffb04d', x0: 3.9, x1: 7.9, y0: 8.2, y1: 12, path: '/run/', art(x) { GAME_ART.run(x); } },
   { id: 'survive', title: '泡泡倖存者', blurb: '包住敵人再戳破連鎖，升級配出自己的組合，單人或 2–4 人合作', color: '#8d7bd8', x0: 10.1, x1: 14.1, y0: 8.2, y1: 12, path: '/survive/', art(x) { GAME_ART.survive(x); } },
+  { id: 'together', title: '泡泡Together', blurb: '2–4 人合作闖關：疊羅漢、抱隊友丟過去、輪流壓機關。每局關卡都不同，全員到終點才過關', color: '#6fd0c4', x0: 7, x1: 11, y0: 19.6, y1: 23.4, path: '/together/', online: true, art(x) { GAME_ART.together(x); } },
   { id: 'party', title: '泡泡派對', blurb: '把別人擠下擂台，3 關比積分，單人或 2–6 人（空位補電腦）', color: '#c9b6ff', x0: 7, x1: 11, y0: 13.6, y1: 17.4, path: '/party/', art(x) { GAME_ART.party(x); } },
 ];
 
@@ -146,7 +152,7 @@ function signTexture(r) { // 房間招牌：白底粗描邊的牌子 + 徽章 + 
   const b = document.createElement('canvas'); b.width = b.height = 128; const bx = b.getContext('2d'); badgeFrame(bx, r.color);
   if (r.art) r.art(bx); else { bx.font = '900 56px "Zen Maru Gothic",sans-serif'; bx.textAlign = 'center'; bx.textBaseline = 'middle'; bx.lineJoin = 'round'; bx.lineWidth = 8; bx.strokeStyle = INK; bx.strokeText('?', 64, 68); bx.fillStyle = '#fff'; bx.fillText('?', 64, 68); }
   x.drawImage(b, 24, 24, 128, 128);
-  x.font = '900 50px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = INK; x.fillText(r.title, 164, 90, 330);
+  x.font = '900 58px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillStyle = INK; x.fillText(r.title, 164, 90, 332);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
 for (const r of ROOMS) { // 每間：底板 + 兩根門柱 + 橫樑 + 招牌
@@ -155,7 +161,7 @@ for (const r of ROOMS) { // 每間：底板 + 兩根門柱 + 橫樑 + 招牌
   const inner = new THREE.Mesh(G.box, toon(r.soon ? '#faf5f5' : '#fffdf8')); inner.scale.set(w - .7, .02, d - .7); inner.position.set(0, .13, 0); g.add(inner);
   for (const s of [-1, 1]) { const p = new THREE.Mesh(G.box, toon(col)); p.scale.set(.4, 1.5, .4); p.position.set(s * (w / 2 - .2), .8, -d / 2 + .2); boxOutline(p, .4, 1.5, .4); g.add(p); }
   const beam = new THREE.Mesh(G.box, toon(col)); beam.scale.set(w, .3, .4); beam.position.set(0, 1.6, -d / 2 + .2); boxOutline(beam, w, .3, .4); g.add(beam);
-  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(r), transparent: true })); sign.scale.set(3.4, 1.17, 1); sign.position.set(0, 2.5, -d / 2 + .2); g.add(sign);
+  const sign = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(r), transparent: true })); sign.scale.set(4, 1.375, 1); sign.position.set(0, 2.5, -d / 2 + .2); g.add(sign);
   g.position.set(wx(cx), 0, wz(cy)); root.add(g);
 }
 
@@ -167,13 +173,13 @@ const boardTex = new THREE.CanvasTexture(boardCv); boardTex.colorSpace = THREE.S
 function drawBoard() {
   const x = boardCv.getContext('2d'); x.clearRect(0, 0, 512, 340);
   x.beginPath(); x.roundRect(8, 8, 496, 324, 34); x.fillStyle = '#fffdf8'; x.fill(); x.lineWidth = 10; x.strokeStyle = INK; x.stroke();
-  x.fillStyle = INK; x.textBaseline = 'middle'; x.font = '900 46px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'center'; x.fillText('總積分榜', 256, 58);
+  x.fillStyle = INK; x.textBaseline = 'middle'; x.font = '900 62px "Zen Maru Gothic","PingFang TC",sans-serif'; x.textAlign = 'center'; x.fillText('總積分榜', 256, 62);
   const top = boardData?.top?.slice(0, 3) || [], medal = ['#ffd24d', '#d9dde3', '#e6a06b'];
-  if (!top.length) { x.font = '700 30px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(boardData ? '還沒有連線成績' : '載入中…', 256, 190); }
+  if (!top.length) { x.font = '700 40px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(boardData ? '還沒有連線成績' : '載入中…', 256, 190); }
   top.forEach((p, i) => {
     const y = 128 + i * 70; x.beginPath(); x.arc(56, y, 24, 0, Math.PI * 2); x.fillStyle = medal[i]; x.fill(); x.lineWidth = 5; x.strokeStyle = INK; x.stroke();
     x.fillStyle = INK; x.textAlign = 'center'; x.font = '900 28px sans-serif'; x.fillText(String(i + 1), 56, y + 1);
-    x.textAlign = 'left'; x.font = '900 36px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(p.name, 98, y, 260);
+    x.textAlign = 'left'; x.font = '900 42px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText(p.name, 98, y, 240);
     x.textAlign = 'right'; x.fillText(`${p.points} 分`, 478, y);
   });
   boardTex.needsUpdate = true;
@@ -209,10 +215,10 @@ const noticeTex = new THREE.CanvasTexture(noticeCv); noticeTex.colorSpace = THRE
 function drawNotice() {
   const x = noticeCv.getContext('2d'); x.clearRect(0, 0, 512, 340);
   x.beginPath(); x.roundRect(8, 8, 496, 324, 34); x.fillStyle = '#fffdf8'; x.fill(); x.lineWidth = 10; x.strokeStyle = INK; x.stroke();
-  x.fillStyle = INK; x.textBaseline = 'middle'; x.textAlign = 'center'; x.font = '900 46px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('布告欄', 256, 58);
-  x.font = '700 30px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('目前版本', 256, 150);
-  x.font = '900 52px sans-serif'; x.fillText(buildId || '載入中…', 256, 220);
-  x.font = '700 26px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('站上來看更新資訊', 256, 288);
+  x.fillStyle = INK; x.textBaseline = 'middle'; x.textAlign = 'center'; x.font = '900 62px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('布告欄', 256, 62);
+  x.font = '700 40px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('目前版本', 256, 150);
+  x.font = '900 64px sans-serif'; x.fillText(buildId || '載入中…', 256, 224);
+  x.font = '700 34px "Zen Maru Gothic","PingFang TC",sans-serif'; x.fillText('站上來看更新資訊', 256, 288, 460);
   noticeTex.needsUpdate = true;
 }
 placeMat(NOTICE, noticeTex); drawNotice();
@@ -223,7 +229,7 @@ async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
 }
 /* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
-const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '道具賽・連線和單人普通電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' }, run: { title: '跑跑紀錄', note: '單場跑最遠前 3 名（公尺與秒數），連線與單人都算' }, survive: { title: '倖存者紀錄', note: '單場存活最久前 3 名（秒數與擊殺數），連線與單人都算' } };
+const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '道具賽・連線和單人普通電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' }, run: { title: '跑跑紀錄', note: '單場跑最遠前 3 名（公尺與秒數），連線與單人都算' }, together: { title: 'Together 紀錄', note: '全員過關最快前 3 名（秒數與人數），只記連線過關' }, survive: { title: '倖存者紀錄', note: '單場存活最久前 3 名（秒數與擊殺數），連線與單人都算' } };
 let boardTab = 'total', gamesData = null, kartDiff = 'normal', kartMode = 'item'; // 賽車分頁裡可以切換模式（道具賽／競速賽）與電腦難度，各自一份榜
 async function loadGames() {
   try { const r = await fetch('/board/games', { cache: 'no-store' }); if (r.ok) { gamesData = await r.json(); renderGames(); } } catch {}
@@ -241,6 +247,7 @@ function renderGames() {
   }
   else if (boardTab === 'bubble') el.innerHTML = recList(gamesData.bubble?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
   else if (boardTab === 'artillery') el.innerHTML = recList(gamesData.artillery?.kills, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>擊敗 ${p.kills}</b></li>`);
+  else if (boardTab === 'together') el.innerHTML = recList(gamesData.together?.time, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${p.time} 秒・${p.n} 人</b></li>`);
   else if (boardTab === 'survive') el.innerHTML = recList(gamesData.survive?.time, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${p.time} 秒・${p.kills} 殺</b></li>`);
   else if (boardTab === 'run') el.innerHTML = recList(gamesData.run?.score, p => `<li><span>${p.rank}. ${esc(p.name)}</span><b>${p.score} 公尺・${p.time != null ? p.time + ' 秒' : '—'}</b></li>`);
 }
@@ -302,7 +309,8 @@ function inputDir() {
 const me = { x: W / 2, y: H - 1.8, f: 0, c: null, avatar: null, moving: false };
 const ring = new THREE.Mesh(new THREE.RingGeometry(.52, .7, 40), new THREE.MeshBasicMaterial({ color: 0xff8fab, transparent: true, opacity: .85, side: THREE.DoubleSide, depthWrite: false }));
 ring.rotation.x = -Math.PI / 2; ring.position.y = .04; root.add(ring);
-function spawn(avatar, name) { const c = makeCritter(avatar); if (name) addNameTag(c, name); root.add(c.root); return c; }
+function spawn(avatar, name, lite = false) { const c = lite ? makeLiteCritter(avatar) : makeCritter(avatar); if (name && !lite) addNameTag(c, name); root.add(c.root); return c; }
+const LITE_AT = 8; // 別人超過這個人數就改用精簡造型，避免畫面物件太多掉幀
 function setMeAvatar(a) { me.avatar = a; if (me.c) root.remove(me.c.root); me.c = spawn(a); net.send({ t: 'look', color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush }); }
 
 let playTex = null;
@@ -367,10 +375,11 @@ function onNet(m) {
   else if (m.t === 'rooms') { const now = Date.now(); roomStatus = m.rooms || {}; for (const st of Object.values(roomStatus)) st.recv = now; }
   else if (m.t === 'snap') {
     const seen = new Set(); $('online').textContent = `在線 ${m.players.length} 人 ${whoOpen ? '▴' : '▾'}`; renderWho(m.players);
+    const lite = m.players.length - 1 > LITE_AT;
     for (const p of m.players) {
       if (p.id === net.me) continue; seen.add(p.id);
-      let o = others.get(p.id);
-      if (!o || o.key !== [p.color, p.ear, p.eye, p.body, p.blush].join()) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear, eye: p.eye, body: p.body, blush: p.blush }, p.name); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key: [p.color, p.ear, p.eye, p.body, p.blush].join() }; others.set(p.id, o); }
+      let o = others.get(p.id); const key = [p.color, p.ear, p.eye, p.body, p.blush, lite].join();
+      if (!o || o.key !== key) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear, eye: p.eye, body: p.body, blush: p.blush }, p.name, lite); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key }; others.set(p.id, o); }
       o.tx = p.x; o.ty = p.y; o.f = p.f; setPlaying(o.c, p.st === 'play');
     }
     for (const [id, o] of others) if (!seen.has(id)) { root.remove(o.c.root); others.delete(id); }
@@ -398,6 +407,7 @@ const inRect = (r, x, y) => x >= r.x0 && x <= r.x1 && y >= r.y0 && y <= r.y1;
 function countIn(r) { let n = inRect(r, me.x, me.y) ? 1 : 0; for (const o of others.values()) if (inRect(r, o.x, o.y)) n++; return n; }
 function showZone(r) {
   zoneRoom = r; $('zTitle').textContent = r.title; $('zInfo').textContent = r.blurb;
+  $('zSolo').style.display = r.online ? 'none' : '';
   $('zOnline').disabled = false; $('zNote').textContent = !ID ? '按下會先請你用 Telegram 登入或訪客身分' : ID.guest ? '訪客：成績不計入總積分榜' : '';
   $('zone').classList.add('show');
 }

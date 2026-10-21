@@ -143,6 +143,15 @@ export const GAME_ART = {
     }
     x.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 6 : 13; x[i ? 'lineTo' : 'moveTo'](65 + Math.cos(a) * r, 38 + Math.sin(a) * r); } x.closePath(); inkPath(x, '#ffd23f', 3);
   },
+  together(x) { // 泡泡Together：兩隻疊羅漢的小傢伙 + 終點旗
+    x.beginPath(); x.roundRect(14, 92, 100, 16, 6); inkPath(x, '#a8e6cf');
+    for (const [cx, cy, ear] of [[52, 78, '#ffb3c7'], [52, 52, '#a8d8ff']]) {
+      x.beginPath(); x.arc(cx - 9, cy - 19, 6, 0, Math.PI * 2); inkPath(x, ear, 3); x.beginPath(); x.arc(cx + 9, cy - 19, 6, 0, Math.PI * 2); inkPath(x, ear, 3);
+      x.beginPath(); x.arc(cx, cy, 18, 0, Math.PI * 2); inkPath(x, '#fffdf7');
+      x.fillStyle = INK; x.beginPath(); x.arc(cx - 6, cy - 2, 2.6, 0, Math.PI * 2); x.fill(); x.beginPath(); x.arc(cx + 6, cy - 2, 2.6, 0, Math.PI * 2); x.fill();
+    }
+    x.beginPath(); x.moveTo(98, 92); x.lineTo(98, 40); x.lineWidth = 4; x.strokeStyle = INK; x.stroke(); x.beginPath(); x.moveTo(98, 40); x.lineTo(120, 48); x.lineTo(98, 56); x.closePath(); inkPath(x, '#ff6b6b', 3);
+  },
   artillery(x) { // 泡泡砲戰：斜放的砲管 + 輪子 + 飛出去的水球
     x.save(); x.translate(44, 76); x.rotate(-.62); x.beginPath(); x.roundRect(-4, -12, 54, 24, 10); inkPath(x, '#4cd68a'); x.beginPath(); x.roundRect(40, -15, 12, 30, 5); inkPath(x, '#2fae6a'); x.restore();
     x.beginPath(); x.arc(40, 82, 15, 0, Math.PI * 2); inkPath(x, '#4a3b3b'); x.beginPath(); x.arc(40, 82, 5, 0, Math.PI * 2); x.fillStyle = '#fffdf8'; x.fill();

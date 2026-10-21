@@ -14,6 +14,7 @@ Telegram Mini App 小遊戲大廳。玩家選好角色外觀，在可走動的 3
 | 泡泡跑跑 | `/run/` | 單人，或 2 到 4 人同場 | 小傢伙自動往前跑，空白鍵跳過障礙，越遠分數越高 |
 | 泡泡倖存者 | `/survive/` | 單人，或 2 到 4 人合作 | 泡泡包住敵人再戳破連鎖，升級配出組合，撐 5 分鐘或打倒王 |
 | 泡泡派對 | `/party/` | 單人，或 2 到 6 人（空位補電腦） | 走路相撲：衝撞把別人擠下擂台，3 關比積分 |
+| 泡泡Together | `/together/` | 單人（只出一個人能解的謎題），或 2 到 4 人合作 | 橫向闖關：疊羅漢、抱隊友丟過去、輪流壓機關，每局關卡類型與謎題都隨機 |
 
 ### 泡泡碰碰島
 
@@ -68,6 +69,7 @@ Telegram Mini App 小遊戲大廳。玩家選好角色外觀，在可走動的 3
 - 道具：速度鞋、泡泡盾、變大、燙手泡泡（丟給最近的對手，碰到別人就傳出去，5 秒後爆炸）。蜂巢擂台沒有道具。
 - 單人對 5 台電腦，可選派對 3 關或單一擂台練習、普通或困難電腦；Esc 暫停。連線 2 到 6 人，空位補電腦，斷線時電腦立刻接手，10 秒內回來拿回角色。
 - 設計細節見 [`docs/party.md`](docs/party.md)。
+- 泡泡Together 的設計與規則見 [`docs/bubble-together.md`](docs/bubble-together.md)。
 
 ## 結構
 
@@ -82,6 +84,7 @@ games/artillery     泡泡砲戰：index.html、artillery-core.js、測試
 games/bubble-run    泡泡跑跑：index.html、run-core.js、測試
 games/bubble-survivors 泡泡倖存者：index.html、survivors-core.js、測試
 games/party         泡泡派對：index.html、party-core.js、測試
+games/bubble-together  泡泡Together：index.html、together-core.js、測試
 docs                遊戲設計文件
 packages/ui         共用：theme.css、draw.js、three-kit.js、avatar.js、session.js、update.js
 deploy              wrangler.toml、build.mjs、部署文件

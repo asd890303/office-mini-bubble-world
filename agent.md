@@ -10,6 +10,7 @@
 - `games/kart-island`：泡泡賽車。
 - `games/artillery`：泡泡砲戰（電腦版）。
 - `games/party`：泡泡派對（走路相撲，3 種擂台）。
+- `games/bubble-together`：泡泡Together（合作闖關，單人或 2 到 4 人，3 D 畫面、2 D 操作）。
 - 新遊戲的規則檔只能有 `export`、不能 `import`，`deploy/build.mjs` 會把它內嵌進 Worker。
 - `apps/worker/worker.js` 只能匯出函式或類別。匯出數字或字串常數，Cloudflare 會拒絕啟動。
 - `packages/ui`：共用美術、角色、外觀選擇。

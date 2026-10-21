@@ -93,6 +93,16 @@ export function makeCritter({ ear, color, eye = 'dot', body: bodyColor = '#fffdf
   return { root, pivot, eyes, arms, bubble, shine, mouth, blinkAt: Math.random() * 3, phase: Math.random() * 6 };
 }
 
+// 人多時給「別人」用的精簡造型：只有身體與耳朵眼睛，約 6 個物件（完整造型約 28 個）。介面與 makeCritter 相同，animateCritter 可直接用
+export function makeLiteCritter({ ear, color, body: bodyColor = '#fffdf7' }) {
+  const root = new THREE.Group(), bm = toon(bodyColor), em = toon(color || '#ffb3c7'), pivot = new THREE.Group(); root.add(pivot);
+  const body = blob(G.small, bm, .55, .5, .52); body.position.y = .5; pivot.add(body);
+  const tall = ear === 'pay';
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(G.cone, em); e.scale.set(tall ? .8 : 1.2, tall ? 1.6 : 1, .8); e.position.set(s * (tall ? .18 : .27), tall ? 1.15 : 1.03, 0); e.rotation.z = -s * .2; pivot.add(e); }
+  const eyes = []; for (const s of [-1, 1]) { const e = new THREE.Mesh(G.small, M.black); e.scale.set(.05, .07, .04); e.position.set(s * .17, .55, .5); e.userData.sy = .07; pivot.add(e); eyes.push(e); }
+  return { root, pivot, arms: [], eyes, phase: Math.random() * 6.28, blinkAt: 2 + Math.random() * 4, lite: true };
+}
+
 export function addNameTag(c, name) { // 對手頭上的小字名字（永遠面向鏡頭、不被場景遮住）
   const cv = document.createElement('canvas'); cv.width = 256; cv.height = 64; const x = cv.getContext('2d');
   const font = px => `900 ${px}px "Zen Maru Gothic","PingFang TC",sans-serif`; x.font = font(30);

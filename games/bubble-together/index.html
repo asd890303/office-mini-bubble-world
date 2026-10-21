@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡Together</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%23cfe9ff'/%3E%3Cg%20stroke='%233b2f2f'%20stroke-width='3.5'%20stroke-linejoin='round'%3E%3Ccircle%20cx='19'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='45'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='32'%20cy='37'%20r='22'%20fill='%23fffdf7'/%3E%3C/g%3E%3Ccircle%20cx='24'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Ccircle%20cx='40'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Cellipse%20cx='17.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cellipse%20cx='46.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cpath%20d='M28%2043q4%204%208%200'%20fill='none'%20stroke='%233b2f2f'%20stroke-width='2.8'%20stroke-linecap='round'/%3E%3Cellipse%20cx='22'%20cy='27'%20rx='4'%20ry='2.4'%20transform='rotate(-35%2022%2027)'%20fill='%23fff'%20opacity='.9'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.top { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; align-items: center; gap: 10px; pointer-events: none; z-index: 3; }
+.pill { padding: 2px 12px; border-width: 2px; border-radius: 999px; font-weight: 900; font-size: 18px; font-variant-numeric: tabular-nums; }
+.top .grow { flex: 1; }
+.prog { position: relative; height: 16px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); overflow: hidden; }
+.prog i { position: absolute; top: 0; bottom: 0; width: 0; background: #8fd694; }
+.prog b { position: absolute; top: -2px; width: 10px; height: 16px; border-radius: 50%; border: 2px solid var(--ink); margin-left: -5px; }
+.team { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 40px); right: 10px; display: flex; flex-direction: column; gap: 3px; pointer-events: none; z-index: 3; }
+.tm { padding: 1px 10px; border-width: 2px; border-radius: 12px; font-size: 12px; font-weight: 900; display: flex; gap: 6px; align-items: center; }
+.tm i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); }
+.tm.me { background: var(--pink); color: #4a3b3b; }
+.tm.gone { opacity: .45; }
+.banner { position: fixed; left: 0; right: 0; top: 34%; text-align: center; font-size: 56px; font-weight: 900; color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; pointer-events: none; z-index: 5; }
+.banner small { display: block; font-size: 20px; -webkit-text-stroke: 5px var(--ink); }
+.banner[hidden] { display: none; }
+.toast { position: fixed; left: 50%; top: 96px; transform: translateX(-50%); padding: 4px 16px; font-weight: 900; font-size: 15px; border-width: 2px; z-index: 7; pointer-events: none; opacity: 0; transition: opacity .2s; white-space: nowrap; }
+.toast.show { opacity: 1; }
+.offers { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 6; width: min(520px, calc(100% - 20px)); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.offers[hidden] { display: none; }
+.offers h3 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; }
+.offers .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.card { border: 3px solid var(--ink); border-radius: 14px; background: var(--chip); padding: 8px 4px; text-align: center; cursor: pointer; font-weight: 900; line-height: 1.25; }
+.card small { display: block; font-size: 11px; color: var(--ink-soft); font-weight: 700; }
+.card.on { background: var(--pink); }
+.pad { position: fixed; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 6; display: none; gap: 10px; }
+body.touch .pad { display: flex; }
+.pad.l { left: 14px; } .pad.r { right: 14px; }
+.pad button { width: 74px; height: 74px; border-radius: 50%; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 80%, transparent); font-weight: 900; font-size: 22px; touch-action: none; box-shadow: var(--shadow); }
+.pad button:active, .pad button.on { background: var(--pink); }
+body.placing .pad { display: none; }
+.screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(74,59,59,.35); padding: 16px; }
+.screen[hidden] { display: none; }
+.screen .box { max-width: 420px; width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.screen h1, .screen h2 { margin: 0; }
+.screen p { margin: 0; font-size: 14px; line-height: 1.5; }
+.slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.slots li { display: flex; justify-content: space-between; padding: 5px 10px; border: 2px solid var(--line); border-radius: 12px; font-weight: 700; }
+.slots li i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; }
+.slots li.empty { color: var(--ink-soft); border-style: dashed; }
+.go { padding: 10px 16px; font-size: 18px; }
+a.btn { text-align: center; text-decoration: none; display: block; }
+.res { list-style: none; margin: 0; padding: 0; font-size: 14px; font-weight: 700; }
+.res li { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12px; font-weight: 700; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="top"><div class="pill box" id="lives">♥ 5</div><div class="grow"><div class="prog box" id="prog"><i id="progFill"></i><b id="progDot" style="background:#fff"></b></div></div><div class="pill box" id="clock">0:00</div></div>
+<div class="team" id="team"></div>
+<div class="banner" id="banner" hidden></div>
+<div class="toast box" id="toast"></div>
+<div class="offers box" id="offers" hidden></div>
+<div class="pad l"><button id="bL">◀</button><button id="bR">▶</button></div>
+<div class="pad r"><button id="bAct">抱</button><button id="bJump">跳</button></div>
+
+<section class="screen" id="lobbyScreen">
+  <div class="box">
+    <h1>泡泡Together</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="slots" id="slots"></ul>
+    <div class="legend"><span>單人或 2 到 4 人，全員到終點才過關</span><span>疊羅漢、抱隊友丟過去</span><span>每局先放一個方塊再出發</span><span>隊伍共享 5 條命</span></div>
+    <div style="display:flex;gap:8px"><button class="btn" id="avatarBtn" style="flex:1">換外觀</button><button class="btn primary" id="joinBtn" style="flex:2">加入連線</button></div>
+    <button class="btn" id="soloBtn">單人玩（只出一個人能解的謎題）</button>
+    <a class="btn" href="/">回遊戲大廳</a>
+  </div>
+</section>
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="res" id="endRes"></ul>
+    <button class="btn primary go" id="againBtn">回大廳，再玩一局</button>
+    <a class="btn" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './together-core.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, G, M, blob, withOutline, boxOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+watchUpdates();
+mountKeyHelp({ rows: ['[A][D] 或 [←][→] 左右移動', '[W] 或 [空白] 跳躍', '[E] 或 [Shift] 抱起或丟出隊友', '站在隊友頭上再跳，可以過高牆', '放置階段：點方塊，再點地圖放下'], top: '110px' });
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TG = window.Telegram?.WebApp, inTelegram = !!(TG && TG.initData);
+if (inTelegram) { try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {} if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme; }
+if (matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch')) document.body.classList.add('touch');
+const WORKER_URL = location.origin, loginErr = captureLogin();
+let ID = identity(), setup = { color: '#ffb3c7', ear: 'cat', eye: 'dot', body: '#fffdf7', blush: '#ffa3b5' };
+const haptic = { hit() { try { TG?.HapticFeedback?.impactOccurred('medium'); } catch {} }, win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} } };
+
+/* ---------- three.js 場景（側視，2D 操作） ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(30, 1, 1, 600);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5); sun.position.set(10, 30, 40); scene.add(sun);
+const root = new THREE.Group(); scene.add(root);
+const MODS = { none: ['#cfe9ff', '#fff0f5'], ice: ['#d8f2ff', '#f2fbff'], dark: ['#3a3556', '#6a5a82'] };
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+/* ---------- 一局的畫面 ---------- */
+let V = null; // { level, group, players: Map, hidden: [], doors: [], plates: [], flags: [], blocks: Map, chaser, myId }
+const dirtM = toon('#e9b98b'), grassM = toon('#8fd694'), iceM = toon('#bfe9ff'), ghostM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .28, depthWrite: false });
+function slab(s, mat, top) { const vh = Math.min(s.h, 4.5), g = new THREE.Group(); const body = new THREE.Mesh(G.box, mat); body.scale.set(s.w, vh, 3); body.position.set(s.x + s.w / 2, s.y + s.h - vh / 2, 0); boxOutline(body, s.w, vh, 3); g.add(body); if (top) { const t = new THREE.Mesh(G.box, top); t.scale.set(s.w, .22, 3.02); t.position.set(s.x + s.w / 2, s.y + s.h - .11, 0); g.add(t); } return g; }
+function buildView(snap, myId) {
+  if (V) root.remove(V.group);
+  const L = snap.level, group = new THREE.Group(); root.add(group);
+  V = { level: L, group, players: new Map(), hidden: [], doors: [], plates: [], flags: [], blocks: [], myId, seed: snap.seed, info: snap.pl, ended: false, placeAt: 0, pick: -1, hover: null, chaser: null, lastSnap: snap, newFrame: false };
+  const cols = MODS[L.mod] || MODS.none; document.body.style.background = `linear-gradient(${cols[0]}, ${cols[1]})`;
+  for (const s of L.solids) group.add(slab(s, s.h > 6 ? dirtM : dirtM, L.mod === 'ice' ? iceM : grassM));
+  L.hidden.forEach(h => { const m = slab(h, toon('#d9a66c'), null); m.visible = true; m.traverse(o => { if (o.isMesh && o.material !== undefined && o.geometry === G.box) {} }); group.add(m); V.hidden.push({ g: m, ghost: ghostBox(h), h }); group.add(V.hidden[V.hidden.length - 1].ghost); m.visible = false; });
+  L.doors.forEach((d, i) => { const m = slab(d, toon('#a8753a'), null); group.add(m); V.doors.push(m); });
+  L.plates.forEach((p, i) => { const m = new THREE.Mesh(G.box, toon('#ffd36b')); m.scale.set(p.w, .2, 1.6); m.position.set(p.x + p.w / 2, p.y + .1, 0); boxOutline(m, p.w, .2, 1.6); group.add(m); V.plates.push(m); });
+  L.flags.forEach(f => { const g = new THREE.Group(); const pole = new THREE.Mesh(G.cyl, toon('#7a4b1f')); pole.scale.set(.06, 1.6, .06); pole.position.y = .8; g.add(pole); const cloth = new THREE.Mesh(G.box, toon('#bbbbbb')); cloth.scale.set(.8, .5, .06); cloth.position.set(.4, 1.35, 0); boxOutline(cloth, .8, .5, .06); g.add(cloth); g.position.set(f.x, f.y, -1); group.add(g); V.flags.push({ g, cloth }); });
+  { const g = L.goal, arch = new THREE.Group(); for (const sx of [0, g.w]) { const p = new THREE.Mesh(G.box, toon('#ffd36b')); p.scale.set(.35, g.h, .35); p.position.set(g.x + sx, g.y + g.h / 2, -.5); boxOutline(p, .35, g.h, .35); arch.add(p); } const top = new THREE.Mesh(G.box, toon('#ff8fab')); top.scale.set(g.w + .35, .4, .4); top.position.set(g.x + g.w / 2, g.y + g.h, -.5); boxOutline(top, g.w + .35, .4, .4); arch.add(top); group.add(arch); }
+  if (L.chaser) { const m = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: L.chaser.kind === 'wall' ? 0x9edcff : 0x7cc8ff, transparent: true, opacity: .45, depthWrite: false })); group.add(m); V.chaser = m; }
+  snap.pl.forEach(sp => ensurePlayer(sp));
+  $('team').innerHTML = snap.pl.map(p => `<div class="tm box" data-id="${p.id}"><i style="background:${p.look?.color || Core.COLORS[p.id]}"></i>${esc(p.name)}</div>`).join('');
+}
+function ghostBox(h) { const m = new THREE.Mesh(G.box, ghostM); m.scale.set(h.w, h.h, 2.4); m.position.set(h.x + h.w / 2, h.y + h.h / 2, 0); return m; }
+function ensurePlayer(sp) {
+  let o = V.players.get(sp.id); if (o) return o;
+  const look = sp.look || {}, c = makeCritter({ color: look.color || Core.COLORS[sp.id % Core.COLORS.length], ear: look.ear || 'be', eye: look.eye || 'dot', body: look.body || Core.BODIES[0], blush: look.blush || Core.BLUSHES[0] });
+  addNameTag(c, sp.id === V.myId ? '你' : sp.name || `玩家${sp.id + 1}`); c.nameTag.scale.set(2.2, .55, 1); c.nameTag.position.y = 2.1; c.root.scale.setScalar(.8); c.root.rotation.y = Math.PI / 2;
+  const g = new THREE.Group(); g.add(c.root); V.group.add(g); o = { g, c, x: sp.x, y: sp.y, yaw: Math.PI / 2, moving: false }; V.players.set(sp.id, o); return o;
+}
+const BLOCK_MESH = { plat: () => { const m = new THREE.Mesh(G.box, toon('#c9b6ff')); boxOutline(m, 1, 1, 1); return m; }, spring: () => { const m = new THREE.Mesh(G.cyl, toon('#ff8fab')); withOutline(m, 1.08); return m; }, life: () => { const m = new THREE.Mesh(G.sphere, M.bubble); const h = new THREE.Mesh(G.small, toon('#ff6b6b')); h.scale.setScalar(.3); m.add(h); return m; } };
+function blockMesh(kind, x, y) { const b = Core.BLOCKS[kind], m = BLOCK_MESH[kind](); if (kind === 'plat') m.scale.set(b.w, b.h, 2.4); else if (kind === 'spring') m.scale.set(b.w / 2, b.h / 2, 1); else m.scale.set(b.w / 2, b.h / 2, b.w / 2); m.position.set(x + b.w / 2, y + b.h / 2, 0); return m; }
+
+/* ---------- 同步 ---------- */
+const FLAG_ON = new THREE.Color('#6ee07a');
+function sync(s, dt, t) {
+  const k = Math.min(1, dt * 18);
+  for (const sp of s.pl) {
+    const o = ensurePlayer(sp), carried = sp.b != null, tx = sp.x, ty = sp.y + .02;
+    o.moving = Math.abs(tx - o.x) > .02 && sp.g === 1; o.x += (tx - o.x) * k; o.y += (ty - o.y) * k; if (Math.hypot(tx - o.x, ty - o.y) > 6) { o.x = tx; o.y = ty; }
+    o.g.position.set(o.x, o.y, 0); o.g.visible = !sp.d && !sp.gn; const want = sp.f > 0 ? Math.PI / 2 : -Math.PI / 2; let dy = want - o.c.root.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); o.c.root.rotation.y += dy * Math.min(1, dt * 16);
+    animateCritter(o.c, dt, t, o.moving); o.c.root.rotation.z = sp.c != null ? .12 : 0; if (sp.g === 0 && !carried) o.c.root.position.y = 0;
+  }
+  s.dr.forEach((open, i) => { if (V.doors[i]) V.doors[i].visible = !open; });
+  V.plates.forEach((m, i) => { const on = s.pr.includes(i); m.position.y = V.level.plates[i].y + (on ? .04 : .1); m.scale.y = on ? .08 : .2; m.material = on ? toon('#6ee07a') : toon('#ffd36b'); });
+  V.hidden.forEach((h, i) => { const shown = s.rv.includes(i); h.g.visible = shown; h.ghost.visible = !shown; });
+  V.flags.forEach((f, i) => { const hit = s.fl.includes(i); if (hit) f.cloth.material = toon('#6ee07a'); });
+  if (V.chaser && s.ch != null) { const c = V.chaser, L = V.level; if (L.chaser.kind === 'wall') { c.scale.set(60, 80, 4); c.position.set(s.ch - 30, 20, 0); } else { c.scale.set(L.end + 40, 60, 4); c.position.set(L.end / 2, s.ch - 30, 0); } }
+  // 放置的方塊
+  if (V.blocks.length !== s.bl.length) { for (const b of V.blocks) V.group.remove(b.m); V.blocks = s.bl.map(b => ({ m: blockMesh(b[0], b[1], b[2]), used: b[3] })); for (const b of V.blocks) V.group.add(b.m); }
+  s.bl.forEach((b, i) => { if (V.blocks[i]) V.blocks[i].m.visible = !b[3]; });
+}
+const camL = { x: 0, y: 4 };
+function placeCamera(s, dt) {
+  const aspect = innerWidth / innerHeight, L = V.level; let cx, cy, w;
+  if (s.phase === 'place') { cx = L.end / 2; cy = Math.max(2, L.top / 2 + 3); w = Math.min(L.end + 8, 100); if (aspect < 1) w = Math.min(w, 60); }
+  else { const live = s.pl.filter(p => !p.d && !p.gn && !p.dn); const all = live.length ? live : s.pl.filter(p => !p.gn); const me = s.pl[V.myId ?? -1]; const tgt = me && !me.d ? [me, ...all] : all; let sx = 0, sy = 0; for (const p of tgt) { sx += p.x; sy += p.y; } cx = sx / Math.max(1, tgt.length); cy = sy / Math.max(1, tgt.length) + 1.2; w = aspect < 1 ? 14 : 20; const spread = Math.max(...all.map(p => Math.abs(p.x - cx)), 0) * 2 + 8; w = Math.max(w, Math.min(60, spread)); }
+  const k = Math.min(1, dt * 4); camL.x += (cx - camL.x) * k; camL.y += (cy - camL.y) * k; V.camW = (V.camW || w) + (w - (V.camW || w)) * k;
+  const dist = (V.camW / 2) / (Math.tan(15 * Math.PI / 180) * aspect); camera.position.set(camL.x, camL.y + 1.5, dist); camera.lookAt(camL.x, camL.y, 0);
+}
+
+/* ---------- 放置階段 ---------- */
+const BLOCK_NAME = { plat: ['平台', '放在路上當踏腳石'], spring: ['彈簧', '踩上去彈很高'], life: ['生命泡泡', '碰到加 1 條命'] };
+let ghostMesh = null, mouseG = null;
+const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), ndc = new THREE.Vector2();
+function groundAt(cx, cy) { ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera); const p = new THREE.Vector3(); return ray.ray.intersectPlane(plane, p) ? { x: p.x, y: p.y } : null; }
+function renderOffers(me) {
+  const el = $('offers'); if (!me || !me.of || V.over) { el.hidden = true; document.body.classList.remove('placing'); if (ghostMesh) { V.group.remove(ghostMesh); ghostMesh = null; } return; }
+  document.body.classList.add('placing'); el.hidden = false;
+  const key = me.of.join(',') + '|' + V.pick; if (el.dataset.k === key) return; el.dataset.k = key;
+  el.innerHTML = '<h3><span>選一個方塊，點地圖放下</span><span id="placeLeft"></span></h3><div class="row">' + me.of.map((k, i) => `<div class="card ${V.pick === i ? 'on' : ''}" data-i="${i}">${BLOCK_NAME[k][0]}<small>${BLOCK_NAME[k][1]}</small></div>`).join('') + '</div>';
+}
+$('offers').addEventListener('click', e => { const c = e.target.closest('.card'); if (!c || !V) return; V.pick = +c.dataset.i; $('offers').dataset.k = ''; updateGhost(); });
+function updateGhost() {
+  if (ghostMesh) { V.group.remove(ghostMesh); ghostMesh = null; }
+  const me = V.lastSnap.pl[V.myId ?? -1]; if (!me?.of || V.pick < 0) return;
+  ghostMesh = blockMesh(me.of[V.pick], 0, 0); ghostMesh.traverse(o => { if (o.material && !o.material.transparent) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = .6; } }); V.group.add(ghostMesh);
+}
+addEventListener('pointermove', e => { if (!V || V.pick < 0 || !ghostMesh) return; const p = groundAt(e.clientX, e.clientY); if (!p) return; const me = V.lastSnap.pl[V.myId ?? -1], kind = me?.of?.[V.pick]; if (!kind) return; const b = Core.BLOCKS[kind]; mouseG = { x: Math.round(p.x * 2) / 2, y: Math.round(p.y * 2) / 2 }; ghostMesh.position.set(mouseG.x - b.w / 2 + b.w / 2, mouseG.y + b.h / 2, 0); });
+$('scene').addEventListener('pointerdown', e => {
+  if (!V || V.pick < 0 || V.lastSnap.phase !== 'place') return; const me = V.lastSnap.pl[V.myId ?? -1]; if (!me?.of) return;
+  const p = groundAt(e.clientX, e.clientY); if (!p) return; const x = Math.round(p.x * 2) / 2, y = Math.round(p.y * 2) / 2;
+  if (mode === 'offline') Core.place(L, 0, V.pick, x, y); else net.send({ t: 'place', i: V.pick, x, y }); V.placeAt = performance.now(); setTimeout(() => { const m = V?.lastSnap.pl[V.myId ?? -1]; if (m?.of && performance.now() - V.placeAt > 500) toast('這裡放不了，換個位置'); }, 650);
+});
+
+/* ---------- 輸入 ---------- */
+const keys = new Set(), touch = { l: false, r: false, j: false, a: false };
+const KM = { a: 'l', arrowleft: 'l', d: 'r', arrowright: 'r', w: 'j', arrowup: 'j', ' ': 'j', e: 'a', shift: 'a' };
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (KM[k]) { e.preventDefault(); keys.add(KM[k]); } });
+addEventListener('keyup', e => keys.delete(KM[e.key.toLowerCase()]));
+addEventListener('blur', () => keys.clear());
+for (const [id, k] of [['bL', 'l'], ['bR', 'r'], ['bJump', 'j'], ['bAct', 'a']]) { const el = $(id), on = v => e => { e.preventDefault(); touch[k] = v; el.classList.toggle('on', v); }; el.addEventListener('pointerdown', on(true)); el.addEventListener('pointerup', on(false)); el.addEventListener('pointercancel', on(false)); el.addEventListener('pointerleave', on(false)); }
+const inputState = () => { const l = keys.has('l') || touch.l, r = keys.has('r') || touch.r; return { x: (r ? 1 : 0) - (l ? 1 : 0), j: keys.has('j') || touch.j, a: keys.has('a') || touch.a }; };
+
+/* ---------- HUD 與事件 ---------- */
+let toastT = 0; function toast(m, ms = 1600) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function hud(s) {
+  $('lives').textContent = '♥ ' + Math.max(0, s.lives); $('clock').textContent = s.phase === 'place' ? '放置 ' + Math.max(0, Math.ceil(Core.PLACE_TIME - s.t)) : fmt(s.run);
+  const L = V.level, me = s.pl[V.myId ?? -1], pos = s.pl.filter(p => !p.gn).map(p => p.x), lead = Math.max(...pos, 0);
+  $('progFill').style.width = Math.min(100, lead / L.goal.x * 100) + '%'; $('progDot').style.left = Math.min(100, (me ? me.x : lead) / L.goal.x * 100) + '%'; $('progDot').style.background = Core.COLORS[V.myId ?? 0];
+  $('team').querySelectorAll('.tm').forEach(el => { const p = s.pl[+el.dataset.id]; el.classList.toggle('me', +el.dataset.id === V.myId); el.classList.toggle('gone', !!p?.gn); el.textContent = ''; const i = document.createElement('i'); i.style.background = V.info[+el.dataset.id]?.look?.color || Core.COLORS[+el.dataset.id]; el.append(i, (p?.dn ? '✓ ' : p?.d ? '✗ ' : '') + (V.info[+el.dataset.id]?.name || '')); });
+  const b = $('banner');
+  if (s.phase === 'place') { b.hidden = false; b.innerHTML = me?.of ? '放一個方塊<small>幫隊友，也小心別擋到路</small>' : '等其他人放置…'; if (me?.of) setTimeout(() => { if (b) b.hidden = true; }, 1800); }
+  else if (s.phase === 'countdown') { b.hidden = false; b.innerHTML = Math.max(1, Math.ceil(Core.COUNTDOWN - s.t)) + '<small>一起出發！</small>'; } else b.hidden = true;
+  renderOffers(s.phase === 'place' ? me : null);
+}
+function onEvents(evs) {
+  for (const e of evs || []) {
+    if (e.type === 'die') { if (e.id === V.myId) { haptic.hit(); toast('你倒下了，回到檢查點', 1400); } else toast(`${V.info[e.id]?.name || '隊友'} 倒下了`, 1000); }
+    else if (e.type === 'flag') toast('檢查點！', 900);
+    else if (e.type === 'life') toast('撿到生命泡泡，+1 條命', 1400);
+    else if (e.type === 'done') toast(`${V.info[e.id]?.name || ''} 到終點了`, 1200);
+    else if (e.type === 'gone') toast(`${V.info[e.id]?.name || '隊友'} 離開了`, 1600);
+    else if (e.type === 'go') toast('出發！', 900);
+    else if (e.type === 'grab' && e.id === V.myId) toast('抱起來了，再按一次丟出去', 1200);
+    else if (e.type === 'end') showEnd(e.result);
+  }
+}
+function showEnd(r) {
+  if (!V || V.ended) return; V.ended = true; V.over = true; $('offers').hidden = true;
+  const type = { run: '橫向闖關', rush: '追逐', climb: '攀爬' }[r.type] || r.type, mod = { none: '', ice: '・冰面', dark: '・黑暗' }[r.mod] || '';
+  $('endTitle').textContent = r.win ? '全員過關！' : '挑戰失敗';
+  $('endSub').textContent = `${type}${mod}・${fmt(r.time)}・剩 ${r.lives} 條命${V.myId == null ? '（觀戰）' : ''}`;
+  $('endRes').innerHTML = r.players.map(p => `<li><span>${esc(p.name)}${p.id === V.myId ? '（你）' : ''}${p.gone ? '（離開）' : ''}</span><span>倒下 ${p.deaths} 次・${p.points} 分</span></li>`).join('');
+  setTimeout(() => { $('endScreen').hidden = false; }, 900); if (r.win) haptic.win(); net.wantIn = false; $('againBtn').textContent = mode === 'offline' ? '再玩一局' : '回大廳，再玩一局';
+}
+$('againBtn').addEventListener('click', () => { $('endScreen').hidden = true; if (mode === 'offline') return startOffline(); net.wantIn = true; playing = false; V = null; sendJoin(); showLobby(); });
+
+/* ---------- 連線 ---------- */
+let playing = false, mode = 'online', L = null;
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0, last: '', lastAt: 0, snap: null,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/together/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return lobbyStatus('連不上遊戲伺服器，請稍後再試'); }
+  net.ws = ws; ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws) return;
+    if (e.code === 4000) return lobbyStatus('你在其他視窗開了遊戲，這裡已斷線');
+    if (e.code === 4001) { lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入'); const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); }; addEventListener('keydown', back); addEventListener('pointerdown', back); return; }
+    net.tries++; if (!net.opened && net.tries >= 4) return lobbyStatus('連不上遊戲伺服器，請稍後再試');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function tryJoin() { if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return; const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return; net.lastJoin = Date.now(); sendJoin(); }
+function onNet(m) {
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') { buildView(m.s, m.me); V.lastSnap = m.s; net.snap = m.s; V.newFrame = true; playing = true; V.over = false; $('lobbyScreen').hidden = $('endScreen').hidden = true; toast(m.me == null ? '觀戰中' : '先放一個方塊！', 1600); }
+  else if (m.t === 's') { if (!V) return; V.lastSnap = m.s; net.snap = m.s; V.newFrame = true; onEvents(m.ev); }
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function renderLobby() {
+  const Lb = net.lobby; if (!Lb) return; const slots = [];
+  for (let i = 0; i < Lb.max; i++) { const p = Lb.players[i]; slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>等待玩家</span></li>`); }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(Lb.phase === 'play' ? '這局進行中，結束後可加入（可先觀戰）' : Lb.phase === 'end' ? `上一局結算中，${Lb.endIn} 秒後開放新局` : Lb.players.length >= (Lb.min || 2) ? `${Lb.countdown} 秒後開局（滿 ${Lb.max} 人立即開始）` : Lb.players.length ? `還差 ${(Lb.min || 2) - Lb.players.length} 人才開局，需要 ${Lb.min || 2} 到 ${Lb.max} 人` : `等待玩家加入（至少 ${Lb.min || 2} 人，這款一定要合作）`);
+  const joined = inLobby(); $('joinBtn').textContent = joined ? '離開' : '加入'; $('joinBtn').disabled = !joined && (Lb.phase === 'play' || Lb.players.length >= Lb.max);
+  if (!playing && $('endScreen').hidden) $('lobbyScreen').hidden = false;
+}
+$('joinBtn').addEventListener('click', () => { if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); } else { net.wantIn = true; net.lastJoin = 0; tryJoin(); } });
+function applyAppearance(a) { Object.assign(setup, { color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush }); if (inLobby()) sendJoin(); }
+$('avatarBtn').addEventListener('click', async () => { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); });
+
+/* ---------- 單人（本機執行，不連線，只出一個人能解的謎題） ---------- */
+function startOffline() {
+  mode = 'offline'; try { net.ws?.close(); } catch {} net.wantIn = false;
+  $('lobbyScreen').hidden = $('endScreen').hidden = true;
+  L = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: '你', ...setup }] });
+  buildView(Core.snapshot(L), 0); net.snap = Core.snapshot(L, { full: false }); V.lastSnap = net.snap; playing = true; V.over = false; toast('單人模式：先放一個方塊！', 1600);
+}
+$('soloBtn').addEventListener('click', startOffline);
+
+/* ---------- 主迴圈 ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (V && mode === 'offline' && L) { const st = inputState(); Core.setInput(L, 0, { x: st.x, jump: st.j, act: st.a }); const evs = Core.step(L, dt); net.snap = V.lastSnap = Core.snapshot(L, { full: false }); onEvents(evs); }
+  if (V && net.snap) {
+    const s = net.snap;
+    if (mode === 'online' && playing && V.myId != null && s.phase === 'run') { const st = inputState(), key = `${st.x},${+st.j},${+st.a}`, now = performance.now(); if (key !== net.last || now - net.lastAt > 500) { net.last = key; net.lastAt = now; net.send({ t: 'in', x: st.x, j: st.j, a: st.a }); } }
+    sync(s, dt, t); placeCamera(s, dt); hud(s);
+  }
+  renderer.render(scene, camera); requestAnimationFrame(tick);
+}
+window.BubbleTogether = { get v() { return V; }, get L() { return L; }, get mode() { return mode; }, net, Core };
+(async () => {
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a);
+  if (new URLSearchParams(location.search).get('mode') === 'solo') return startOffline();
+  if (!ID) { lobbyStatus('需要登入才能連線，也可以先玩單人'); } else { lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect(); }
+})();
+tick();
+</script>
+</body>
+</html>

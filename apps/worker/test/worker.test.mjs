@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, PartyRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
+import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, PartyRoom, TogetherRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
 import * as KartCore from '../../../games/kart-island/kart-core.js';
 import * as RunCore from '../../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../../games/bubble-survivors/survivors-core.js';
 import * as PartyCore from '../../../games/party/party-core.js';
+import * as TogetherCore from '../../../games/bubble-together/together-core.js';
 const { LOBBY, IDLE_MS } = LobbyRoom;
 import * as Bundle from '../../../deploy/dist/worker.bundle.js';
 
@@ -876,4 +877,38 @@ test('bundle serves the party page and its rules file; the room is exported and 
   for (const path of ['/party/', '/party/party-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
   assert.equal((await Bundle.default.fetch(new Request('https://x.test/party/ws'), {})).status, 426);
   assert.equal(typeof Bundle.PartyRoom, 'function');
+});
+
+test('together room: needs two real players (no bots), placement then run, inputs are clamped, a leaver is dropped after the grace period, a win is scored and recorded', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  const env = { LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const R = fakeRoom(TogetherRoom, env), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', color: '#a8d8ff', ear: 'fe' }); assert.equal(R.room.phase, 'lobby'); R.adv(30000); R.tick(); assert.equal(R.room.phase, 'lobby', 'one player alone never starts');
+  await R.msg(b, { t: 'join' }); R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.equal(st.s.pl.length, 2); assert.equal(st.s.pl[0].look.color, '#a8d8ff'); assert.ok(st.s.level.solids.length > 3); assert.equal(st.s.phase, 'place'); assert.equal(st.s.pl[0].of.length, 3);
+  const g = R.room.game; assert.equal(g.players.length, 2);
+  await R.msg(a, { t: 'place', i: 0, x: 999, y: 3 }); assert.equal(g.players[0].placed, null, 'out of bounds is refused');
+  await R.msg(a, { t: 'place', i: 0, x: 30, y: g.level.top + 10 }); assert.ok(g.players[0].placed); await R.msg(b, { t: 'place', i: 1, x: 50, y: g.level.top + 10 });
+  R.tick(5); assert.equal(g.phase, 'countdown'); R.tick(70); assert.equal(g.phase, 'run');
+  await R.msg(a, { t: 'in', x: 9, j: true, a: false }); assert.equal(g.players[0].ix, 1, 'direction clamped'); assert.equal(g.players[0].jump, true);
+  const before = a.out.filter(m => m.t === 's').length; R.tick(20); assert.equal(a.out.filter(m => m.t === 's').length - before, 20, 'a snapshot every tick');
+  const fr = a.out.findLast(m => m.t === 's').s; assert.equal(fr.level, undefined); assert.ok(Array.isArray(fr.pl) && fr.pr && fr.dr);
+  const c = R.connect('3', 'Carol'); await R.msg(c, { t: 'join' }); assert.equal(c.out.find(m => m.t === 'start').me, null, 'late joiners spectate'); await R.msg(c, { t: 'in', x: 1 });
+  b.readyState = 3; R.room.onLeave(b); assert.ok(R.room.gone.has('2')); R.tick(220); assert.equal(g.players[1].gone, true); assert.equal(g.over, true, 'fewer than two left ends the run');
+  assert.equal(R.room.phase, 'end'); assert.equal(R.room.result.win, false); await new Promise(r => setTimeout(r, 0)); assert.match(R.fetches.at(-1).body.text, /泡泡Together 失敗/);
+});
+test('together room: a cleared run gives everyone points and a time record; failed runs record nothing', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  const env = { LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const R = fakeRoom(TogetherRoom, env), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join' }); await R.msg(b, { t: 'join' }); R.adv(20500); R.tick();
+  const g = R.room.game; g.phase = 'run'; g.run = 95; for (const p of g.players) { p.x = g.level.goal.x + .5; p.y = g.level.goal.y; } R.tick(3);
+  assert.equal(R.room.phase, 'end'); assert.equal(R.room.result.win, true); assert.ok(R.room.result.players.every(p => p.points === TogetherCore.POINTS.win2 && p.n === 2));
+  await new Promise(r => setTimeout(r, 10));
+  const board = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json(); assert.equal(board.top.length, 2); assert.ok(board.top.every(p => p.wins === 1));
+  const games = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json(); assert.equal(games.together.time.length, 2); assert.ok(games.together.time.every(x => x.time >= 95 && x.n === 2));
+});
+test('bundle serves the together page and its rules file; the room is exported and needs a websocket', async () => {
+  for (const path of ['/together/', '/together/together-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
+  assert.equal((await Bundle.default.fetch(new Request('https://x.test/together/ws'), {})).status, 426); assert.equal(typeof Bundle.TogetherRoom, 'function');
 });

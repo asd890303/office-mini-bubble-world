@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
+import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
 import * as KartCore from '../../../games/kart-island/kart-core.js';
+import * as RunCore from '../../../games/bubble-run/run-core.js';
 const { LOBBY, IDLE_MS } = LobbyRoom;
 import * as Bundle from '../../../deploy/dist/worker.bundle.js';
 
@@ -675,4 +676,72 @@ test('kart loadouts: the join message carries shape and perks; bad values are dr
   // 單人紀錄的最短時間把極速算進去
   const candy = KartCore.trackById('candy');
   assert.ok(Math.abs(kartMinTime(candy) - KartCore.LAPS * candy.T.L / (KartCore.KART.VMAX * KartCore.DRIFT.MULT * KartCore.RACE_PERKS.top.speed)) < 1e-9);
+});
+
+/* ---------- 泡泡跑跑 ---------- */
+test('run room: lobby → countdown → run with jumps → spectators get the seed → everyone falls → result posted → lobby', async () => {
+  const R = fakeRoom(RunRoom);
+  const a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', color: '#a8d8ff', ear: 'fe' }); await R.msg(b, { t: 'join' });
+  R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const st = a.out.find(m => m.t === 'start'); assert.equal(st.me, 0); assert.equal(typeof st.s.seed, 'number'); assert.equal(st.s.players.length, 2, 'no bots online');
+  assert.deepEqual(st.s.players.map(p => p.name), ['Alice', 'Bob']); assert.equal(st.s.players[0].look.color, '#a8d8ff');
+  assert.equal(R.room.status().players, 2);
+  await R.msg(a, { t: 'jump' }); assert.equal(R.room.game.players[0].jumps, 0, 'no jumping during the countdown');
+  R.tick(Math.ceil(RunCore.START_AT * 20) + 1); assert.equal(R.room.game.phase, 'running');
+  await R.msg(a, { t: 'jump' }); assert.equal(R.room.game.players[0].jumps, 1); await R.msg(a, { t: 'jump' }); await R.msg(a, { t: 'jump' }); assert.equal(R.room.game.players[0].jumps, 2, 'two jumps at most');
+  const c = R.connect('3', 'Carol'); await R.msg(c, { t: 'join' });
+  const late = c.out.find(m => m.t === 'start'); assert.equal(late.me, null); assert.equal(late.s.seed, st.s.seed, 'a late joiner watches the same course');
+  const fr = a.out.findLast(m => m.t === 's').s; assert.equal(fr.seed, undefined, 'frames skip the seed and names'); assert.equal(fr.players[0].name, undefined);
+  b.readyState = 3; R.room.onLeave(b); assert.ok(R.room.gone.has('2'));
+  const run = async n => { for (let i = 0; i < n && R.room.phase === 'play'; i++) { if (RunCore.botJump(R.room.game, 0)) await R.msg(a, { t: 'jump' }); R.tick(); } };
+  await run(220); assert.equal(R.room.game.players[1].alive, false, 'disconnected runner is out after the grace period'); assert.equal(R.room.game.players[0].alive, true);
+  await run(600); R.room.game.players[0].jumps = 2; for (let i = 0; i < 4000 && R.room.phase === 'play'; i++) R.tick();
+  assert.equal(R.room.phase, 'end');
+  const end = a.out.findLast(m => m.t === 's' && m.ev?.some(e => e.type === 'end')); assert.ok(end, 'end event sent'); assert.equal(end.ev.find(e => e.type === 'end').result.players[0].id, 0);
+  await new Promise(r => setTimeout(r, 0));
+  const post = R.fetches.at(-1); assert.ok(post, 'result posted to the group'); assert.match(post.body.text, /泡泡跑跑 結果/); assert.match(post.body.text, /Alice｜\d+ 公尺｜5 分/);
+  R.adv(9000); R.tick(); assert.equal(R.room.phase, 'lobby');
+});
+
+test('bundle serves the run page and its rules file; the room is exported and needs a websocket', async () => {
+  for (const path of ['/run/', '/run/run-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
+  assert.equal((await Bundle.default.fetch(new Request('https://x.test/run/ws'), {})).status, 426);
+  assert.equal(typeof Bundle.RunRoom, 'function');
+});
+
+test('run records: online scores and solo scores share one top 3 of meters; solo needs a ticket and a score the elapsed time allows', async () => {
+  const lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: fakeStorage() }, {});
+  let now = 1000; lobby.now = () => now;
+  const env = { ...AUTH_ENV, LOBBY_ROOM: { idFromName: n => n, get: () => ({ fetch: (url, o) => lobby.fetch(new Request(url, o)) }) } };
+  const alice = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 42, first_name: 'Alice' })), bob = 'auth=' + encodeURIComponent(makeInitData(TOKEN, { id: 7, first_name: 'Bob' }));
+  const post = (path, body) => Bundle.default.fetch(new Request('https://x.test' + path, { method: 'POST', body: JSON.stringify(body) }), env);
+  const R = fakeRoom(RunRoom, env);
+  await R.room.reportScores({ winner: { id: 0 }, players: [{ rank: 1, id: 0, uid: '1', name: 'Carol', score: 900, time: 70, points: 5 }, { rank: 2, id: 1, uid: '2', name: 'Dan', score: 400, time: 40, points: 3 }, { rank: 3, id: 2, uid: '3', name: 'Zero', score: 0, time: 1, points: 1 }] });
+  await lobby.addScores({ game: 'run', entries: [{ uid: '9', name: 'Hack', points: 1, stats: { score: 999999, time: 30 } }, { uid: '8', name: 'Frac', points: 1, stats: { score: 2.5, time: 30 } }] });
+  const realNow = Date.now; let clock = realNow(); Date.now = () => clock;
+  try {
+    const { ticket } = await (await post('/run/solo', { id: alice })).json(); assert.ok(ticket);
+    assert.equal((await post('/run/record', { id: alice, ticket, score: 100, time: 30 })).status, 422, 'the run cannot be longer than the real time since the ticket');
+    clock += 30000; now += 30000;
+    const cap = RunCore.scoreOf(RunCore.distAt(30));
+    assert.equal((await post('/run/record', { id: alice, ticket, score: cap + 50, time: 30 })).status, 422, 'farther than the time allows');
+    assert.equal((await post('/run/record', { id: alice, ticket, score: 300, time: 32 })).status, 422, 'longer than the elapsed time');
+    for (const bad of [0, -3, 1.5, 'x', null]) assert.equal((await post('/run/record', { id: alice, ticket, score: bad, time: 30 })).status, 422, String(bad));
+    for (const bad of [0, -1, 'x', null, 601]) assert.equal((await post('/run/record', { id: alice, ticket, score: 100, time: bad })).status, 422, 'time ' + bad);
+    assert.equal((await post('/run/record', { id: bob, ticket, score: 100, time: 30 })).status, 403, 'the ticket belongs to Alice');
+    assert.equal((await post('/run/record', { id: alice, ticket: 'bad.ticket', score: 100, time: 30 })).status, 403);
+    const bubbleTicket = await (await post('/bubble/solo', { id: alice })).json();
+    assert.equal((await post('/run/record', { id: alice, ticket: bubbleTicket.ticket, score: 100, time: 30 })).status, 403, 'a bubble ticket is not a run ticket');
+    const ok = await post('/run/record', { id: alice, ticket, score: 300, time: 30 }); assert.equal(ok.status, 200);
+    assert.deepEqual(await ok.json(), { ok: true, rank: 3, improved: true, top: [{ rank: 1, name: 'Carol', score: 900, time: 70 }, { rank: 2, name: 'Dan', score: 400, time: 40 }, { rank: 3, name: 'Alice', score: 300, time: 30 }] });
+    const board = await (await Bundle.default.fetch(new Request('https://x.test/board/games'), env)).json();
+    assert.deepEqual(board.run.score.map(p => [p.name, p.score, p.time]), [['Carol', 900, 70], ['Dan', 400, 40], ['Alice', 300, 30]], 'zero, fractions and impossible values dropped; each record keeps its seconds');
+    const web = await signSession({ uid: 'g:1', name: 'Guest', guest: 1, exp: clock + 60000 }, AUTH_ENV);
+    assert.equal((await post('/run/solo', { id: 'session=' + encodeURIComponent(web) })).status, 403, 'guests get no ticket');
+    assert.equal((await post('/run/solo', { id: 'auth=nope' })).status, 401);
+    assert.equal((await Bundle.default.fetch(new Request('https://x.test/run/solo'), env)).status, 405);
+    const total = await (await Bundle.default.fetch(new Request('https://x.test/board'), env)).json(); assert.ok(total.top.every(p => ['Carol', 'Dan', 'Zero', 'Hack', 'Frac'].includes(p.name)), 'solo records never add points');
+  } finally { Date.now = realNow; }
+  assert.deepEqual((await (await Bundle.default.fetch(new Request('https://x.test/board/games'), {})).json()).run, { score: [] });
 });

@@ -106,6 +106,15 @@ export const GAME_ART = {
     shine(x, 38, 47, 8, 3, 0);
     x.lineWidth = 4; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(12, 46); x.lineTo(20, 46); x.moveTo(8, 56); x.lineTo(20, 56); x.stroke();
   },
+  run(x) { // 泡泡跑跑：奔跑的小傢伙 + 前方的小山丘與速度線
+    x.beginPath(); x.ellipse(82, 84, 22, 14, 0, Math.PI, 0); inkPath(x, '#8fd694');
+    x.beginPath(); x.arc(46, 66, 24, 0, Math.PI * 2); inkPath(x, '#fffdf7');
+    x.beginPath(); x.arc(38, 44, 8, 0, Math.PI * 2); inkPath(x, '#ffb3c7'); x.beginPath(); x.arc(58, 44, 8, 0, Math.PI * 2); inkPath(x, '#ffb3c7');
+    x.beginPath(); x.arc(54, 64, 3.4, 0, Math.PI * 2); x.fillStyle = INK; x.fill(); x.beginPath(); x.arc(66, 64, 3.4, 0, Math.PI * 2); x.fill();
+    x.beginPath(); x.ellipse(70, 74, 5, 3, 0, 0, Math.PI * 2); x.fillStyle = '#ffa3b5'; x.fill();
+    x.beginPath(); x.roundRect(30, 84, 36, 9, 4); inkPath(x, '#ffb04d');
+    x.lineWidth = 4; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(10, 58); x.lineTo(20, 58); x.moveTo(6, 68); x.lineTo(18, 68); x.moveTo(12, 78); x.lineTo(22, 78); x.stroke();
+  },
   artillery(x) { // 泡泡砲戰：斜放的砲管 + 輪子 + 飛出去的水球
     x.save(); x.translate(44, 76); x.rotate(-.62); x.beginPath(); x.roundRect(-4, -12, 54, 24, 10); inkPath(x, '#4cd68a'); x.beginPath(); x.roundRect(40, -15, 12, 30, 5); inkPath(x, '#2fae6a'); x.restore();
     x.beginPath(); x.arc(40, 82, 15, 0, Math.PI * 2); inkPath(x, '#4a3b3b'); x.beginPath(); x.arc(40, 82, 5, 0, Math.PI * 2); x.fillStyle = '#fffdf8'; x.fill();

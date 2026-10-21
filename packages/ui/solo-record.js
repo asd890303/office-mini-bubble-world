@@ -9,21 +9,23 @@ export function soloStart(game, ID) {
   return s;
 }
 
-// 回傳結算畫面要顯示的一句話 { text, best }；這場沒擊敗任何人回傳 null
-export async function soloFinish(s, ID, kills, label) {
+// 回傳結算畫面要顯示的一句話 { text, best }；這場沒有成績（value 小於 1）回傳 null
+// field / unit：榜單上成績的欄位名與單位字，擊敗數是 kills / 擊敗，泡泡跑跑是 score / 公尺
+export async function soloFinish(s, ID, kills, label, { field = 'kills', unit = '擊敗', unitAfter = false, extra = {}, show = null } = {}) {
   if (!s || !(kills >= 1)) return null;
+  const fmt = v => (unitAfter ? `${v} ${unit}` : `${unit} ${v}`), at = row => (show ? show(row) : fmt(row[field]));
   if (!ID) return { text: `登入後，單人成績也會進${label}紀錄` };
   if (ID.guest) return { text: `訪客的成績不進${label}紀錄` };
   const ticket = await s.ticket;
   if (!ticket) return { text: '紀錄沒送出：連不上伺服器' };
   try {
-    const r = await post(`/${s.game}/record`, { id: ID.query, ticket, kills });
+    const r = await post(`/${s.game}/record`, { id: ID.query, ticket, [field]: kills, ...extra });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j?.ok) return { text: r.status === 429 ? '送出太頻繁，這場沒記錄' : '這場成績沒通過檢查，沒記錄' };
-    if (j.rank && j.improved) return { text: `新紀錄！${label}第 ${j.rank} 名（擊敗 ${j.top[j.rank - 1].kills}）`, best: true };
-    if (j.rank) return { text: `${label}紀錄：你排第 ${j.rank} 名（擊敗 ${j.top[j.rank - 1].kills}）` };
+    if (j.rank && j.improved) return { text: `新紀錄！${label}第 ${j.rank} 名（${at(j.top[j.rank - 1])}）`, best: true };
+    if (j.rank) return { text: `${label}紀錄：你排第 ${j.rank} 名（${at(j.top[j.rank - 1])}）` };
     const last = j.top.at(-1);
-    return { text: last ? `${label}前 3 名最低是擊敗 ${last.kills}` : `${label}紀錄已送出` };
+    return { text: last ? `${label}前 3 名最低是${at(last)}` : `${label}紀錄已送出` };
   } catch { return { text: '紀錄沒送出：連不上伺服器' }; }
 }
 

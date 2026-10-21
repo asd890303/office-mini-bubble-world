@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡跑跑</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%23cfe9ff'/%3E%3Cg%20stroke='%233b2f2f'%20stroke-width='3.5'%20stroke-linejoin='round'%3E%3Ccircle%20cx='19'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='45'%20cy='17'%20r='8'%20fill='%23ffb3c7'/%3E%3Ccircle%20cx='32'%20cy='37'%20r='22'%20fill='%23fffdf7'/%3E%3C/g%3E%3Ccircle%20cx='24'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Ccircle%20cx='40'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Cellipse%20cx='17.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cellipse%20cx='46.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cpath%20d='M28%2043q4%204%208%200'%20fill='none'%20stroke='%233b2f2f'%20stroke-width='2.8'%20stroke-linecap='round'/%3E%3Cellipse%20cx='22'%20cy='27'%20rx='4'%20ry='2.4'%20transform='rotate(-35%2022%2027)'%20fill='%23fff'%20opacity='.9'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; transition: background 1.2s; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* HUD */
+.hud { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+.score { padding: 2px 18px; display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.score b { font-size: 26px; font-weight: 900; }
+.score small { font-size: 13px; color: var(--ink-soft); font-weight: 700; }
+.runners { position: fixed; top: max(10px, env(safe-area-inset-top)); left: 10px; width: 168px; display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+.runners[hidden] { display: none; }
+.rn-head { padding: 2px 10px; font-size: 12px; font-weight: 900; border-width: 2px; display: flex; justify-content: space-between; }
+.rn { padding: 3px 8px; border-radius: 12px; font-size: 12px; line-height: 1.3; border-width: 2px; display: flex; justify-content: space-between; gap: 6px; }
+.rn span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.rn i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 5px; vertical-align: -1px; }
+.rn b { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 11px; }
+.rn.me { background: var(--pink); color: #4a3b3b; }
+.rn.out { opacity: .55; }
+.rn.out b { color: #c0405f; }
+.count { position: fixed; left: 0; right: 0; top: 22%; text-align: center; font-size: 110px; font-weight: 900; color: #fff; -webkit-text-stroke: 8px var(--ink); paint-order: stroke fill; pointer-events: none; line-height: 1; }
+.count[hidden] { display: none; }
+.count.small { font-size: 44px; -webkit-text-stroke: 6px var(--ink); }
+.count.pop { animation: pop .5s ease-out; }
+@keyframes pop { from { transform: scale(1.6); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+.biome { position: fixed; left: 0; right: 0; top: calc(max(10px, env(safe-area-inset-top)) + 46px); text-align: center; pointer-events: none; opacity: 0; transition: opacity .4s; }
+.biome span { display: inline-block; padding: 2px 16px; font-weight: 900; font-size: 16px; }
+.biome.show { opacity: 1; }
+.keys { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); font-size: 12px; padding: 6px 12px; white-space: nowrap; }
+body.touch .keys { display: none; }
+.tapzone { position: fixed; inset: 0; z-index: 1; }
+.tapzone[hidden] { display: none; }
+
+/* 畫面 */
+.screen { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(74,59,59,.28); z-index: 10; }
+.screen[hidden] { display: none; }
+.screen .box { width: min(400px, calc(100% - 28px)); padding: 20px; text-align: center; max-height: calc(100% - 28px); overflow: auto; }
+.screen h1 { margin: 0; font-size: 30px; font-weight: 900; }
+.screen h2 { margin: 0 0 6px; font-size: 24px; font-weight: 900; }
+.screen p { margin: 6px 0 12px; color: var(--ink-soft); font-size: 13px; line-height: 1.6; }
+.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 8px 0; }
+.go { margin-top: 16px; width: 100%; padding: 10px; font-size: 17px; }
+.back { display: inline-block; margin-top: 10px; text-decoration: none; color: var(--ink); }
+.rank { text-align: left; margin: 8px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.rank li { display: flex; justify-content: space-between; padding: 5px 4px; border-bottom: 1px dashed var(--line); }
+.rank li:last-child { border: 0; }
+.slots i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; vertical-align: -1px; }
+.slots li.empty { color: var(--ink-soft); }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; text-align: left; font-size: 12.5px; margin-top: 10px; }
+.toast { position: fixed; left: 50%; top: calc(max(10px, env(safe-area-inset-top)) + 84px); transform: translate(-50%, 0) scale(.8); font-size: 15px; font-weight: 900; padding: 4px 16px; border-width: 2px; max-width: calc(100% - 24px); white-space: nowrap; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 20; }
+.toast.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+#endScreen { background: transparent; place-items: end center; pointer-events: none; }
+#endScreen .box { pointer-events: auto; margin-bottom: max(14px, env(safe-area-inset-bottom)); max-height: 52%; padding: 12px 16px; }
+#endScreen h2 { font-size: 20px; margin: 0; }
+#endScreen p { margin: 2px 0 6px; }
+#endScreen .rank { margin: 0; font-size: 13px; }
+#endScreen .rank li { padding: 3px 4px; }
+#endScreen .go { margin-top: 8px; padding: 7px; }
+.endnote { margin: 6px 0 0; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.endnote.best { color: var(--pink-deep); font-size: 15px; }
+.mute { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 10px; z-index: 6; padding: 4px 10px; font-size: 12px; }
+@media (max-height: 520px) and (orientation: landscape) {
+  .screen .box { width: min(560px, calc(100% - 20px)); max-height: calc(100% - 16px); padding: 12px 16px; }
+  .screen h1 { font-size: 22px; }
+  .screen h2 { font-size: 20px; }
+  .screen p, .legend { display: none; }
+  .go { margin-top: 10px; padding: 7px; }
+  .count { font-size: 80px; top: 14%; }
+  .count.small { font-size: 34px; }
+  .runners { width: 150px; }
+  #endScreen .box { max-height: calc(100% - 16px); width: min(380px, calc(100% - 340px)); margin-bottom: 8px; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="tapzone" id="tap" hidden></div>
+
+<div class="hud"><div class="score box"><b id="score">0</b><small>公尺</small></div></div>
+<div class="runners" id="runners" hidden></div>
+<div class="count" id="count" hidden></div>
+<div class="biome" id="biome"><span class="box" id="biomeName"></span></div>
+<button class="btn mute" id="mute">音效 開</button>
+<div class="keys box"><b>空白鍵</b> 跳躍　空中再按一次 二連跳</div>
+<div class="toast box" id="toast"></div>
+
+<section class="screen" id="startScreen">
+  <div class="box">
+    <h1>泡泡跑跑</h1>
+    <p>小傢伙會一直往前跑，越跑越快。按跳躍閃開前面的障礙，空中可以再跳一次。活得越久，跑得越遠，分數越高。</p>
+    <div class="row"><button class="btn" id="avatarBtn">換外觀</button><button class="btn" id="onlineBtn">連線對戰</button></div>
+    <div class="legend"><span>矮障礙：跳一次</span><span>高障礙：二連跳</span><span>空中障礙：別跳</span><span>連線：2 到 4 人同場</span></div>
+    <button class="btn primary go" id="startBtn">開始</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="rank" id="rank"></ul>
+    <p class="endnote" id="endNote" hidden></p>
+    <button class="btn primary go" id="againBtn">再玩一局</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="lobbyScreen" hidden>
+  <div class="box">
+    <h1>泡泡跑跑</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="rank slots" id="slots"></ul>
+    <div class="row"><button class="btn" id="lAvatarBtn">換外觀</button></div>
+    <button class="btn primary go" id="joinBtn">加入</button>
+    <button class="btn" id="soloBtn" style="margin-top:10px">先玩單人版</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './run-core.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, G, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+watchUpdates();
+
+const WORKER_URL = location.origin;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ---------- Telegram ---------- */
+const TG = window.Telegram?.WebApp;
+const inTelegram = !!(TG && TG.initData);
+const tgUser = inTelegram ? TG.initDataUnsafe?.user : null;
+if (inTelegram) {
+  try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {}
+  if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme;
+}
+const haptic = {
+  tap() { try { TG?.HapticFeedback?.impactOccurred('light'); } catch {} },
+  hit() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} },
+  win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} },
+};
+
+/* ---------- 音效 ---------- */
+let muted = store.get('bp-muted') === '1';
+let actx = null;
+function tone(freq, dur = .12, type = 'sine', vol = .15, slide = 0) {
+  if (muted) return;
+  try {
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq * slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur);
+  } catch {}
+}
+const sfx = {
+  jump: () => tone(420, .14, 'sine', .12, 1.8),
+  jump2: () => tone(640, .14, 'sine', .12, 1.7),
+  out: () => { tone(260, .4, 'triangle', .18, .4); tone(120, .3, 'sine', .1, .5); },
+  tick: () => tone(660, .1, 'square', .05),
+  go: () => { tone(880, .18, 'square', .06); tone(1320, .25, 'sine', .08); },
+  biome: () => { tone(520, .1, 'sine', .08); setTimeout(() => tone(780, .14, 'sine', .08), 90); },
+};
+$('mute').textContent = muted ? '音效 關' : '音效 開';
+$('mute').addEventListener('click', e => { e.stopPropagation(); muted = !muted; store.set('bp-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+
+const U = 50;               // 1 個世界單位 = 50 點
+const LANE = 3;           // 跑道間距
+const loginErr = captureLogin();
+let ID = identity();
+let mode = ID && /^https?:\/\//.test(WORKER_URL) ? 'online' : 'offline';
+const TOUCH = matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch');
+if (TOUCH) document.body.classList.add('touch');
+
+/* ---------- three.js ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(20, 1, .1, 400);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.7));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6); sun.position.set(8, 20, 14); scene.add(sun);
+const root = new THREE.Group(); scene.add(root);
+
+/* ---------- 場景配色 ---------- */
+const hex = c => new THREE.Color(c);
+const topMat = new THREE.MeshToonMaterial({ color: hex(Core.BIOMES.plain.ground) }), dirtMat = new THREE.MeshToonMaterial({ color: hex(Core.BIOMES.plain.dirt) });
+topMat.gradientMap = dirtMat.gradientMap = toon('#fff').gradientMap;
+const groundMats = [dirtMat, dirtMat, topMat, dirtMat, dirtMat, dirtMat];
+const mark = toon('#ffffff', { transparent: true, opacity: .45 });
+const pal = { top: hex(Core.BIOMES.plain.ground), dirt: hex(Core.BIOMES.plain.dirt), s0: hex(Core.BIOMES.plain.sky[0]), s1: hex(Core.BIOMES.plain.sky[1]) };
+function tintTo(id, k) {
+  const b = Core.BIOMES[id];
+  pal.top.lerp(hex(b.ground), k); pal.dirt.lerp(hex(b.dirt), k); pal.s0.lerp(hex(b.sky[0]), k); pal.s1.lerp(hex(b.sky[1]), k);
+  topMat.color.copy(pal.top); dirtMat.color.copy(pal.dirt);
+  document.documentElement.style.setProperty('--bg-top', '#' + pal.s0.getHexString()); document.documentElement.style.setProperty('--bg-bottom', '#' + pal.s1.getHexString());
+}
+
+/* ---------- 障礙外觀（判定只看 kind，這裡只管好看；單位是世界單位，原點在底部中央） ---------- */
+const part = (geo, color, sx, sy, sz, x = 0, y = 0, z = 0, ol = 1.08) => { const m = blob(geo, toon(color), sx, sy, sz, ol); m.position.set(x, y, z); return m; };
+const logBar = (color, len, r, x, y) => { const m = part(G.cyl, color, r, len, r, x, y); m.rotation.z = Math.PI / 2; return m; };
+const dome = (c, r, h, x = 0) => part(G.sphere, c, r, h, r * 1.05, x, 0);
+const crystal = (c, h, x) => part(G.star, c, .3, h, .26, x, h * .5);
+const ART = {
+  hill: g => { g.add(dome('#8fd694', .42, .88)); g.add(part(G.small, '#ffb3c7', .08, .08, .08, .12, .8, .3)); },
+  rock: g => { g.add(dome('#cfc8c2', .42, .72)); g.add(part(G.sphere, '#b8b0aa', .24, .44, .3, .2, 0, .28)); },
+  hills: g => { g.add(dome('#8fd694', .5, .7, -.75)); g.add(dome('#7ccf88', .6, .86, 0)); g.add(dome('#9fe0a2', .45, .6, .78)); },
+  boulder: g => { g.add(part(G.sphere, '#bdb6b0', .56, 1.3, .6, 0, 1.2)); g.add(part(G.small, '#a39b95', .22, .3, .2, .2, 1.8, .45, 1.1)); },
+  cloud: g => { for (const [x, y, r] of [[-.34, 1.56, .3], [0, 1.7, .4], [.36, 1.6, .32]]) g.add(part(G.sphere, '#ffffff', r * 1.2, r, r, x, y, 0)); g.add(part(G.small, '#3b2f2f', .04, .04, .03, -.1, 1.7, .4, 1)); g.add(part(G.small, '#3b2f2f', .04, .04, .03, .12, 1.7, .4, 1)); },
+  stump: g => { g.add(part(G.cyl, '#c59a6d', .34, .8, .34, 0, .4)); g.add(part(G.cyl, '#e7c9a0', .28, .05, .28, 0, .8, 0, 1)); },
+  bush: g => { g.add(part(G.sphere, '#5fbf72', .4, .55, .42, 0, .08)); g.add(part(G.sphere, '#86d696', .26, .4, .3, .2, .3, .1)); g.add(part(G.small, '#ffb3c7', .06, .06, .06, -.15, .5, .35)); },
+  logs: g => { g.add(logBar('#b98a62', 2.0, .25, 0, .25)); g.add(logBar('#c59a6d', 2.0, .25, 0, .75)); g.add(part(G.cyl, '#e7c9a0', .2, .02, .2, 1, .25, 0, 1)); },
+  bigtree: g => { g.add(part(G.cyl, '#a9744f', .27, 1.4, .27, 0, .7)); g.add(part(G.sphere, '#4fb36a', .7, .62, .7, 0, 1.75)); g.add(part(G.sphere, '#63c57c', .5, .46, .5, .1, 2.2)); },
+  branch: g => { g.add(logBar('#a9744f', 1.4, .1, 0, 1.55)); for (const x of [-.45, 0, .45]) g.add(part(G.sphere, '#5fbf72', .2, .13, .2, x, 1.42, .05)); g.add(part(G.cyl, '#7fa15a', .03, 1, .03, -.55, 2.1)); g.add(part(G.cyl, '#7fa15a', .03, 1, .03, .55, 2.1)); },
+  cactus: g => { g.add(part(G.cyl, '#7fcf8b', .2, .84, .2, 0, .42)); const a = part(G.cyl, '#7fcf8b', .1, .34, .1, .26, .55); g.add(a); g.add(part(G.small, '#ffb3c7', .06, .06, .06, 0, .86)); },
+  dune: g => { g.add(dome('#f2cf86', .44, .72)); g.add(part(G.sphere, '#e5bd6c', .22, .4, .3, .2, 0, .3)); },
+  dunes: g => { g.add(dome('#f2cf86', .5, .72, -.7)); g.add(dome('#e5bd6c', .6, .86, 0)); g.add(dome('#f7d994', .45, .6, .8)); },
+  tallcactus: g => { g.add(part(G.cyl, '#7fcf8b', .27, 2.5, .27, 0, 1.25)); g.add(part(G.cyl, '#7fcf8b', .12, .9, .12, .42, 1.2)); g.add(part(G.cyl, '#7fcf8b', .12, .8, .12, -.4, 1.6)); g.add(part(G.small, '#ffb3c7', .1, .1, .1, 0, 2.56)); },
+  tumble: g => { g.add(part(G.sphere, '#c9a063', .36, .36, .36, 0, 1.64)); for (const r of [[0, 0], [1.1, .5]]) { const t = part(G.scarf, '#8a6a3c', .7, .7, .7, 0, 1.64, 0, 1); t.rotation.set(r[0], r[1], 0); g.add(t); } },
+  ice: g => { g.add(crystal('#bfe9ff', .86, 0)); g.add(crystal('#d9f2ff', .5, .2)); },
+  snowpile: g => { g.add(dome('#ffffff', .42, .76)); g.add(part(G.small, '#bfe9ff', .1, .1, .1, .15, .7, .3)); },
+  icerow: g => { [-.85, -.3, .3, .85].forEach((x, i) => g.add(crystal(i % 2 ? '#d9f2ff' : '#bfe9ff', i % 2 ? .6 : .84, x))); },
+  snowman: g => { g.add(part(G.sphere, '#ffffff', .55, .55, .55, 0, .5)); g.add(part(G.sphere, '#ffffff', .42, .42, .42, 0, 1.38)); g.add(part(G.sphere, '#ffffff', .32, .32, .32, 0, 2.05)); const n = part(G.cone, '#ff9a4c', 1, 1.1, 1, 0, 2.05, .35, 1); n.rotation.x = Math.PI / 2; g.add(n); g.add(part(G.scarf, '#ff8fab', .75, .75, .75, 0, 1.78, 0, 1).rotateX(Math.PI / 2)); },
+  icicle: g => { [-.4, 0, .4].forEach((x, i) => { const c = part(G.cone, i === 1 ? '#d9f2ff' : '#bfe9ff', 1.6, i === 1 ? 2.6 : 2, 1.6, x, 1.7 - (i === 1 ? .05 : 0), 0, 1.1); c.rotation.z = Math.PI; g.add(c); }); },
+  wave: g => { g.add(dome('#7cc8ff', .42, .82)); g.add(part(G.sphere, '#ffffff', .2, .2, .2, .14, .78, .2, 1)); },
+  starfish: g => { g.add(part(G.star, '#ffa15c', .42, .6, .2, 0, .42)); g.add(part(G.small, '#fff', .05, .05, .05, 0, .5, .2, 1)); },
+  waves: g => { g.add(dome('#7cc8ff', .5, .7, -.75)); g.add(dome('#5ab8ff', .6, .86, 0)); g.add(dome('#9edcff', .45, .6, .8)); for (const x of [-.6, .2, .9]) g.add(part(G.sphere, '#ffffff', .16, .12, .16, x, .74, .25, 1)); },
+  sandcastle: g => { g.add(part(G.box, '#f0c987', 1.1, .9, .9, 0, .45)); g.add(part(G.box, '#e8b86d', .8, .9, .7, 0, 1.35)); g.add(part(G.box, '#f0c987', .52, .7, .5, 0, 2.15)); g.add(part(G.cyl, '#a9744f', .02, .5, .02, 0, 2.7, 0, 1)); g.add(part(G.cone, '#ff8fab', 1.2, 1, .3, .11, 2.72, 0, 1).rotateZ(-Math.PI / 2)); },
+  ball: g => { g.add(part(G.sphere, '#ffffff', .36, .36, .36, 0, 1.64)); [['#ff8fab', 0, 0], ['#7cc8ff', Math.PI / 2, 0], ['#ffd36b', Math.PI / 4, Math.PI / 2]].forEach(([c, a, b]) => { const t = part(G.scarf, c, .72, .72, .72, 0, 1.64, 0, 1); t.rotation.set(a, b, 0); g.add(t); }); },
+};
+function makeObstacle(o) {
+  const g = new THREE.Group(); (ART[o.art] || ART.hill)(g);
+  return g;
+}
+
+/* ---------- 遠景 ---------- */
+const fp = (geo, c, sx, sy, sz, x = 0, y = 0, z = 0) => part(geo, c, sx, sy, sz, x, y, z, 0);
+const far = (c, r, h) => fp(G.sphere, c, r * 1.7, h * .8, r);
+const DECOR = {
+  plain: [() => far('#d3f0c4', 3.2, 1.8), () => far('#c3e8b4', 2.4, 1.3)],
+  forest: [() => { const g = new THREE.Group(); g.add(fp(G.cyl, '#9a7a5a', .25, 1.2, .25, 0, .6)); g.add(fp(G.sphere, '#58a874', 1.1, 1, 1.1, 0, 1.8)); return g; }, () => far('#a9dcaa', 3, 1.8)],
+  desert: [() => far('#f8e0a8', 3.6, 1.6), () => fp(G.cone, '#ecc882', 6, 7, 6, 0, 1.1)],
+  snow: [() => far('#ffffff', 3.2, 2), () => { const g = new THREE.Group(); g.add(fp(G.cone, '#7bbd9a', 4, 7, 4, 0, 1.1)); g.add(fp(G.cone, '#ffffff', 2.6, 3, 2.6, 0, 2.3)); return g; }],
+  beach: [() => far('#a9dfff', 4, .8), () => { const g = new THREE.Group(); g.add(fp(G.cyl, '#c29a72', .1, 2.2, .1, 0, 1.1)); for (const a of [0, 1.6, 3.2, 4.8]) { const l = fp(G.sphere, '#6cc57e', .7, .12, .25, Math.cos(a) * .6, 2.3, Math.sin(a) * .3); l.rotation.z = Math.cos(a) * .3; g.add(l); } return g; }],
+};
+function makeCloud() { const g = new THREE.Group(); for (const [x, r] of [[-.9, .8], [0, 1.1], [1, .8]]) g.add(fp(G.sphere, '#ffffff', r * 1.3, r * .8, r, x, 0, 0)); return g; }
+
+/* ---------- 一局的畫面 ---------- */
+let L = null;        // 目前這局的規則狀態（單人是真的對局；連線是只推進物理的複本）
+let V = null;        // 這局的畫面物件
+let playing = false;
+let solo = null, endSeq = 0, toastTimer = 0, last = { biome: null, count: null };
+const setup = { color: Core.COLORS[0], ear: 'be', eye: 'dot', body: Core.BODIES[0], blush: Core.BLUSHES[0] };
+const myName = (ID?.name || tgUser?.first_name || store.get('bp-name') || '你').slice(0, 10);
+
+function toast(text, ms = 1400) {
+  const t = $('toast'); t.textContent = text; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function clearView() {
+  if (!V) return;
+  root.remove(V.group);
+  V.group.traverse(o => { if (o.isSprite) { o.material.map?.dispose(); o.material.dispose(); } });
+  V = null;
+}
+
+function laneSetup(i, z, snapP, mine) {
+  const g = new THREE.Group(); g.position.z = z;
+  const ground = new THREE.Mesh(G.box, groundMats); ground.scale.set(220, 8, LANE); ground.position.set(25, -4, 0); g.add(ground);
+  const edge = new THREE.Mesh(G.box, new THREE.MeshBasicMaterial({ color: 0x3b2f2f, side: THREE.BackSide })); edge.scale.set(220.1, 8.06, LANE + .06); edge.position.copy(ground.position); g.add(edge);
+  const ticks = [];
+  for (let k = 0; k < 24; k++) { const t = new THREE.Mesh(G.box, mark); t.scale.set(.9, .02, .22); t.position.set(0, .01, .5); g.add(t); ticks.push(t); }
+  const look = snapP.look || {};
+  const c = makeCritter({ color: look.color || Core.COLORS[i % Core.COLORS.length], ear: look.ear || 'be', eye: look.eye || 'dot', body: look.body || Core.BODIES[0], blush: look.blush || Core.BLUSHES[0] });
+  c.root.rotation.y = Math.PI / 2; g.add(c.root);
+  addNameTag(c, mine ? '你' : snapP.name || `玩家${i + 1}`); c.nameTag.scale.set(2.8, .7, 1); c.nameTag.position.y = 1.95;
+  const shadow = new THREE.Mesh(G.disc, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .22, depthWrite: false })); shadow.rotation.x = -Math.PI / 2; shadow.position.y = .02; g.add(shadow);
+  return { id: i, g, ticks, c, shadow, mine, obs: new Map(), air: false, dead: false, deadT: 0, squash: 0, flip: null };
+}
+
+// snap：完整快照（含種子、名字與外觀）；game：單人版傳入真的對局，連線版省略（建一份只推進物理的複本）
+function buildView(snap, myId, game) {
+  clearView();
+  if (game) L = game;
+  else {
+    L = Core.createGame({ seed: snap.seed, humans: snap.players.map(p => ({ uid: p.uid ?? 'x' + p.id, name: p.name, ...(p.look || {}) })), visual: true });
+    L.t = snap.t; L.run = snap.run; L.dist = snap.dist; L.phase = snap.phase;
+    snap.players.forEach(sp => { const p = L.players[sp.id]; p.y = sp.y; p.vy = sp.vy || 0; p.jumps = sp.j; if (!sp.a) { p.alive = false; p.diedAt = sp.d ?? snap.dist; p.score = Core.scoreOf(p.diedAt); } });
+  }
+  const order = snap.players.map(p => p.id); if (myId != null) order.sort((a, b) => (a === myId ? -1 : b === myId ? 1 : a - b));
+  const group = new THREE.Group(); root.add(group);
+  const lanes = []; order.forEach((id, k) => { const l = laneSetup(id, -k * LANE, snap.players[id], id === myId); group.add(l.g); lanes[id] = l; });
+  const back = -(order.length - 1) * LANE - LANE / 2;
+  const farGround = new THREE.Mesh(G.box, groundMats); farGround.scale.set(220, 8, 16); farGround.position.set(25, -4, back - 8); group.add(farGround);
+  const decor = new THREE.Group(); decor.position.z = back - 6; group.add(decor);
+  V = { group, lanes, order, myId, decor, decorItems: [], nextDecor: 6, corr: 0, lastJumpAt: 0, firstIdx: 0, intro: 0, hold: false, biome: L.track.biomeAt(L.dist + 14 * U), hudAt: 0, ended: false };
+  const b0 = V.biome; tintTo(b0, 1);
+  $('runners').hidden = order.length < 2;
+  last = { biome: null, count: null };
+}
+
+/* ---------- 每格更新 ---------- */
+function visibleObstacles(lane, dist) {
+  const tr = L.track; tr.ensure(dist + 34 * U);
+  const lo = dist - 8 * U, hi = dist + 32 * U;
+  while (V.firstIdx < tr.obstacles.length && tr.obstacles[V.firstIdx].x + tr.obstacles[V.firstIdx].w < lo) V.firstIdx++;
+  for (const [idx, m] of lane.obs) if (idx < V.firstIdx) { lane.g.remove(m); lane.obs.delete(idx); }
+  for (let i = V.firstIdx; i < tr.obstacles.length; i++) {
+    const o = tr.obstacles[i]; if (o.x > hi) break;
+    let m = lane.obs.get(i); if (!m) { m = makeObstacle(o); lane.g.add(m); lane.obs.set(i, m); }
+    m.position.x = (o.x + o.w / 2 - dist) / U;
+  }
+}
+function spawnDecor(dist) {
+  const par = .3, base = dist / U * par;
+  while (V.nextDecor - base < 34) {
+    const id = L.track.biomeAt(dist + 30 * U), list = DECOR[id] || DECOR.plain, make = list[Math.floor(Math.random() * list.length)];
+    const m = make(); m.position.set(V.nextDecor, 0, (Math.random() - .5) * 6); m.scale.setScalar(1.8 + Math.random() * .8);
+    m.position.y = -.2 + (id === 'beach' ? -.3 : 0);
+    V.decor.add(m); V.decorItems.push({ m, x: V.nextDecor });
+    if (Math.random() < .7) { const c = makeCloud(); c.position.set(V.nextDecor + (Math.random() - .5) * 8, 9 + Math.random() * 5, 0); c.scale.setScalar(1.2 + Math.random()); V.decor.add(c); V.decorItems.push({ m: c, x: c.position.x }); }
+    V.nextDecor += 6 + Math.random() * 5;
+  }
+  for (let i = V.decorItems.length - 1; i >= 0; i--) {
+    const d = V.decorItems[i]; d.m.position.x = d.x - base;
+    if (d.m.position.x < -22) { V.decor.remove(d.m); V.decorItems.splice(i, 1); }
+  }
+}
+const ease = k => k * k * (3 - 2 * k);
+function placeCamera() {
+  const n = V.order.length, aspect = innerWidth / innerHeight, wantW = aspect < 1 ? 14 : 19;
+  const tanH = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)), d = Math.max(14, wantW / (2 * tanH * Math.max(.3, aspect)));
+  const zc = -(n - 1) * LANE / 2, e = THREE.MathUtils.degToRad(n === 1 ? 8 : 16 + 3 * (n - 2)), cx = wantW * .28;
+  const ly = Math.max(.8, 2.3 - .5 * (n - 1)), sidePos = new THREE.Vector3(cx, ly + d * Math.sin(e), zc + d * Math.cos(e)), sideLook = new THREE.Vector3(cx, ly, zc);
+  const k = ease(Math.min(1, V.intro));
+  const introLook = new THREE.Vector3(cx, 0, zc), introPos = new THREE.Vector3(cx, d, zc + 3.5);
+  camera.position.lerpVectors(introPos, sidePos, k);
+  const look = new THREE.Vector3().lerpVectors(introLook, sideLook, k);
+  camera.lookAt(look);
+}
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+if (inTelegram) { try { TG.onEvent('viewportChanged', resize); } catch {} }
+
+function animate(dt, t) {
+  const dist = L.dist, run = L.phase === 'running' || L.over;
+  V.intro = V.hold || L.phase !== 'countdown' ? 1 : Math.max(0, Math.min(1, (L.t - Core.OVERVIEW) / Core.MOVE));
+  if (V.corr) { const c = V.corr * Math.min(1, dt * 10); L.dist += c; V.corr -= c; }
+  const ahead = L.track.biomeAt(dist + 14 * U);
+  if (ahead !== V.biome) { V.biome = ahead; if (L.phase !== 'countdown') { showBiome(ahead); sfx.biome(); } }
+  tintTo(V.biome, Math.min(1, dt * 1.6));
+  spawnDecor(dist);
+  for (const id of V.order) {
+    const lane = V.lanes[id], p = L.players[id], c = lane.c;
+    visibleObstacles(lane, dist);
+    const shift = (dist / U) % 3;
+    lane.ticks.forEach((tk, k) => { tk.position.x = k * 3 - shift - 6; tk.position.z = .55 + (k % 2) * .1; });
+    const x = p.alive ? 0 : (p.diedAt - dist) / U, y = p.y / U;
+    c.root.position.set(x, y, 0);
+    const air = p.alive && p.y > .5;
+    if (lane.air && !air && p.alive) lane.squash = .3;
+    lane.air = air; lane.squash = Math.max(0, lane.squash - dt * 2.4);
+    if (p.alive && p.jumps === 2) lane.flip = lane.flip === null ? 0 : Math.min(1, lane.flip + dt / .55); else lane.flip = null;
+    if (!p.alive && !lane.dead) { lane.dead = true; lane.deadT = 0; c.bubble.visible = true; }
+    if (lane.dead) {
+      lane.deadT += dt; const k = Math.min(1, lane.deadT * 3);
+      c.root.rotation.z = -k * 1.5; c.root.position.y = Math.sin(Math.min(1, lane.deadT * 2.5) * Math.PI) * .6 * (1 - k * .3);
+      c.bubble.scale.setScalar(.75 + Math.min(.6, lane.deadT)); c.bubble.visible = lane.deadT < .35;
+      for (const e of c.eyes) e.scale.y = .008;
+      c.pivot.rotation.x = 0; c.pivot.position.z = 0;
+    } else {
+      animateCritter(c, dt, t, run && !air);
+      if (air) { for (const a of c.arms) a.rotation.z = a.userData.side * 2.5; const st = 1 + Math.min(.12, Math.abs(p.vy) / 6000); c.pivot.scale.set(1 / Math.sqrt(st), st, 1 / Math.sqrt(st)); c.pivot.position.y = 0; }
+      if (lane.squash > 0) { const q = 1 - lane.squash; c.pivot.scale.set(1 + lane.squash * .5, q * .3 + .7, 1 + lane.squash * .5); }
+      c.root.rotation.z = 0;
+      const th = lane.flip === null ? 0 : ease(lane.flip) * Math.PI * 2;
+      c.pivot.rotation.x = th; c.pivot.position.y += .5 - .5 * Math.cos(th); c.pivot.position.z = -.5 * Math.sin(th);
+    }
+    lane.shadow.position.x = x; lane.shadow.scale.setScalar(Math.max(.1, .42 - y * .09));
+    lane.shadow.visible = p.alive || lane.deadT < .1;
+  }
+  placeCamera();
+  hudTick(dt);
+}
+function showBiome(id) {
+  $('biomeName').textContent = Core.BIOMES[id].name; $('biome').classList.add('show');
+  clearTimeout(showBiome.t); showBiome.t = setTimeout(() => $('biome').classList.remove('show'), 1800);
+}
+function hudTick(dt) {
+  const left = Core.START_AT - L.t, ct = $('count'), show = (text, small) => { ct.hidden = false; ct.textContent = text; ct.classList.toggle('small', !!small); ct.classList.remove('pop'); void ct.offsetWidth; ct.classList.add('pop'); };
+  if (L.phase === 'countdown' && playing) {
+    const label = L.t < Core.OVERVIEW + Core.MOVE ? 'ready' : Math.ceil(left - 1e-6);
+    if (label !== last.count) { last.count = label; if (label === 'ready') show('各就各位', true); else { show(label); sfx.tick(); } }
+  } else if (last.count !== 'go' && playing && L.phase === 'running' && L.run < .7) {
+    last.count = 'go'; show('GO!'); sfx.go(); setTimeout(() => { ct.hidden = true; }, 700);
+  } else if (!playing) ct.hidden = true;
+  V.hudAt -= dt; if (V.hudAt > 0) return; V.hudAt = .1;
+  const me = L.players[V.myId ?? 0], shown = me ? (me.alive ? Core.scoreOf(L.dist) : me.score) : Core.scoreOf(L.dist);
+  $('score').textContent = shown;
+  if (!$('runners').hidden) {
+    const alive = L.players.filter(p => p.alive).length;
+    $('runners').innerHTML = `<div class="rn-head box"><span>存活 ${alive}</span><span>失敗 ${L.players.length - alive}</span></div>` + [...L.players].sort((a, b) => (b.alive - a.alive) || (b.score - a.score) || a.id - b.id).map(p => {
+      const lk = p.look || {}, m = p.id === V.myId;
+      return `<div class="rn box ${m ? 'me' : ''} ${p.alive ? '' : 'out'}"><span><i style="background:${lk.color || '#fff'}"></i>${esc(p.name)}</span><b>${p.alive ? Core.scoreOf(L.dist) : p.score} 公尺・${p.alive ? '存活' : '失敗'}</b></div>`;
+    }).join('');
+  }
+}
+
+/* ---------- 輸入 ---------- */
+function doJump() {
+  if (!playing || !L) return;
+  const id = mode === 'offline' ? 0 : V.myId; if (id == null) return;
+  if (Core.jump(L, id)) {
+    (L.players[id].jumps === 1 ? sfx.jump : sfx.jump2)(); haptic.tap();
+    if (mode === 'online') { V.lastJumpAt = performance.now(); net.send({ t: 'jump' }); }
+  }
+}
+addEventListener('keydown', e => {
+  if (e.repeat || !['Space', 'ArrowUp', 'KeyW'].includes(e.code)) return;
+  if (e.target.closest?.('button, input')) return;
+  e.preventDefault(); doJump();
+});
+$('tap').addEventListener('pointerdown', e => { e.preventDefault(); doJump(); });
+
+/* ---------- 事件 ---------- */
+function onEvents(evs) {
+  for (const ev of evs || []) {
+    if (ev.type === 'out' && ev.id === (mode === 'offline' ? 0 : V?.myId)) { sfx.out(); haptic.hit(); }
+    else if (ev.type === 'out') tone(300, .25, 'triangle', .06, .6);
+    else if (ev.type === 'end') showEnd(ev.result);
+  }
+}
+
+/* ---------- 單人版 ---------- */
+function startOffline() {
+  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = true;
+  try { TG?.MainButton?.hide(); } catch {}
+  const g = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, ...setup }], bots: ['weak', 'smart'] });
+  buildView(Core.snapshot(g), 0, g); playing = true; $('tap').hidden = false; solo = soloStart('run', ID);
+  if (innerHeight > innerWidth * 1.1) toast('橫放手機，視野更寬', 2400);
+}
+function goOffline(why) {
+  mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null;
+  $('lobbyScreen').hidden = true; if (!playing) $('startScreen').hidden = false;
+  $('runners').hidden = true;
+  if (why) toast(why, 2200);
+}
+$('startBtn').addEventListener('click', () => { mode = 'offline'; startOffline(); });
+$('soloBtn').addEventListener('click', () => goOffline());
+
+function showEnd(r) {
+  if (V?.ended) return; if (V) V.ended = true;
+  playing = false; $('tap').hidden = true;
+  const me = V.myId, online = mode === 'online', mine = r.players.find(p => p.id === (online ? me : 0));
+  $('endTitle').textContent = online ? (r.winner ? (r.winner.id === me ? '你贏了！' : `${r.winner.name} 獲勝`) : '平手') : `跑了 ${mine?.score ?? 0} 公尺・${mine?.time ?? 0} 秒`;
+  $('endSub').textContent = online ? (me == null ? '觀戰結束，下一局一起跑' : `你跑了 ${mine?.score ?? 0} 公尺・${mine?.time ?? 0} 秒`) : `在 ${r.players.length} 位選手中排第 ${mine?.rank ?? '-'}`;
+  $('rank').innerHTML = r.players.map(p => `<li><span>${p.rank}. ${esc(p.name)}${p.id === (online ? me : 0) ? '（你）' : p.bot ? '（電腦）' : ''}</span><span>${p.score} 公尺・${p.time} 秒${online ? `・${p.points} 分` : ''}</span></li>`).join('');
+  $('againBtn').textContent = online ? '回大廳，再玩一局' : '再玩一局';
+  setTimeout(() => { $('endScreen').hidden = false; $('lobbyScreen').hidden = true; }, 900);
+  if (online && r.winner && r.winner.id === me) { haptic.win(); toast('勝利！', 1200); }
+  if (online) net.wantIn = false;
+  const note = $('endNote'), seq = ++endSeq, s = solo; solo = null; note.hidden = true;
+  if (!online && s) showSoloNote(note, soloFinish(s, ID, mine?.score ?? 0, '泡泡跑跑', { field: 'score', extra: { time: mine?.time ?? 0 }, show: row => `${row.score} 公尺・${row.time ?? '—'} 秒` }), () => seq !== endSeq);
+  if (inTelegram && !online) { try { TG.MainButton.setText('再玩一局'); TG.MainButton.show(); } catch {} }
+}
+$('againBtn').addEventListener('click', () => {
+  if (mode === 'online') { $('endScreen').hidden = true; net.wantIn = true; playing = false; sendJoin(); showLobby(); }
+  else startOffline();
+});
+if (inTelegram) { try { TG.MainButton.onClick(() => { if (mode === 'offline') startOffline(); }); } catch {} }
+
+/* ---------- 連線版（Worker 房間） ---------- */
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/run/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return goOffline('連不上遊戲伺服器，先玩單人版'); }
+  net.ws = ws;
+  ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws || mode !== 'online') return;
+    if (e.code === 4000) { lobbyStatus('你在其他視窗開了遊戲，這裡已斷線'); return; }
+    if (e.code === 4001) {
+      lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入');
+      const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); };
+      addEventListener('keydown', back); addEventListener('pointerdown', back); return;
+    }
+    net.tries++;
+    if (!net.opened && net.tries >= 3) return goOffline('連不上遊戲伺服器，先玩單人版');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function tryJoin() {
+  if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return;
+  const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return;
+  net.lastJoin = Date.now(); sendJoin();
+}
+function applyFrame(s) {
+  if (!L || !V || L.over) return;
+  if (s.phase === 'running' && L.phase === 'countdown') L.phase = 'running';
+  if (s.phase !== 'countdown') { const e = s.dist - L.dist; if (Math.abs(e) > 220) L.dist = s.dist; else V.corr = e; L.run = s.run; }
+  const recent = performance.now() - V.lastJumpAt < 450;
+  for (const sp of s.players) {
+    const p = L.players[sp.id]; if (!p) continue;
+    if (!sp.a) { if (p.alive) { p.alive = false; p.diedAt = sp.d ?? L.dist; p.score = Core.scoreOf(p.diedAt); } }
+    else if (sp.id !== V.myId || (!recent && (Math.abs(sp.y - p.y) > 30 || sp.j !== p.jumps))) { p.y = sp.y; p.vy = sp.vy; p.jumps = sp.j; p.airT = sp.j ? .1 : 0; }
+  }
+}
+function onNet(m) {
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') {
+    buildView(m.s, m.me); playing = true; $('tap').hidden = m.me == null;
+    $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = true;
+    toast(m.me == null ? '觀戰中' : '準備開跑！', 1200);
+    if (m.me != null && innerHeight > innerWidth * 1.1) toast('橫放手機，視野更寬', 2400);
+  }
+  else if (m.t === 's') {
+    if (!L || !V || L.seed !== (m.s.seed ?? L.seed)) return;
+    applyFrame(m.s); onEvents(m.ev);
+  }
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function renderLobby() {
+  const Lb = net.lobby; if (!Lb) return;
+  const slots = [];
+  for (let i = 0; i < Lb.max; i++) {
+    const p = Lb.players[i];
+    slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>等待玩家</span></li>`);
+  }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(Lb.phase === 'play' ? '這局進行中，結束後可加入（可先觀戰）' : Lb.phase === 'end' ? `上一局結算中，${Lb.endIn} 秒後開放新局` : Lb.players.length >= (Lb.min || 2) ? `${Lb.countdown} 秒後開局（滿 4 人立即開始）` : Lb.players.length ? `還差 ${(Lb.min || 2) - Lb.players.length} 人才開局` : `等待玩家加入（至少 ${Lb.min || 2} 人）`);
+  const joined = inLobby();
+  $('joinBtn').textContent = joined ? '離開' : '加入';
+  $('joinBtn').disabled = !joined && (Lb.phase === 'play' || Lb.players.length >= Lb.max);
+  if (!playing && $('endScreen').hidden) $('lobbyScreen').hidden = false;
+}
+$('joinBtn').addEventListener('click', () => {
+  if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); }
+  else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
+});
+
+window.BubbleRun = { start: startOffline, show(snap, myId) { mode = 'online'; buildView(snap, myId); playing = true; $('startScreen').hidden = true; }, get game() { return L; }, get online() { return mode === 'online'; }, get me() { return V?.myId ?? null; } };
+
+/* ---------- 主迴圈 ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (L && V) {
+    if (mode === 'offline' && playing) {
+      const evs = Core.step(L, dt); onEvents(evs);
+    } else if (mode === 'online' && playing) Core.step(L, dt);
+    animate(dt, t);
+  }
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+
+/* ---------- 外觀與進場 ---------- */
+function applyAppearance(a) {
+  Object.assign(setup, { color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush });
+  if (mode === 'online' && inLobby()) sendJoin();
+}
+async function changeAvatar() { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); }
+$('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
+async function goOnline() {
+  if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
+  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true;
+  $('startScreen').hidden = $('endScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
+}
+$('onlineBtn').addEventListener('click', goOnline);
+
+// 開始畫面先擺一條空跑道當背景
+{
+  const demo = Core.createGame({ seed: 20261021, humans: [{ uid: 'me', name: myName }] });
+  buildView(Core.snapshot(demo), 0, demo); V.hold = true; playing = false;
+}
+(async () => {
+  const want = new URLSearchParams(location.search).get('mode');
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '先玩單人版' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a);
+  if (want === 'solo') { mode = 'offline'; startOffline(); }
+  else if (ID) goOnline();
+})();
+tick();
+</script>
+</body>
+</html>

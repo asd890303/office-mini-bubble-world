@@ -161,7 +161,7 @@ body.touch .keys { display: none; }
 <div class="hud">
   <div class="box rank" id="rank">-<small></small></div>
   <div class="box mid"><div id="lap">第 1/3 圈</div><b id="time">0:00.0</b></div>
-  <div class="hudr"><button class="btn mute" id="mute">音效 開</button><button class="btn mute" id="resetBtn" hidden>回賽道</button></div>
+  <div class="hudr"><button class="btn mute" id="pauseBtn" hidden>暫停</button><button class="btn mute" id="mute">音效 開</button><button class="btn mute" id="resetBtn" hidden>回賽道</button></div>
 </div>
 <div class="box itembox"><span class="slots"><canvas id="slot" width="128" height="128"></canvas><canvas id="slot2" width="64" height="64" hidden></canvas></span><div><b id="itemName">沒有道具</b><span id="itemDesc">撞問號箱拿道具</span></div></div>
 <div class="count" id="count" hidden></div>
@@ -179,7 +179,7 @@ body.touch .keys { display: none; }
     <button class="act gas" id="gasBtn">油門</button>
   </div>
 </div>
-<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣　<b>R</b> 回賽道</div>
+<div class="keys box"><b>W</b> 油門　<b>S</b> 煞車　<b>A / D</b> 轉向　<b>Shift</b> 漂移　<b>空白</b> 道具／氮氣　<b>R</b> 回賽道　<b>Esc</b> 暫停（單人）</div>
 
 <section class="screen" id="startScreen">
   <div class="box">
@@ -252,6 +252,16 @@ body.touch .keys { display: none; }
     <div class="endnote" id="lapLine" hidden></div>
     <div class="endnote" id="endNote" hidden></div>
     <button class="btn primary go" id="againBtn">再賽一場</button>
+    <a class="btn back" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<section class="screen" id="pauseScreen" hidden>
+  <div class="box">
+    <h2>暫停</h2>
+    <p id="pauseNote"></p>
+    <button class="btn primary go" id="resumeBtn">繼續（Esc）</button>
+    <div class="row"><button class="btn" id="retryBtn">重來</button><button class="btn" id="quitBtn">跳出，回選地圖</button></div>
     <a class="btn back" href="/">回遊戲大廳</a>
   </div>
 </section>
@@ -613,7 +623,7 @@ function drawSpeedo(v, boost, level = 0) {
 /* ---------- 操作 ---------- */
 const keys = new Set(); let stickX = 0, stickId = null, driftHeld = false, gasHeld = false;
 const KEY_L = ['a', 'arrowleft'], KEY_R = ['d', 'arrowright'], KEY_GAS = ['w', 'arrowup'], KEY_BRAKE = ['s', 'arrowdown'], KEY_DRIFT = ['shift', 'k'], KEY_ITEM = [' ', 'j'], KEY_RESET = ['r'];
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if ([...KEY_L, ...KEY_R, ...KEY_GAS, ...KEY_BRAKE, ...KEY_DRIFT, ...KEY_ITEM].includes(k)) e.preventDefault(); if (KEY_ITEM.includes(k) && !keys.has(k)) pressItem(); if (KEY_RESET.includes(k) && !keys.has(k) && !e.metaKey && !e.ctrlKey) pressReset(); keys.add(k); });
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if ([...KEY_L, ...KEY_R, ...KEY_GAS, ...KEY_BRAKE, ...KEY_DRIFT, ...KEY_ITEM].includes(k)) e.preventDefault(); if (KEY_ITEM.includes(k) && !keys.has(k)) pressItem(); if (KEY_RESET.includes(k) && !keys.has(k) && !e.metaKey && !e.ctrlKey) pressReset(); if (k === 'escape') setPaused(!paused); keys.add(k); });
 // 鍵盤轉向漸進：按下約 0.15 秒打滿，放開或換邊約 0.1 秒回正，直線上點一下只會微調（手機搖桿本來就是類比）
 const KB_STEER = { up: 1 / .15, back: 1 / .1 }; let kbSteer = 0;
 function rampSteer(dt) {
@@ -822,7 +832,7 @@ function updateHud(s, me) {
   $('rank').innerHTML = k ? `${k.rank}<small> / ${n}</small>` : '<small>觀戰中</small>';
   $('lap').textContent = k ? (k.done ? `完賽 第 ${k.place} 名` : `第 ${k.lap}/${s.laps} 圈`) : `${s.laps} 圈`;
   $('time').textContent = fmtTime(s.time);
-  $('resetBtn').hidden = !(k && s.phase === 'race' && k.st === 'racing' && !k.done);
+  $('resetBtn').hidden = !(k && s.phase === 'race' && k.st === 'racing' && !k.done); $('pauseBtn').hidden = !canPause();
   if (s.mode === 'speed') { drawNitro(k?.ni || 0, k?.ga || 0); drawSlot2(null); } else { drawSlot(k?.item || null); drawSlot2(k?.i2 || null); }
   if (s.phase === 'countdown') { const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); sfx.beep(); } }
 }
@@ -885,23 +895,37 @@ $('garageScreen').addEventListener('click', e => {
   kartPick = Core.pickLoadout({ shape: b.dataset.shape, rperk: b.dataset.rperk, iperk: b.dataset.iperk }, kartPick); store.set('kt-kart', JSON.stringify(kartPick)); renderGarage(); renderLoadLines();
   if (mode === 'online' && inLobby()) net.send(joinMsg()); // 每點一次就送：連線選地圖的倒數到了會直接開跑，等按「完成」可能來不及
 });
-const soloVoting = () => mode !== 'online' && !$('voteScreen').hidden;
-const openGarage = () => { if (soloVoting()) stopVoteTimer(); renderGarage(); $('garageScreen').hidden = false; }; // 單人選地圖時先停 15 秒倒數，免得在選車畫面裡開跑
+const openGarage = () => { renderGarage(); $('garageScreen').hidden = false; };
 $('garageBtn').addEventListener('click', openGarage); $('lGarageBtn').addEventListener('click', openGarage); $('vGarageBtn').addEventListener('click', openGarage);
-$('garageDone').addEventListener('click', () => { $('garageScreen').hidden = true; if (soloVoting()) showVote(null); });
+$('garageDone').addEventListener('click', () => { $('garageScreen').hidden = true; });
 renderLoadLines();
 // 個人最佳：每張地圖、每個模式的最快完賽與最快一圈 { time, lap }，選地圖時顯示在卡片上（道具賽沿用舊的 key）
 const bestKey = (id, m) => 'kt-best-' + id + (m === 'speed' ? '-speed' : '');
 const bestOf = (id, m = raceMode) => { try { return JSON.parse(store.get(bestKey(id, m))) || null; } catch { return null; } };
 function startOffline(track = Core.TRACKS[0].id) {
   endSeq++;
-  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true; stopVoteTimer();
+  $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = $('voteScreen').hidden = true;
   local = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: myName, color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush, ...kartPick }], track, diff, mode: raceMode });
   toast(`${Core.MODES[raceMode].label}：${Core.trackById(track).name}`, 1600);
   soloStart(track);
   acc = 0; prevLocal = null; buf.length = 0;
   buildView(Core.snapshot(local), 0); playing = true;
 }
+// 單人暫停：Esc 或右上角「暫停」，電腦和計時一起停；可以繼續、同一張地圖重來，或跳出回選地圖
+let paused = false;
+const canPause = () => mode === 'offline' && !!local && playing;
+function setPaused(on) {
+  if (on && !canPause()) return;
+  paused = on; $('pauseScreen').hidden = !on;
+  if (!on) return;
+  keys.clear(); stickX = 0; driftHeld = gasHeld = false; knob.style.transform = ''; // 叫出選單時放開的鍵收不到 keyup，先全部放開
+  $('pauseNote').textContent = `${Core.trackById(V.s.track).name}・${Core.MODES[V.s.mode].label}`;
+}
+$('pauseBtn').addEventListener('click', () => setPaused(true));
+$('resumeBtn').addEventListener('click', () => setPaused(false));
+$('retryBtn').addEventListener('click', () => { const track = V.s.track; setPaused(false); startOffline(track); });
+$('quitBtn').addEventListener('click', () => { setPaused(false); playing = false; local = null; solo = null; disposeView(); clearHud(); showVote(null); }); // 沒完賽，不送單人紀錄
+function clearHud() { $('rank').innerHTML = '-<small></small>'; $('time').textContent = fmtTime(0); $('speedo').hidden = true; mapX.clearRect(0, 0, 224, 224); drawSlot(null); drawSlot2(null); } // 回到剛進頁面的樣子
 function goOffline(why) { mode = 'offline'; try { net.ws?.close(); } catch {} net.ws = null; $('lobbyScreen').hidden = true; if (!playing) $('startScreen').hidden = false; if (why) toast(why, 2200); }
 $('startBtn').addEventListener('click', () => showVote(null));
 $('soloBtn').addEventListener('click', () => goOffline());
@@ -955,8 +979,8 @@ async function soloFinish(time) {
   } catch { return { text: '紀錄沒送出：連不上伺服器' }; }
 }
 
-/* ---------- 選地圖：連線時投票；單人時點了直接開跑，15 秒沒選就隨機 ---------- */
-let myVote = null, voteTimer = 0;
+/* ---------- 選地圖：連線時投票；單人時點了才開跑，不倒數 ---------- */
+let myVote = null;
 function drawTrackPreview(cv, T, color) {
   const x = cv.getContext('2d'), n = cv.width; let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (let j = 0; j < T.N; j++) { x0 = Math.min(x0, T.xs[j]); x1 = Math.max(x1, T.xs[j]); y0 = Math.min(y0, T.ys[j]); y1 = Math.max(y1, T.ys[j]); }
@@ -975,14 +999,11 @@ function renderMaps(counts) {
   }
   for (const b of el.children) { const pb = bestOf(b.dataset.track); b.querySelector('.best').textContent = pb ? `最佳 ${pb.time.toFixed(2)} 秒` : ''; b.setAttribute('aria-pressed', String(b.dataset.track === myVote)); b.querySelector('.votes').textContent = counts && counts[b.dataset.track] ? `${counts[b.dataset.track]} 票` : ''; }
 }
-function stopVoteTimer() { clearInterval(voteTimer); voteTimer = 0; }
 function showVote(v) {
   $('startScreen').hidden = $('endScreen').hidden = $('lobbyScreen').hidden = true; $('voteScreen').hidden = false;
-  $('diffs').hidden = mode === 'online'; // 電腦難度只有單人賽有
+  $('diffs').hidden = mode === 'online'; $('vTimer').hidden = mode !== 'online'; // 電腦難度只有單人賽有；倒數只有連線有
   if (mode === 'online') { $('vNote').textContent = '選模式、點一張地圖投票，各自票多的開跑，同票隨機。沒人選模式就是道具賽。'; $('vTimer').textContent = v?.endsIn ?? ''; renderModes(v?.modes); renderMaps(v?.counts); return; }
-  myVote = null; renderModes(null); renderMaps(null); $('vNote').textContent = '選好模式，點一張地圖開跑，15 秒沒選就隨機。';
-  let left = 15; $('vTimer').textContent = left; stopVoteTimer();
-  voteTimer = setInterval(() => { left--; $('vTimer').textContent = left; if (left <= 0) startOffline(Core.TRACKS[Math.floor(Math.random() * Core.TRACKS.length)].id); }, 1000);
+  myVote = null; renderModes(null); renderMaps(null); $('vNote').textContent = '選好模式和難度，點一張地圖開跑。';
 }
 $('maps').addEventListener('click', e => {
   const b = e.target.closest('[data-track]'); if (!b) return; haptic.tap();
@@ -1088,9 +1109,11 @@ function tick(now) {
   const dt = Math.min(.05, (now - last) / 1000), t = now / 1000; last = now;
   rampSteer(dt);
   if (mode === 'offline' && local && V) {
-    Core.setInput(local, 0, input());
-    acc += dt;
-    while (acc >= STEP_DT) { prevLocal = local.karts.map(k => ({ x: k.x, y: k.y, h: k.h })); const evs = Core.step(local, STEP_DT); applySnap(Core.snapshot(local), evs); acc -= STEP_DT; }
+    if (!paused) {
+      Core.setInput(local, 0, input());
+      acc += dt;
+      while (acc >= STEP_DT) { prevLocal = local.karts.map(k => ({ x: k.x, y: k.y, h: k.h })); const evs = Core.step(local, STEP_DT); applySnap(Core.snapshot(local), evs); acc -= STEP_DT; }
+    }
   } else sendInput();
   if (V) {
     const poses = kartPoses(dt); renderKarts(poses, dt, t);
@@ -1100,7 +1123,7 @@ function tick(now) {
     wrongWay(own, dt); lockWarn(own, t); document.body.classList.toggle('foamed', !!own?.fo);
     for (const [i, m] of V.boxes.entries()) { m.rotation.y = t * 1.6 + i; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + i) * .1; }
     for (const [id, m] of V.haz) if (m.userData.decoy) { m.rotation.y = t * 1.6 + id; m.position.y = m.userData.z + .7 + Math.sin(t * 2.5 + id) * .1; }
-  } else { orbitCam(dt); $('wrongWay').hidden = $('lockWarn').hidden = true; document.body.classList.remove('foamed'); }
+  } else { orbitCam(dt); $('wrongWay').hidden = $('lockWarn').hidden = $('resetBtn').hidden = $('pauseBtn').hidden = true; document.body.classList.remove('foamed'); }
   renderer.render(scene, camera);
 }
 requestAnimationFrame(tick);
@@ -1114,7 +1137,7 @@ $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEvent
 // 連線對戰：沒有身分就先請玩家選 Telegram 登入或訪客
 async function goOnline() {
   if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
-  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true; local = null; stopVoteTimer();
+  mode = 'online'; net.tries = 0; net.opened = false; net.wantIn = true; local = null;
   $('startScreen').hidden = $('endScreen').hidden = $('voteScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
 }
 $('onlineBtn').addEventListener('click', goOnline);

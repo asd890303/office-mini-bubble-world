@@ -9,7 +9,7 @@ export const EYES = { dot: '圓眼', big: '大眼', happy: '笑眼', sleepy: '�
 export const BODIES = ['#fffdf7', '#ffe9d6', '#e8f4ff', '#eafbe7', '#f3e8ff', '#fff3b8', '#f2d9c4', '#d9dde3', '#ffffff', '#000000', '#ff0000'];
 export const BLUSHES = ['#ffa3b5', '#ff7d7d', '#ffc27a', '#ffe27a', '#9fd8ff', '#c4a3ff', '#ffffff', '#000000', '#ff0000'];
 export const ARENA = { W: 1800, H: 1200 };
-export const VIEW = { W: 760, H: 430 }; // 畫面大約能看到的範圍，敵人在這個範圍外生成
+export const VIEW = { W: 980, H: 560 }; // 畫面大約能看到的範圍，敵人在這個範圍外生成
 export const PLAYER = { R: 16, HP: 100, SPEED: 165, INVULN: .7, LEVEL_HEAL: 15 };
 export const DASH = { DIST: 170, TIME: .2, CD: 3.2, INVULN: .35 }; // 空白鍵：朝移動方向（沒按方向就朝面向）無敵衝刺一小段
 export const MAX_ENEMIES = 120, MAX_SHARDS = 150, SLOTS = 6, PASSIVE_MAX = 3;
@@ -38,11 +38,10 @@ export const WEAPONS = {
 };
 export const STARTERS = ['gun', 'orbit', 'wave'];
 export const BASE_WEAPONS = ['gun', 'orbit', 'wave', 'poke', 'rain', 'ball'];
-export const EVOLVE = { gun: { need: 'chain', to: 'pearl' }, orbit: { need: 'magnet', to: 'hole' }, poke: { need: 'blast', to: 'needle' }, rain: { need: 'area', to: 'storm' } }; // 武器升滿 5 級且持有該被動，就能進化
+export const EVOLVE = { gun: { need: 'chain', to: 'pearl' }, orbit: { need: 'magnet', to: 'hole' }, poke: { need: 'dur', to: 'needle' }, rain: { need: 'area', to: 'storm' } }; // 武器升滿 5 級且持有該被動，就能進化
 export const PASSIVES = {
   area: { name: '包泡範圍', desc: '戳破、水波與環繞泡泡的範圍 +15%' },
   dur: { name: '包泡時間', desc: '被包住的時間 +25%' },
-  blast: { name: '爆炸威力', desc: '戳破的傷害 +20%' },
   chain: { name: '連鎖距離', desc: '連鎖的觸發距離 +25' },
   speed: { name: '輕盈', desc: '移動速度 +10%' },
   magnet: { name: '碎片磁吸', desc: '撿碎片的距離 +40' },
@@ -62,7 +61,7 @@ export const hashSeed = s => { let h = 2166136261; for (const c of String(s)) h 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), r1 = v => Math.round(v * 10) / 10;
 const lvl = (p, k) => p.passives[k] || 0;
 // 玩家目前的數值（被動加成）
-export const stats = p => ({ area: 1 + .15 * lvl(p, 'area'), dur: WRAP.T * (1 + .25 * lvl(p, 'dur')), blast: 1 + .2 * lvl(p, 'blast'), chain: 25 * lvl(p, 'chain'), speed: PLAYER.SPEED * (1 + .1 * lvl(p, 'speed')), magnet: 40 * lvl(p, 'magnet'), maxHp: Math.round(PLAYER.HP * (1 + .2 * lvl(p, 'vital'))), dashCd: Math.max(1.2, DASH.CD - .5 * lvl(p, 'dash')), xp: 1 + .2 * lvl(p, 'greed') });
+export const stats = p => ({ area: 1 + .15 * lvl(p, 'area'), dur: WRAP.T * (1 + .25 * lvl(p, 'dur')), chain: 25 * lvl(p, 'chain'), speed: PLAYER.SPEED * (1 + .1 * lvl(p, 'speed')), magnet: 40 * lvl(p, 'magnet'), maxHp: Math.round(PLAYER.HP * (1 + .2 * lvl(p, 'vital'))), dashCd: Math.max(1.2, DASH.CD - .5 * lvl(p, 'dash')), xp: 1 + .2 * lvl(p, 'greed') });
 
 // 理論上限：開跑 t 秒內最多生成幾隻敵人（含王的召喚），單人紀錄驗證用
 export function maxKills(t, players = 1) {
@@ -82,7 +81,7 @@ export function createGame({ seed = 1, humans = [], solo = false } = {}) {
     kills: 0, damage: 0, diedT: null,
   }));
   const g = { seed, solo, players: ps, rng: rngFrom(hashSeed(`surv:${seed}`)), phase: 'pick', t: 0, run: 0, acc: 0, over: false, result: null, cleared: false, events: [], nextId: 1,
-    enemies: [], bullets: [], ebullets: [], shards: [], pops: [], budget: 0, spawnT: 0, boss: null, bossSpawned: false, zones: [] };
+    enemies: [], bullets: [], ebullets: [], shards: [], pops: [], budget: 0, spawnT: 0, boss: null, bossSpawned: false, zones: [], chainSeq: 0 };
   for (const p of ps) p.choices = starterChoices();
   return g;
 }
@@ -150,9 +149,9 @@ function wrapEnemy(g, e, p) {
   g.events.push({ type: 'wrap', x: r1(e.x), y: r1(e.y) });
   return true;
 }
-function schedulePop(g, e, depth, owner, delay) {
+function schedulePop(g, e, depth, owner, delay, chain) {
   if (e.popping) return; e.popping = true;
-  g.pops.push({ e, depth, owner, t: delay });
+  g.pops.push({ e, depth, owner, t: delay, chain: chain ?? ++g.chainSeq }); // chain：同一串連鎖共用的編號，畫面用它合計傷害
 }
 function killEnemy(g, e, owner) {
   e.dead = true;
@@ -163,16 +162,16 @@ function killEnemy(g, e, owner) {
 }
 function explode(g, pop) {
   const { e, depth, owner } = pop, p = g.players[owner]; if (e.dead) return;
-  const s = stats(p), R = POP.R * s.area, chainR = R + POP.CHAIN_PAD + s.chain, mult = 1 + Math.min(POP.DEPTH_MAX, POP.DEPTH * depth), dmg = POP.DMG * s.blast * mult;
-  g.events.push({ type: 'pop', x: r1(e.x), y: r1(e.y), r: Math.round(R), d: depth });
+  const s = stats(p), R = POP.R * s.area, chainR = R + POP.CHAIN_PAD + s.chain, mult = 1 + Math.min(POP.DEPTH_MAX, POP.DEPTH * depth), dmg = POP.DMG * mult;
+  g.events.push({ type: 'pop', x: r1(e.x), y: r1(e.y), r: Math.round(R), d: depth, c: pop.chain });
   const self = dmg * (e.type === 'boss' ? BOSS.BONUS : POP.BONUS); e.hp -= self; p.damage += Math.min(self, e.hp + self);
-  g.events.push({ type: 'd', x: r1(e.x), y: r1(e.y), v: Math.round(self), d: depth });
+  g.events.push({ type: 'd', x: r1(e.x), y: r1(e.y), v: Math.round(self), d: depth, c: pop.chain, k: e.hp <= 0 ? 1 : 0, i: e.id });
   if (e.hp <= 0) killEnemy(g, e, owner); else { e.state = 'free'; e.wrapT = 0; e.popping = false; if (e.type === 'boss') e.immune = g.run + BOSS.IMMUNE; }
   for (const o of g.enemies) {
     if (o === e || o.dead || o.popping) continue;
     const d = Math.hypot(o.x - e.x, o.y - e.y);
-    if (o.state === 'wrapped' && d <= chainR + o.r) schedulePop(g, o, depth + 1, owner, POP.CHAIN_DELAY);
-    else if (d <= R + o.r) { o.hp -= dmg; p.damage += Math.min(dmg, o.hp + dmg); g.events.push({ type: 'd', x: r1(o.x), y: r1(o.y), v: Math.round(dmg), d: 0 }); if (o.hp <= 0) killEnemy(g, o, owner); }
+    if (o.state === 'wrapped' && d <= chainR + o.r) schedulePop(g, o, depth + 1, owner, POP.CHAIN_DELAY, pop.chain);
+    else if (d <= R + o.r) { o.hp -= dmg; p.damage += Math.min(dmg, o.hp + dmg); g.events.push({ type: 'd', x: r1(o.x), y: r1(o.y), v: Math.round(dmg), d: 0, c: pop.chain, k: o.hp <= 0 ? 1 : 0, i: o.id }); if (o.hp <= 0) killEnemy(g, o, owner); }
   }
   e.popping = false;
 }

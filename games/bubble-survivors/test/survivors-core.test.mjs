@@ -91,13 +91,13 @@ test('level up: xp from shards levels the player, heals a little and offers thre
 test('choices: reroll once, never more than 6 weapons or 6 passives, nothing offered beyond max level, evolution appears when weapon is maxed and its passive is owned', () => {
   const g = live({ gun: 1 }); const p = g.players[0]; p.choices = S.makeChoices(g, p); p.rerolls = 1;
   const first = JSON.stringify(p.choices); assert.equal(S.reroll(g, 0), true); assert.equal(S.reroll(g, 0), false);
-  p.weapons = { gun: 5, orbit: 5, wave: 5, poke: 5, rain: 5, ball: 5 }; p.passives = { area: 3, dur: 3, blast: 3, chain: 3, speed: 3, magnet: 3 };
+  p.weapons = { gun: 5, orbit: 5, wave: 5, poke: 5, rain: 5, ball: 5 }; p.passives = { area: 3, dur: 3, chain: 3, speed: 3, magnet: 3, dash: 3 };
   for (let i = 0; i < 20; i++) for (const c of S.makeChoices(g, p)) assert.ok(c.kind === 'evolve' || c.kind === 'heal', `${c.kind} ${c.id}`);
   assert.equal(S.makeChoices(g, p)[0].kind, 'evolve');
   p.choices = S.makeChoices(g, p); S.pick(g, 0, 0);
   assert.ok(p.weapons.pearl === 1 || p.weapons.hole === 1); assert.ok(!(p.weapons.gun && p.weapons.pearl));
   p.passives = {}; p.weapons = { gun: 5 }; assert.ok(!S.makeChoices(g, p).some(c => c.kind === 'evolve'), 'needs the passive');
-  p.weapons = {}; p.passives = { area: 1, dur: 1, blast: 1, chain: 1, speed: 1, magnet: 1 }; for (const c of S.makeChoices(g, p)) assert.notEqual(c.kind === 'passive' && c.lv > 3, true);
+  p.weapons = {}; p.passives = { area: 1, dur: 1, chain: 1, speed: 1, magnet: 1, dash: 1 }; for (const c of S.makeChoices(g, p)) assert.notEqual(c.kind === 'passive' && c.lv > 3, true);
   assert.ok(first.length > 2);
 });
 
@@ -176,10 +176,10 @@ test('magnet ball: pulls free enemies together for a while, never the boss, and 
   assert.equal(g.zones.length >= 0, true);
 });
 
-test('new equipment: needle and storm evolve from poke+blast and rain+area; vital raises max hp, greed raises xp, all nine passives exist', () => {
-  assert.deepEqual(Object.keys(S.PASSIVES).sort(), ['area', 'blast', 'chain', 'dash', 'dur', 'greed', 'magnet', 'speed', 'vital']);
+test('new equipment: needle and storm evolve from poke+dur and rain+area; vital raises max hp, greed raises xp, all eight passives exist', () => {
+  assert.deepEqual(Object.keys(S.PASSIVES).sort(), ['area', 'chain', 'dash', 'dur', 'greed', 'magnet', 'speed', 'vital']);
   assert.deepEqual(Object.keys(S.WEAPONS).filter(k => !S.WEAPONS[k].evolved).sort(), [...S.BASE_WEAPONS].sort());
-  const g = live({ poke: 5, rain: 5 }); const p = g.players[0]; p.passives = { blast: 1, area: 1 };
+  const g = live({ poke: 5, rain: 5 }); const p = g.players[0]; p.passives = { dur: 1, area: 1 };
   const evo = S.makeChoices(g, p); assert.equal(evo[0].kind, 'evolve'); p.choices = [{ kind: 'evolve', id: 'poke', to: 'needle' }]; S.pick(g, 0, 0);
   assert.deepEqual(Object.keys(p.weapons).sort(), ['needle', 'rain']); assert.ok(!S.makeChoices(g, p).some(c => c.kind === 'weapon' && c.id === 'poke'), 'poke is not offered again after evolving');
   const v = live({}); const q = v.players[0]; assert.equal(S.stats(q).maxHp, 100); q.choices = [{ kind: 'passive', id: 'vital', lv: 1 }]; q.hp = 80; S.pick(v, 0, 0); assert.equal(S.stats(q).maxHp, 120); assert.equal(q.hp, 100);
@@ -199,4 +199,15 @@ test('cooldown display: frames carry each weapon\'s remaining cooldown, counting
   run(g, .4); assert.ok(S.snapshot(g, { full: false }).pl[0].wc.gun < a.gun);
   g.players[0].weapons = { orbit: 1 }; assert.deepEqual(S.snapshot(g, { full: false }).pl[0].wc, {}, 'weapons you no longer own are not listed');
   assert.equal(S.snapshot(g, { full: false }).pl[0].dc, 0);
+});
+
+test('hit feedback data: damage events carry the chain id, whether it killed, and the enemy; one chain shares an id, separate pops do not', () => {
+  const g = live({}); noSpawn(g); const c = center(g); g.players[0].x = 50; g.players[0].y = 50;
+  const a = put(g, 'shell', c.x, c.y, { state: 'wrapped', wrapT: 9, armor: 0 }), b = put(g, 'slime', c.x + 70, c.y, { state: 'wrapped', wrapT: 9 }), far = put(g, 'slime', c.x + 900, c.y, { state: 'wrapped', wrapT: 9 });
+  g.pops.push({ e: a, depth: 0, owner: 0, t: 0, chain: ++g.chainSeq }); a.popping = true;
+  const first = run(g, 1); const ds = first.filter(e => e.type === 'd'), pops = first.filter(e => e.type === 'pop');
+  assert.ok(ds.length >= 2 && ds.every(e => e.c === ds[0].c && typeof e.i === 'number'), 'one chain, one id'); assert.deepEqual(pops.map(e => e.c), pops.map(() => pops[0].c));
+  assert.equal(ds.find(e => e.i === b.id).k, 1, 'the slime died'); assert.equal(ds.find(e => e.i === a.id).k, 0, 'the shell survived');
+  g.pops.push({ e: far, depth: 0, owner: 0, t: 0, chain: undefined }); far.popping = true; const second = run(g, .3).find(e => e.type === 'pop');
+  assert.notEqual(second.c, pops[0].c, 'a new pop starts a new chain');
 });

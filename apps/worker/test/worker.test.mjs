@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
+import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, PartyRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
 import * as KartCore from '../../../games/kart-island/kart-core.js';
 import * as RunCore from '../../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../../games/bubble-survivors/survivors-core.js';
+import * as PartyCore from '../../../games/party/party-core.js';
 const { LOBBY, IDLE_MS } = LobbyRoom;
 import * as Bundle from '../../../deploy/dist/worker.bundle.js';
 
@@ -831,4 +832,48 @@ test('survive room: damage numbers are capped per snapshot and never push out im
   const sent = a.out.findLast(m => m.t === 's'); assert.ok(sent); assert.equal(sent.ev.filter(e => e.type === 'd').length, 40); assert.ok(sent.ev.some(e => e.type === 'out'));
   R.room.n = 0; R.room.broadcast({ t: 's', s: {}, ev: [{ type: 'level', id: 0 }] }); R.room.broadcast({ t: 's', s: {}, ev: [{ type: 'out', id: 0 }] });
   assert.deepEqual(a.out.findLast(m => m.t === 's').ev.map(e => e.type), ['level', 'out'], 'a skipped snapshot hands its events to the next one');
+});
+
+test('party room: 2 humans plus 4 bots; move, jump and dash; a bot takes over on disconnect and hands back on return; leaving for good scores 0', async () => {
+  const R = fakeRoom(PartyRoom);
+  const a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', color: '#a8d8ff', ear: 'fe' }); await R.msg(b, { t: 'join' });
+  assert.equal(a.out.findLast(m => m.t === 'lobby').max, 6);
+  R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const st = a.out.find(m => m.t === 'start'), g = R.room.game;
+  assert.equal(st.me, 0); assert.equal(b.out.find(m => m.t === 'start').me, 1);
+  assert.equal(st.s.players.length, 6, 'empty seats are bots'); assert.deepEqual(st.s.players.map(p => p.human), [true, true, false, false, false, false]);
+  assert.equal(st.s.players[0].color, '#a8d8ff'); assert.equal(st.s.rounds.length, 3);
+  assert.equal(R.room.status().players, 2, 'bots do not count as players in the hub');
+  R.tick(Math.ceil(PartyCore.INTRO * 20) + 1); assert.equal(g.phase, 'play');
+  const p0 = g.players[0], x0 = p0.x, y0 = p0.y;
+  await R.msg(a, { t: 'in', mx: 1, my: 0 }); R.tick(6); assert.ok(Math.hypot(p0.x - x0, p0.y - y0) > .5, 'Alice walks');
+  await R.msg(a, { t: 'in', mx: 'x', my: 99 }); assert.deepEqual([p0.mx, p0.my], [0, 1], 'bad input is cleaned up');
+  await R.msg(a, { t: 'jump' }); assert.ok(p0.vz > 0 || p0.z > 0 || p0.fall, 'Alice jumps');
+  R.tick(14); const p1 = g.players[1]; await R.msg(b, { t: 'dash' }); assert.ok(p1.dashT > 0 || p1.stun > 0 || p1.fall || p1.out, 'Bob dashes');
+  const fr = a.out.findLast(m => m.t === 's').s; assert.equal(fr.full, 0); assert.equal(fr.players[0].name, undefined, 'frames skip names');
+  b.readyState = 3; R.room.onLeave(b); assert.equal(g.players[1].auto, true, 'a bot takes over at once'); assert.ok(R.room.gone.has('2'));
+  const b2 = R.connect('2', 'Bob'); assert.equal(g.players[1].auto, false, 'back within the grace period'); assert.equal(b2.out.find(m => m.t === 'start').me, 1);
+  b2.readyState = 3; R.room.onLeave(b2); R.tick(220); assert.equal(g.players[1].left, true); assert.equal(g.players[1].auto, true);
+  await R.msg(b2, { t: 'in', mx: 1, my: 0 });
+  for (let i = 0; i < 8000 && R.room.phase === 'play'; i++) R.tick();
+  assert.equal(R.room.phase, 'end');
+  const r = R.room.result, bob = r.players.find(p => p.uid === '2'); assert.equal(bob.out, true); assert.equal(bob.points, 0, 'left for good: no points');
+  assert.equal(r.players.reduce((n, p) => n + p.rounds.length, 0), 18, 'three rounds each');
+  await new Promise(res => setTimeout(res, 0));
+  const post = R.fetches.at(-1); assert.ok(post, 'result posted'); assert.match(post.body.text, /泡泡派對 結果/); assert.match(post.body.text, /Bob｜\d+ 分（[\d・]+）｜中途離開/);
+  R.adv(9000); R.tick(); assert.equal(R.room.phase, 'lobby');
+});
+
+test('party room: 6 players start at once; the 7th is told the room is full', async () => {
+  const R = fakeRoom(PartyRoom), ws = ['1', '2', '3', '4', '5', '6', '7'].map(u => R.connect(u, 'p' + u));
+  for (const w of ws) await R.msg(w, { t: 'join' });
+  assert.ok(ws[6].out.some(m => m.t === 'note' && /房間已滿（6 人）/.test(m.text)));
+  R.tick(); assert.equal(R.room.phase, 'play'); assert.equal(R.room.game.players.filter(p => p.human).length, 6);
+});
+
+test('bundle serves the party page and its rules file; the room is exported and needs a websocket', async () => {
+  for (const path of ['/party/', '/party/party-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
+  assert.equal((await Bundle.default.fetch(new Request('https://x.test/party/ws'), {})).status, 426);
+  assert.equal(typeof Bundle.PartyRoom, 'function');
 });

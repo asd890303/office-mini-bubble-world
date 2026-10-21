@@ -84,6 +84,14 @@ export const ITEM_ART = {
     x.lineWidth = 4; x.lineCap = x.lineJoin = 'round'; x.strokeStyle = INK;
     for (const s of [-1, 1]) { const ax = 64 + s * 44; x.beginPath(); x.moveTo(64 + s * 35, 52); x.lineTo(ax, 52); x.moveTo(ax - s * 6, 46); x.lineTo(ax, 52); x.lineTo(ax - s * 6, 58); x.stroke(); }
   },
+  giant(x) { // 變大（泡泡派對）：大泡泡裡一隻小傢伙 + 左右往外的箭頭
+    x.beginPath(); x.arc(64, 52, 30, 0, Math.PI * 2); inkPath(x, '#ffe6a8'); shine(x, 51, 37, 5, 9);
+    x.beginPath(); x.arc(64, 58, 13, 0, Math.PI * 2); inkPath(x, '#fffdf7', 3);
+    for (const cx of [56, 72]) { x.beginPath(); x.arc(cx, 45, 4.5, 0, Math.PI * 2); inkPath(x, '#ffb3c7', 2.5); }
+    x.fillStyle = INK; for (const cx of [59, 69]) { x.beginPath(); x.arc(cx, 57, 2, 0, Math.PI * 2); x.fill(); }
+    x.lineWidth = 4; x.lineCap = x.lineJoin = 'round'; x.strokeStyle = INK;
+    for (const s of [-1, 1]) { const ax = 64 + s * 44; x.beginPath(); x.moveTo(64 + s * 35, 52); x.lineTo(ax, 52); x.moveTo(ax - s * 6, 46); x.lineTo(ax, 52); x.lineTo(ax - s * 6, 58); x.stroke(); }
+  },
   super(x) { // 超級水球：紫色爆炸星 + 黃色核心
     x.beginPath(); for (let i = 0; i < 16; i++) { const a = i * Math.PI / 8 - Math.PI / 2, r = i % 2 ? 17 : 32; x[i ? 'lineTo' : 'moveTo'](64 + Math.cos(a) * r, 50 + Math.sin(a) * r); } x.closePath(); inkPath(x, '#c86bff');
     x.beginPath(); x.arc(64, 50, 11, 0, Math.PI * 2); inkPath(x, '#ffe14d', 3); shine(x, 60, 46, 3, 4);
@@ -123,6 +131,17 @@ export const GAME_ART = {
     x.beginPath(); x.arc(104, 98, 11, 0, Math.PI * 2); inkPath(x, '#ffcf6b'); x.beginPath(); x.arc(104, 98, 16, 0, Math.PI * 2); x.lineWidth = 4; x.strokeStyle = '#7cc8ff'; x.stroke();
     x.beginPath(); x.arc(100, 30, 8, 0, Math.PI * 2); inkPath(x, '#bfe9ff'); shine(x, 97, 27, 2.5, 3.5);
     x.beginPath(); x.arc(30, 100, 8, 0, Math.PI * 2); inkPath(x, '#bfe9ff'); shine(x, 27, 97, 2.5, 3.5);
+  },
+  party(x) { // 泡泡派對：圓形擂台上兩隻小傢伙撞在一起 + 撞擊星
+    x.beginPath(); x.ellipse(64, 86, 46, 13, 0, 0, Math.PI * 2); inkPath(x, '#c9b6ff');
+    for (const [cx, ear, rot] of [[44, '#ffb3c7', -.18], [86, '#a8d8ff', .18]]) {
+      x.save(); x.translate(cx, 66); x.rotate(rot);
+      x.beginPath(); x.arc(-9, -19, 6, 0, Math.PI * 2); inkPath(x, ear, 3); x.beginPath(); x.arc(9, -19, 6, 0, Math.PI * 2); inkPath(x, ear, 3);
+      x.beginPath(); x.arc(0, 0, 18, 0, Math.PI * 2); inkPath(x, '#fffdf7');
+      x.fillStyle = INK; x.beginPath(); x.arc(-6, -2, 2.6, 0, Math.PI * 2); x.fill(); x.beginPath(); x.arc(6, -2, 2.6, 0, Math.PI * 2); x.fill();
+      x.restore();
+    }
+    x.beginPath(); for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 6 : 13; x[i ? 'lineTo' : 'moveTo'](65 + Math.cos(a) * r, 38 + Math.sin(a) * r); } x.closePath(); inkPath(x, '#ffd23f', 3);
   },
   artillery(x) { // 泡泡砲戰：斜放的砲管 + 輪子 + 飛出去的水球
     x.save(); x.translate(44, 76); x.rotate(-.62); x.beginPath(); x.roundRect(-4, -12, 54, 24, 10); inkPath(x, '#4cd68a'); x.beginPath(); x.roundRect(40, -15, 12, 30, 5); inkPath(x, '#2fae6a'); x.restore();

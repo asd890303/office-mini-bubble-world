@@ -1,10 +1,11 @@
 // 泡泡碰碰島 — Cloudflare Worker + Durable Object (single room "main"), server-authoritative.
-// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
+// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
 import * as Core from '../../games/bubble-island/game-core.js';
 import * as KartCore from '../../games/kart-island/kart-core.js';
 import * as ArtilleryCore from '../../games/artillery/artillery-core.js';
 import * as RunCore from '../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../games/bubble-survivors/survivors-core.js';
+import * as PartyCore from '../../games/party/party-core.js';
 
 const TICK_MS = 50, LOBBY_MS = 20000, END_MS = 8000, AUTH_MAX_AGE = 86400, LOBBY_PUSH_MS = 500;
 // 線上房間只給真人玩：湊滿 MIN_PLAYERS 才倒數開局；斷線超過 GRACE_MS 判出局
@@ -261,7 +262,7 @@ export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(env) });
-    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
+    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
     if (binding) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
       const origin = req.headers.get('Origin');
@@ -375,7 +376,7 @@ export class GameRoom {
   join(ws, uid, name, m) {
     if (this.phase === 'play') return this.send(ws, { t: 'note', text: '這局進行中，下一局再加入（目前觀戰）' });
     if (!this.lobby.some(p => p.uid === uid)) {
-      if (this.lobby.length >= this.core.MAX_PLAYERS) return this.send(ws, { t: 'note', text: '房間已滿（4 人），這局先觀戰' });
+      if (this.lobby.length >= this.core.MAX_PLAYERS) return this.send(ws, { t: 'note', text: `房間已滿（${this.core.MAX_PLAYERS} 人），這局先觀戰` });
       this.lobby.push({ uid, name, color: this.core.COLORS.includes(m.color) ? m.color : null, ear: this.core.EARS[m.ear] ? m.ear : null, eye: Object.hasOwn(this.core.EYES, m.eye) ? m.eye : null, body: this.core.BODIES.includes(m.body) ? m.body : null, blush: this.core.BLUSHES.includes(m.blush) ? m.blush : null });
       if (this.phase === 'lobby' && this.lobby.length === MIN_PLAYERS) this.countdownAt = this.now() + LOBBY_MS;
     } else { const p = this.lobby.find(p => p.uid === uid); if (this.core.COLORS.includes(m.color)) p.color = m.color; if (this.core.EARS[m.ear]) p.ear = m.ear; if (Object.hasOwn(this.core.EYES, m.eye)) p.eye = m.eye; if (this.core.BODIES.includes(m.body)) p.body = m.body; if (this.core.BLUSHES.includes(m.blush)) p.blush = m.blush; }
@@ -670,13 +671,40 @@ export class SurviveRoom extends GameRoom {
   }
 }
 
+/* ---------- 泡泡派對房間：沿用 GameRoom 的大廳、倒數、斷線寬限、掛機踢除；空位補電腦，斷線由電腦立刻接手 ---------- */
+export class PartyRoom extends GameRoom {
+  constructor(ctx, env) { super(ctx, env); this.core = PartyCore; this.gameId = 'party'; }
+  gamePlayers() { return (this.game?.players || []).filter(p => p.human); } // 電腦沒有 uid，不參與斷線、在線人數這些判斷
+  newGame(seed) { return this.core.createGame({ seed, humans: this.lobby, bots: true, diff: 'normal' }); }
+  startGame() { super.startGame(); for (const uid of this.gone.keys()) { const p = this.gamePlayer(uid); if (p) this.stopPlayer(p); } } // 開局時不在線的人先交給電腦
+  onOpen(ws, user) { // 寬限期內回來：從電腦手上拿回角色
+    super.onOpen(ws, user);
+    const p = this.phase === 'play' && this.gamePlayer(user.id); if (p && !p.left) this.core.setAuto(this.game, p.id, false);
+  }
+  onInput(p, m) {
+    if (p.left) return;
+    if (m.t === 'in') this.core.setInput(this.game, p.id, { mx: m.mx, my: m.my });
+    else if (m.t === 'jump') this.core.jump(this.game, p.id);
+    else if (m.t === 'dash') this.core.dash(this.game, p.id);
+  }
+  stopPlayer(p) { this.core.setInput(this.game, p.id, {}); this.core.setAuto(this.game, p.id, true); } // 斷線：電腦立刻接手
+  expire(p) { this.core.forfeit(this.game, p.id); } // 寬限期過了：電腦打完這場，結算當作中途離開
+  frame() { return this.core.snapshot(this.game, { full: false }); }
+  alive(p) { return !p.left; }
+  recordStats() { return null; } // 只進總積分，沒有遊戲紀錄榜
+  resultText(r) {
+    const medal = ['🥇', '🥈', '🥉'];
+    return `🎉 泡泡派對 結果（${r.rounds.map(id => this.core.ARENAS[id]?.name || id).join('・')}）\n` + r.players.map(p => `${medal[p.rank - 1] || p.rank + '.'} ${p.bot ? '🤖' : ''}${p.name}｜${p.score} 分（${p.rounds.join('・')}）${p.bot ? '' : p.out ? '｜中途離開' : `｜${p.points} 分`}`).join('\n');
+  }
+}
+
 // /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS。新遊戲在這裡加一個欄位
 function emptyGameBoard() {
   return { kart: { laps: KartCore.LAPS, tracks: KartCore.TRACKS.map(t => ({ id: t.id, name: t.name, top: [], hard: [], speed: [], speedHard: [] })) }, bubble: { kills: [] }, artillery: { kills: [] }, run: { score: [] }, survive: { time: [] } };
 }
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
-const LOBBY = { W: 18, H: 20, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
+const LOBBY = { W: 18, H: 20, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
 export class LobbyRoom {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
   async fetch(req) {

@@ -234,6 +234,19 @@ test('kart room: lobby → countdown → race with steering and items → result
   R.adv(9000); R.tick(); assert.equal(R.room.phase, 'lobby');
 });
 
+test('build: kart audio files are copied to dist/public and wrangler serves that folder', async () => {
+  const { collectStatic, PUBLIC_DIR } = await import('../../../deploy/build.mjs');
+  const fs = await import('node:fs'), path = await import('node:path');
+  const st = collectStatic();
+  for (const f of ['sfx-boost.mp3', 'sfx-countdown.mp3', 'bgm-dizzy-racing.mp3']) {
+    const url = '/kart/assets/audio/' + f;
+    assert.equal(st[url]?.type, 'audio/mpeg', url);
+    assert.ok(fs.statSync(path.join(PUBLIC_DIR, url)).size > 1000, url + ' copied by npm run build');
+  }
+  assert.ok(!Object.keys(st).some(u => u.endsWith('.md')), 'credits stay out of the public folder');
+  assert.match(fs.readFileSync(new URL('../../../deploy/wrangler.toml', import.meta.url), 'utf8'), /^\[assets\]\s*\ndirectory = "dist\/public"/m);
+});
+
 test('bundle serves the kart page and its rules file', async () => {
   for (const path of ['/kart/', '/kart/kart-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
   assert.equal((await Bundle.default.fetch(new Request('https://x.test/kart/ws'), {})).status, 426, 'kart ws needs an upgrade');

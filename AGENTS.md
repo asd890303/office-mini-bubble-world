@@ -11,6 +11,7 @@
 - `games/artillery`：泡泡砲戰（電腦版）。
 - `games/party`：泡泡派對（走路相撲，3 種擂台）。
 - `games/bubble-together`：泡泡Together（合作闖關，單人或 2 到 4 人，3 D 畫面、2 D 操作）。
+- `games/bubble-dance`：泡泡跳舞機（id `dance`，跟著老師與助教示範、照拍子舉左右手，舉錯淘汰；單人跳到失誤為止，或 2 到 4 人比誰撐最久，空位補電腦）。沒有背景音樂，節拍聲與舉手音用 Web Audio 即時合成。
 - 新遊戲的規則檔只能有 `export`、不能 `import`，`deploy/build.mjs` 會把它內嵌進 Worker。
 - `apps/worker/worker.js` 只能匯出函式或類別。匯出數字或字串常數，Cloudflare 會拒絕啟動。
 - `packages/ui`：共用美術、角色、外觀選擇。連線遊戲的對時、快照內插、自己角色的預測重播放在 `packages/ui/net-sync.js`，新遊戲照泡泡派對或泡泡倖存者的用法接。

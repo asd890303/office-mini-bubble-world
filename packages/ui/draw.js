@@ -159,4 +159,19 @@ export const GAME_ART = {
     x.beginPath(); x.arc(94, 30, 13, 0, Math.PI * 2); inkPath(x, '#7cc8ff'); shine(x, 90, 26, 3, 5);
     x.lineWidth = 4; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(76, 46); x.lineTo(70, 52); x.moveTo(84, 52); x.lineTo(80, 58); x.stroke();
   },
+  dance(x) { // 泡泡跳舞機：舞台上的助教、老師、玩家，老師和玩家舉起同一隻手 + 迪斯可燈球 + 音符
+    x.beginPath(); x.roundRect(12, 92, 104, 14, 6); inkPath(x, '#7cc8ff');
+    for (const cx of [30, 64, 98]) { x.beginPath(); x.arc(cx, 99, 2.5, 0, Math.PI * 2); x.fillStyle = '#ffd23f'; x.fill(); }
+    for (const [cx, cy, r, ear, arm] of [[30, 79, 13, '#8fd694', 0], [98, 79, 13, '#ffd23f', 1], [64, 74, 18, '#ff7eb6', 1]]) {
+      if (arm) { x.lineWidth = 5; x.lineCap = 'round'; x.strokeStyle = INK; x.beginPath(); x.moveTo(cx + r * .6, cy - r * .3); x.lineTo(cx + r * 1.3, cy - r * 1.4); x.stroke(); }
+      for (const s of [-1, 1]) { x.beginPath(); x.arc(cx + s * r * .5, cy - r * .95, r * .34, 0, Math.PI * 2); inkPath(x, ear, 3); }
+      x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); inkPath(x, '#fffdf7');
+      x.fillStyle = INK; for (const s of [-1, 1]) { x.beginPath(); x.arc(cx + s * r * .33, cy - r * .1, r * .14, 0, Math.PI * 2); x.fill(); }
+      x.beginPath(); x.arc(cx, cy + r * .2, r * .25, 0, Math.PI); x.lineWidth = 2.5; x.strokeStyle = INK; x.stroke();
+    }
+    x.lineWidth = 3; x.strokeStyle = INK; x.beginPath(); x.moveTo(64, 8); x.lineTo(64, 16); x.stroke();
+    x.beginPath(); x.arc(64, 26, 10, 0, Math.PI * 2); inkPath(x, '#ffb3c7', 3);
+    x.lineWidth = 2; x.beginPath(); x.moveTo(54, 26); x.lineTo(74, 26); x.ellipse(64, 26, 4.5, 10, 0, 0, Math.PI * 2); x.stroke(); shine(x, 60, 22, 2.5, 3.5);
+    x.beginPath(); x.ellipse(22, 46, 6, 4.5, -.4, 0, Math.PI * 2); x.fillStyle = INK; x.fill(); x.lineWidth = 3.5; x.beginPath(); x.moveTo(27, 44); x.lineTo(27, 26); x.lineTo(35, 30); x.stroke();
+  },
 };

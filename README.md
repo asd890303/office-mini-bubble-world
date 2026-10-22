@@ -15,6 +15,7 @@ Telegram Mini App 小遊戲大廳。玩家選好角色外觀，在可走動的 3
 | 泡泡倖存者 | `/survive/` | 單人，或 2 到 4 人合作 | 泡泡包住敵人再戳破連鎖，升級配出組合，撐 5 分鐘或打倒王 |
 | 泡泡派對 | `/party/` | 單人，或 2 到 6 人（空位補電腦） | 走路相撲：衝撞把別人擠下擂台，3 關比積分 |
 | 泡泡Together | `/together/` | 單人（只出一個人能解的謎題），或 2 到 4 人合作 | 橫向闖關：疊羅漢、抱隊友丟過去、輪流壓機關，每局關卡類型與謎題都隨機 |
+| 泡泡跳舞機 | `/dance/` | 單人（跳到失誤為止），或 2 到 4 人（空位補電腦） | 老師示範、助教照做，再換你在同樣的拍子上舉左手或右手，舉錯就淘汰，撐最久的人贏 |
 
 ### 泡泡碰碰島
 
@@ -71,6 +72,14 @@ Telegram Mini App 小遊戲大廳。玩家選好角色外觀，在可走動的 3
 - 設計細節見 [`docs/party.md`](docs/party.md)。
 - 泡泡Together 的設計與規則見 [`docs/bubble-together.md`](docs/bubble-together.md)。
 
+### 泡泡跳舞機
+
+- 台上三個泡泡人：老師先跟著節拍示範一組舉手，助教照做，再換你照同樣順序、在同樣的拍子上舉手。
+- 只有舉左手、舉右手：手機按下方兩顆大鍵，電腦用 ← → 或滑鼠左右鍵。
+- 舉錯手、多舉、少舉或離拍點太遠就淘汰。每回合動作多 1 個，到 6 個後改成加快，BPM 一路變快。
+- 動作由種子產生，同一局所有人同一組。伺服器依舉手的時間判定。連線 2 到 4 人，空位補電腦，最後存活的人贏，積分 5、3、2、1。單人跳到失誤為止，分數是過關回合數。
+- 沒有背景音樂，節拍聲與舉手的「啾」都由頁面即時合成。設計細節見 [`docs/bubble-dance.md`](docs/bubble-dance.md)。
+
 ## 結構
 
 npm workspaces monorepo。
@@ -85,6 +94,7 @@ games/bubble-run    泡泡跑跑：index.html、run-core.js、測試
 games/bubble-survivors 泡泡倖存者：index.html、survivors-core.js、測試
 games/party         泡泡派對：index.html、party-core.js、測試
 games/bubble-together  泡泡Together：index.html、together-core.js、測試
+games/bubble-dance  泡泡跳舞機：index.html、dance-core.js、測試
 docs                遊戲設計文件
 packages/ui         共用：theme.css、draw.js、three-kit.js、avatar.js、session.js、update.js
 deploy              wrangler.toml、build.mjs、部署文件

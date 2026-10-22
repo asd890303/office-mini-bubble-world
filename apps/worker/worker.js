@@ -25,6 +25,13 @@ const RECORD_PREFIX = 'best:', RECORD_TOP = 3, KART_MIN_TIME = 5;
 const SURVIVE_SOLO_TTL = 30 * 60 * 1000; // 泡泡倖存者單人紀錄：票的有效時間
 const RUN_SOLO_TTL = 30 * 60 * 1000, RUN_SLACK = 3; // 泡泡跑跑單人紀錄：票的有效時間；成績不能超過「票發出後經過的時間跑得出的最大距離」再多 RUN_SLACK 公尺
 const SOLO_TICKET_MS = 10 * 60 * 1000, RECORD_GAP_MS = 5000, TOGETHER_MIN_TIME = 20;
+// 房間放在哪個機房：Durable Object 第一次被呼叫時建在呼叫者附近，之後不會搬。2026-10-21 實測舊的 main 除了賽車都在離台北約 140 ms 的機房，
+// 所以換名字重建，並指定建在亞太（apac）。賽車的 main 在附近（約 35 ms），沿用 KART_NAME。
+// 遊戲房間不存資料，ROOM_NAME 換名字只是開新房間。大廳存了積分和紀錄，名字分開管：新大廳 LOBBY_NAME 第一次被呼叫時，從 LOBBY_FROM 整份複製過來（LobbyRoom.ready）。
+// 要再搬大廳時，先把 LOBBY_FROM 改成目前的 LOBBY_NAME，再把 LOBBY_NAME 換新名字
+const ROOM_NAME = 'apac-1', KART_NAME = 'main', LOBBY_NAME = 'apac-1', LOBBY_FROM = 'main', ROOM_PLACE = { locationHint: 'apac' };
+const roomOf = (ns, name) => ns.get(ns.idFromName(name), ROOM_PLACE);
+const lobbyOf = env => roomOf(env.LOBBY_ROOM, LOBBY_NAME);
 // 泡泡島與泡泡砲戰單人紀錄（單場擊敗數）：max 單場最多能擊敗幾人，perKill 每擊敗一人至少要花的秒數，ttl 票的有效時間。單人版在瀏覽器裡跑，伺服器只能擋明顯不合理的成績
 const KILL_SOLO = { bubble: { max: 3, perKill: 5, ttl: 15 * 60 * 1000 }, artillery: { max: 3, perKill: 8, ttl: 40 * 60 * 1000 } };
 // 泡泡砲戰：每人每回合最多送幾個標記、幾句快捷訊息
@@ -188,7 +195,7 @@ async function handleKartSolo(req, url, env) {
   if (!tr || !Number.isFinite(time) || time < kartMinTime(tr, mode) || time > KartCore.MAX_TIME) return fail('time', 422);
   if ((now - tk.t0) / 1000 < time) return fail('time', 422); // 倒數 3 秒不算在成績裡，剛好當網路延遲的緩衝
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, diff: tk.diff === 'hard' ? 'hard' : 'normal', mode, entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
+  const r = await lobbyOf(env).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'kart', track: tr.id, diff: tk.diff === 'hard' ? 'hard' : 'normal', mode, entries: [{ uid: u.id, name: u.name, stats: { time } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -209,7 +216,7 @@ async function handleKillSolo(req, url, env, game) {
   const kills = Number(body.kills);
   if (!Number.isInteger(kills) || kills < 1 || kills > cfg.max || (now - tk.t0) / 1000 < cfg.perKill * kills) return fail('kills', 422);
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game, entries: [{ uid: u.id, name: u.name, stats: { kills } }] }) });
+  const r = await lobbyOf(env).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game, entries: [{ uid: u.id, name: u.name, stats: { kills } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -232,7 +239,7 @@ async function handleRunSolo(req, url, env) {
   if (!Number.isFinite(time) || time <= 0 || time > RunCore.MAX_TIME || time > (now - tk.t0) / 1000 + 1) return fail('time', 422);
   if (!Number.isInteger(score) || score < 1 || score > RunCore.scoreOf(RunCore.distAt(time)) + RUN_SLACK) return fail('score', 422);
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'run', entries: [{ uid: u.id, name: u.name, stats: { score, time: Math.round(time * 100) / 100 } }] }) });
+  const r = await lobbyOf(env).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'run', entries: [{ uid: u.id, name: u.name, stats: { score, time: Math.round(time * 100) / 100 } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -255,7 +262,7 @@ async function handleSurviveSolo(req, url, env) {
   if (!Number.isInteger(time) || time < 1 || time > SurviveCore.RUN_TIME || time > (now - tk.t0) / 1000 + 1) return fail('time', 422);
   if (!Number.isInteger(kills) || kills < 0 || kills > SurviveCore.maxKills(time, 1)) return fail('kills', 422);
   if (!env.LOBBY_ROOM) return fail('records off', 503);
-  const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'survive', entries: [{ uid: u.id, name: u.name, stats: { time, kills } }] }) });
+  const r = await lobbyOf(env).fetch('https://lobby/record', { method: 'POST', body: JSON.stringify({ game: 'survive', entries: [{ uid: u.id, name: u.name, stats: { time, kills } }] }) });
   return new Response(r.body, { status: r.status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
@@ -271,8 +278,7 @@ export default {
       const u = await resolveUser(url, env);
       if (!u) return new Response('unauthorized', { status: 401 });
       const h = new Headers(req.headers); h.set('X-TG-User', encodeURIComponent(JSON.stringify(u)));
-      const room = env[binding];
-      return room.get(room.idFromName('main'), binding === 'TOGETHER_ROOM' ? { locationHint: 'apac' } : undefined).fetch(new Request(req, { headers: h })); // 新房間建在亞太區，降低延遲
+      return roomOf(env[binding], binding === 'KART_ROOM' ? KART_NAME : binding === 'LOBBY_ROOM' ? LOBBY_NAME : ROOM_NAME).fetch(new Request(req, { headers: h }));
     }
     if (url.pathname === '/kart/solo' || url.pathname === '/kart/record') return handleKartSolo(req, url, env);
     if (url.pathname === '/run/solo' || url.pathname === '/run/record') return handleRunSolo(req, url, env);
@@ -281,12 +287,12 @@ export default {
     if (url.pathname.startsWith('/auth/')) { const r = await handleAuth(req, url, env); if (r) return r; }
     if (url.pathname === '/board/games' && req.method === 'GET') { // 各遊戲紀錄（公開唯讀）
       if (!env.LOBBY_ROOM) return Response.json(emptyGameBoard(), { headers: corsHeaders(env) });
-      const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/board/games');
+      const r = await lobbyOf(env).fetch('https://lobby/board/games');
       return new Response(r.body, { headers: { 'content-type': 'application/json', 'cache-control': 'no-cache', ...corsHeaders(env) } });
     }
     if (url.pathname === '/board' && req.method === 'GET') { // 總積分看板（公開唯讀）
       if (!env.LOBBY_ROOM) return Response.json({ players: 0, top: [] }, { headers: corsHeaders(env) });
-      const r = await env.LOBBY_ROOM.get(env.LOBBY_ROOM.idFromName('main')).fetch('https://lobby/board');
+      const r = await lobbyOf(env).fetch('https://lobby/board');
       return new Response(r.body, { headers: { 'content-type': 'application/json', 'cache-control': 'no-cache', ...corsHeaders(env) } });
     }
     const asset = ASSETS && ASSETS[url.pathname === '/index.html' ? '/' : url.pathname];
@@ -305,7 +311,7 @@ export class GameRoom {
     this.ctx = ctx; this.env = env; this.core = Core; this.gameId = 'bubble';
     this.phase = 'lobby';      // lobby -> play -> end -> lobby
     this.lobby = [];           // [{ uid, name, color, ear, eye, body, blush }] next game's players, join order = slot
-    this.countdownAt = 0; this.endAt = 0; this.game = null; this.result = null; this.timer = null; this.lastPush = 0;
+    this.countdownAt = 0; this.endAt = 0; this.game = null; this.result = null; this.timer = null; this.lastPush = 0; this.k = 0;
     this.gone = new Map();     // uid -> 斷線時間（遊戲中）
     this.active = new Map();   // uid -> 最後一次操作時間（ping 不算）
     this.now = () => Date.now();
@@ -339,8 +345,8 @@ export class GameRoom {
     const st = this.status(), sig = [st.phase, st.players, st.startsAt, st.watching].join('|');
     if (sig === this.lastSig || now - (this.lastNotify || 0) < 1000) return;
     this.lastSig = sig; this.lastNotify = now;
-    const ns = this.env.LOBBY_ROOM; if (!ns) return;
-    ns.get(ns.idFromName('main')).fetch('https://lobby/rooms', { method: 'POST', body: JSON.stringify({ game: this.gameId, status: st }) }).catch(e => console.error('notify lobby', e));
+    if (!this.env.LOBBY_ROOM) return;
+    lobbyOf(this.env).fetch('https://lobby/rooms', { method: 'POST', body: JSON.stringify({ game: this.gameId, status: st }) }).catch(e => console.error('notify lobby', e));
   }
   onInput(p, m) { if (m.t === 'in') this.core.setInput(this.game, p.id, m.d); else if (m.t === 'bomb') this.core.placeBomb(this.game, p); }
   stopPlayer(p) { this.core.setInput(this.game, p.id, [0, 0]); }
@@ -359,7 +365,7 @@ export class GameRoom {
     if (p) this.gone.delete(user.id); // 寬限期內重連：繼續操作原本的角色
     this.active.set(user.id, this.now());
     this.send(ws, { t: 'hello', you: user.id, name: user.name, phase: this.phase, me: p ? p.id : null, result: this.phase === 'end' ? this.result : null });
-    if (this.phase === 'play') this.send(ws, { t: 'start', me: p ? p.id : null, s: this.core.snapshot(this.game) });
+    if (this.phase === 'play') this.send(ws, { t: 'start', me: p ? p.id : null, s: this.core.snapshot(this.game), k: this.k, at: this.now() });
     this.send(ws, this.lobbyMsg());
     this.ensureTimer();
   }
@@ -398,8 +404,8 @@ export class GameRoom {
   startGame() {
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] || 1;
     this.game = this.newGame(seed);
-    this.lobby = []; this.phase = 'play'; this.result = null; this.gone.clear();
-    for (const ws of this.sockets()) { const p = this.gamePlayer(this.who(ws).uid); this.send(ws, { t: 'start', me: p ? p.id : null, s: this.core.snapshot(this.game) }); }
+    this.lobby = []; this.phase = 'play'; this.result = null; this.gone.clear(); this.k = 0;
+    const at = this.now(); for (const ws of this.sockets()) { const p = this.gamePlayer(this.who(ws).uid); this.send(ws, { t: 'start', me: p ? p.id : null, s: this.core.snapshot(this.game), k: 0, at }); }
     for (const p of this.gamePlayers()) if (!this.ctx.getWebSockets(p.uid).length) this.gone.set(p.uid, this.now());
   }
   kickIdle(now) { // 進行中的對局不踢（一局最長 3 分鐘），其餘階段超過 IDLE_MS 沒動作就請出去
@@ -420,7 +426,7 @@ export class GameRoom {
       if (!n) { this.phase = 'lobby'; this.game = null; this.lobby = []; this.gone.clear(); return this.stopTimer(); } // 全部離線：直接收掉這局
       for (const [uid, at] of this.gone) if (now - at >= GRACE_MS) { const p = this.gamePlayer(uid); if (p) this.expire(p); this.gone.delete(uid); }
       const ev = this.core.step(this.game, TICK_MS / 1000);
-      this.broadcast({ t: 's', s: this.frame(), ev });
+      this.broadcast({ t: 's', s: this.frame(), ev, k: ++this.k, at: now }); // k：這局第幾步；at：這一步的伺服器時鐘（毫秒）。計時器每步會晚一點點（約 3%），所以客戶端照 at 排快照、對時，不看封包幾時到
       if (this.game.over) {
         this.result = this.game.result; this.phase = 'end'; this.endAt = now + END_MS;
         this.postResult(this.result).catch(e => console.error('sendMessage', e));
@@ -440,10 +446,10 @@ export class GameRoom {
   }
   // 把真人的名次分數送到大廳的總積分看板（大廳 Durable Object 存）；stats 給各遊戲紀錄用
   async reportScores(r) {
-    const ns = this.env.LOBBY_ROOM; if (!ns) return;
+    if (!this.env.LOBBY_ROOM) return;
     const entries = r.players.filter(p => !p.bot && p.uid != null && !String(p.uid).startsWith(GUEST_PREFIX)).map(p => ({ uid: String(p.uid), name: p.name, points: p.out ? 0 : p.points ?? SCORE_POINTS[p.rank - 1] ?? 0, win: this.isWin(r, p), stats: this.recordStats(p) }));
     if (!entries.length) return;
-    await ns.get(ns.idFromName('main')).fetch('https://lobby/score', { method: 'POST', body: JSON.stringify({ game: this.gameId, ...this.recordInfo(r), entries }) });
+    await lobbyOf(this.env).fetch('https://lobby/score', { method: 'POST', body: JSON.stringify({ game: this.gameId, ...this.recordInfo(r), entries }) });
   }
   // 各遊戲紀錄的資料：泡泡島記單場擊敗數；其他遊戲覆寫
   recordStats(p) { return { kills: p.kills }; }
@@ -731,7 +737,9 @@ export class LobbyRoom {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
   async fetch(req) {
     const path = new URL(req.url).pathname;
-    // /score 只有其他 Durable Object 會呼叫，/record 只有 Worker 驗過單人賽的票才呼叫（公開路由都不轉送這兩個路徑）；/board 是公開唯讀
+    // /export 只有新大廳搬家時呼叫；/score 只有其他 Durable Object 會呼叫，/record 只有 Worker 驗過單人賽的票才呼叫（公開路由都不轉送這三個路徑）；/board 是公開唯讀
+    if (path === '/export') return Response.json([...(await this.ctx.storage.list()).entries()]);
+    try { await this.ready(); } catch (e) { console.error('lobby move', e); return new Response('lobby moving', { status: 503 }); }
     if (path === '/score' && req.method === 'POST') { await this.addScores(await req.json().catch(() => null)); return new Response('ok'); }
     if (path === '/record' && req.method === 'POST') return this.addSoloRecord(await req.json().catch(() => null));
     if (path === '/board') return Response.json(await this.board());
@@ -748,6 +756,18 @@ export class LobbyRoom {
     this.onOpen(server, user);
     this.send(server, { t: 'rooms', rooms: await this.loadRooms() });
     return new Response(null, { status: 101, webSocket: client });
+  }
+  // 搬家：新大廳（LOBBY_NAME）第一次被呼叫時，把舊大廳（LOBBY_FROM）的積分與紀錄整份複製過來，複製完才記下 moved；失敗就讓下一個請求重試。
+  // 房間狀態（rooms）屬於舊的遊戲房間，不複製。舊大廳的資料不刪，要退回舊版時還在
+  ready() { return (this.moving ||= this.moveIn().catch(e => { this.moving = null; throw e; })); }
+  async moveIn() {
+    const st = this.ctx.storage, ns = this.env.LOBBY_ROOM;
+    if (!st || !ns || await st.get('moved')) return;
+    const r = await ns.get(ns.idFromName(LOBBY_FROM)).fetch('https://lobby/export');
+    if (!r.ok) throw new Error('export ' + r.status);
+    const rows = (await r.json()).filter(([k]) => k !== 'rooms' && k !== 'moved');
+    for (const [k, v] of rows) await st.put(k, v);
+    await st.put('moved', { from: LOBBY_FROM, keys: rows.length, at: this.now() });
   }
   who(ws) { try { return ws.deserializeAttachment() || {}; } catch { return {}; } }
   sockets() { return this.ctx.getWebSockets().filter(ws => ws.readyState === 1 || ws.readyState === undefined); }
@@ -861,7 +881,8 @@ export class LobbyRoom {
   snapshot() {
     const r3 = v => Math.round(v * 1000) / 1000, live = this.sockets().map(ws => this.who(ws)).filter(p => p.uid), ids = new Set(live.map(p => p.uid));
     const ghosts = [...this.ghosts.values()].filter(g => !ids.has(g.uid));
-    return { t: 'snap', players: [...live, ...ghosts].map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, eye: p.eye || 'dot', body: p.body || Core.BODIES[0], blush: p.blush || Core.BLUSHES[0], x: r3(p.x), y: r3(p.y), f: r3(p.f), ...(p.playing ? { st: 'play' } : {}) })) };
+    // at：伺服器時間（毫秒）；ts：這個人最後一次回報位置的伺服器時間。大廳頁照 ts 內插別人的位置，不看封包幾時到
+    return { t: 'snap', at: this.now(), players: [...live, ...ghosts].map(p => ({ id: p.uid, name: p.name, color: p.color, ear: p.ear, eye: p.eye || 'dot', body: p.body || Core.BODIES[0], blush: p.blush || Core.BLUSHES[0], x: r3(p.x), y: r3(p.y), f: r3(p.f), ts: p.ts || 0, ...(p.playing ? { st: 'play' } : {}) })) };
   }
   onOpen(ws, user) { this.ghosts.delete(user.id); this.active.set(user.id, this.now()); this.send(ws, { t: 'hello', you: user.id, W: LOBBY.W, H: LOBBY.H }); this.dirty = true; this.ensureTimer(); }
   async webSocketMessage(ws, raw) {
@@ -875,7 +896,7 @@ export class LobbyRoom {
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
       const nx = Math.max(.5, Math.min(LOBBY.W - .5, x)), ny = Math.max(.5, Math.min(LOBBY.H - .5, y)), nf = Number.isFinite(f) ? f : a.f;
       if (Math.hypot(nx - a.x, ny - a.y) < .05 && nf === a.f) return; // 原地回報不算操作，也不用重新廣播
-      this.active.set(a.uid, now); a.x = nx; a.y = ny; a.f = nf;
+      this.active.set(a.uid, now); a.x = nx; a.y = ny; a.f = nf; a.ts = now;
     } else if (m.t === 'look') {
       this.active.set(a.uid, now);
       if (Core.COLORS.includes(m.color)) a.color = m.color; if (Object.hasOwn(Core.EARS, m.ear)) a.ear = m.ear; if (Object.hasOwn(Core.EYES, m.eye)) a.eye = m.eye; if (Core.BODIES.includes(m.body)) a.body = m.body; if (Core.BLUSHES.includes(m.blush)) a.blush = m.blush;

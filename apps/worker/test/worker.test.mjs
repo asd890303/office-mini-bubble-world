@@ -912,3 +912,51 @@ test('bundle serves the together page and its rules file; the room is exported a
   for (const path of ['/together/', '/together/together-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
   assert.equal((await Bundle.default.fetch(new Request('https://x.test/together/ws'), {})).status, 426); assert.equal(typeof Bundle.TogetherRoom, 'function');
 });
+
+test('placement: rooms and the lobby are looked up under a new name with an Asia-Pacific hint; kart keeps its nearby main room', async () => {
+  const { session } = await (await Bundle.default.fetch(new Request('https://x.test/auth/guest', { method: 'POST', body: '{}' }), AUTH_ENV)).json();
+  const calls = [], ns = name => ({ idFromName: n => `${name}:${n}`, get: (id, opt) => { calls.push([id, opt?.locationHint ?? null]); return { fetch: async () => new Response('{}') }; } });
+  const env = { ...AUTH_ENV, GAME_ROOM: ns('bubble'), KART_ROOM: ns('kart'), PARTY_ROOM: ns('party'), SURVIVE_ROOM: ns('survive'), TOGETHER_ROOM: ns('together'), LOBBY_ROOM: ns('lobby') };
+  for (const path of ['/ws', '/kart/ws', '/party/ws', '/survive/ws', '/together/ws', '/lobby/ws']) await Bundle.default.fetch(new Request(`https://x.test${path}?session=${encodeURIComponent(session)}`, { headers: { Upgrade: 'websocket' } }), env);
+  await Bundle.default.fetch(new Request('https://x.test/board'), env);
+  assert.deepEqual(calls, [['bubble:apac-1', 'apac'], ['kart:main', 'apac'], ['party:apac-1', 'apac'], ['survive:apac-1', 'apac'], ['together:apac-1', 'apac'], ['lobby:apac-1', 'apac'], ['lobby:apac-1', 'apac']]);
+});
+
+test('lobby move: the new lobby copies scores and records from the old one once; room states stay behind; a failed copy serves nothing and is retried', async () => {
+  const oldSt = fakeStorage();
+  await oldSt.put('score2:1', { name: 'Alice', points: 9, games: 2, wins: 1 }); await oldSt.put('best:bubble:kills', [{ uid: '1', name: 'Alice', v: 4, at: 1 }]); await oldSt.put('rooms', { kart: { phase: 'play' } });
+  const old = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: oldSt }, {});
+  let down = true, asked = 0;
+  const env = { LOBBY_ROOM: { idFromName: n => n, get: id => ({ fetch: async (url, o) => { assert.equal(id, 'main', 'copies from the old lobby'); asked++; return down ? new Response('boom', { status: 500 }) : old.fetch(new Request(url, o)); } }) } };
+  const st = fakeStorage(), lobby = new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: st }, env);
+  assert.equal((await lobby.fetch(new Request('https://lobby/board'))).status, 503, 'old lobby unreachable: no empty board');
+  down = false;
+  assert.deepEqual((await (await lobby.fetch(new Request('https://lobby/board'))).json()).top.map(p => [p.name, p.points]), [['Alice', 9]]);
+  assert.equal((await (await lobby.fetch(new Request('https://lobby/board/games'))).json()).bubble.kills[0].kills, 4);
+  assert.equal(await st.get('rooms'), undefined, 'room states belong to the old game rooms');
+  assert.equal((await st.get('moved')).keys, 2);
+  await lobby.addScores({ entries: [{ uid: '1', name: 'Alice', points: 5, win: true }] });
+  await new LobbyRoom({ getWebSockets: () => [], acceptWebSocket() {}, storage: st }, env).fetch(new Request('https://lobby/board')); // 大廳休眠後醒來
+  assert.equal(asked, 2, 'copied once after the failed try');
+  assert.equal((await st.get('score2:1')).points, 14, 'scores added after the move are not overwritten');
+  assert.equal((await oldSt.get('score2:1')).points, 9, 'old lobby data kept');
+});
+
+test('frames: start and every snapshot carry k, the tick number of this game, and at, the server clock; survive sends every other tick; a late spectator gets the current k', async () => {
+  const R = fakeRoom(), a = R.connect('1', 'A'), b = R.connect('2', 'B');
+  await R.msg(a, { t: 'join' }); await R.msg(b, { t: 'join' });
+  R.adv(20000); R.tick(); assert.equal(a.out.findLast(m => m.t === 'start').k, 0);
+  R.tick(3); assert.deepEqual(a.out.filter(m => m.t === 's').map(m => m.k), [1, 2, 3]);
+  assert.deepEqual(a.out.filter(m => m.t === 's').map(m => m.at - 1_020_050), [50, 100, 150], 'at is the server clock of each tick');
+  assert.equal(R.connect('3', 'C').out.find(m => m.t === 'start').k, 3);
+  const S = fakeRoom(SurviveRoom), c = S.connect('1', 'A'), d = S.connect('2', 'B');
+  await S.msg(c, { t: 'join' }); await S.msg(d, { t: 'join' }); S.adv(20000); S.tick(); S.tick(4);
+  assert.deepEqual(c.out.filter(m => m.t === 's').map(m => m.k), [2, 4]);
+});
+
+test('lobby snapshots carry the server time and when each player last moved', async () => {
+  const L = fakeLobby(), a = L.connect('1', 'A'), b = L.connect('2', 'B');
+  L.adv(100); await L.msg(a, { t: 'pos', x: 3, y: 4, f: 0 }); L.room.tick();
+  const s = b.out.findLast(m => m.t === 'snap'); assert.equal(s.at, 1_000_100);
+  assert.equal(s.players.find(p => p.id === '1').ts, 1_000_100); assert.equal(s.players.find(p => p.id === '2').ts, 0, 'never moved');
+});

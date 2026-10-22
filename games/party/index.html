@@ -199,6 +199,7 @@ import { mountKeyHelp } from '/shared/keyhelp.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, G, M, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
 import { ITEM_ART } from '/shared/draw.js';
+import { TICK, createClock, createDelay, createBuffer, createInputLog, substeps, follow, pinger, mix, mixAngle } from '/shared/net-sync.js';
 watchUpdates();
 
 const WORKER_URL = location.origin;
@@ -375,7 +376,7 @@ function updatePlayers(S, dt, t, myPos) {
     const sz = sp.big > 0 ? Core.ITEMS.giant.scale : 1;
     c.root.scale.setScalar(.86 * sz);
     c.root.position.copy(W(pos.x, pos.y, pos.z));
-    c.root.rotation.y = sp.h + Math.PI / 2;
+    c.root.rotation.y = (mine && myPos ? myPos.h : sp.h) + Math.PI / 2;
     const speed = Math.hypot(sp.vx, sp.vy), air = pos.z > .05;
     if (v.air && !air && !sp.fall) v.squash = .3;
     v.air = air; v.squash = Math.max(0, v.squash - dt * 2.4);
@@ -660,8 +661,11 @@ $('retryBtn').addEventListener('click', () => { setPaused(false); startSolo(); }
 $('quitBtn').addEventListener('click', () => { setPaused(false); showMenu(); });
 
 /* ---------- 連線版（Worker 房間） ---------- */
-const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, myId: null, lobby: null, lastJoin: 0, base: null, frames: [], offset: null, lastIn: { mx: 0, my: 0, at: 0 },
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, myId: null, lobby: null, lastJoin: 0, base: null, lastIn: { mx: 0, my: 0, at: 0 },
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+// 快照照伺服器時鐘（at，毫秒）排；別人的角色畫在「伺服器時間 − 延遲」，延遲跟著網路抖動調整。自己的角色用輸入紀錄重播（pred）
+const netTime = m => (m.at != null ? m.at / 1000 : m.s.time);
+const sync = createClock(), lag = createDelay({ interval: TICK }), frames = createBuffer(), inputs = createInputLog(), ping = pinger();
 const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
 const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
 function closeNet() { const ws = net.ws; net.ws = null; try { ws?.close(); } catch {} }
@@ -690,18 +694,21 @@ function tryJoin() {
   const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return;
   net.lastJoin = Date.now(); sendJoin();
 }
+// 送出去的移動方向（取到 0.05）；本機預測也用同一個值，才和伺服器算的一樣
+const netInput = () => { const { mx, my } = readInput(), q = v => Math.round(v * 20) / 20; return { mx: q(mx), my: q(my) }; };
 // 送移動方向：有變才送，沒變每 400 ms 補送一次（伺服器才知道還按著）
 function sendInput(force) {
   if (mode !== 'online' || net.myId == null || !playing) return;
-  const { mx, my } = readInput(), q = v => Math.round(v * 20) / 20, now = performance.now(), l = net.lastIn;
-  if (!force && q(mx) === l.mx && q(my) === l.my && now - l.at < 400) return;
-  net.lastIn = { mx: q(mx), my: q(my), at: now }; net.send({ t: 'in', mx: q(mx), my: q(my) });
+  const { mx, my } = netInput(), now = performance.now(), l = net.lastIn;
+  if (!force && mx === l.mx && my === l.my && now - l.at < 400) return;
+  net.lastIn = { mx, my, at: now }; net.send({ t: 'in', mx, my });
 }
 function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
   else if (m.t === 'start') {
-    net.base = m.s; net.myId = m.me ?? null; net.frames = [{ time: m.s.time, s: m.s, at: performance.now() }]; net.offset = null;
+    net.base = m.s; net.myId = m.me ?? null;
+    frames.reset(); sync.reset(); lag.reset(); inputs.reset(); const st = netTime(m); frames.push(st, m.s); sync.sample(st, performance.now() / 1000);
     clearPlayers(); endShown = false; S = m.s; playing = true; pred.reset();
     for (const id of ['lobbyScreen', 'endScreen', 'startScreen', 'roundScreen']) $(id).hidden = true;
     buildArena(m.s.arena); resetArenaState(); if (m.s.phase === 'intro') showIntro(m.s.round, m.s.arena, m.s.rounds.length);
@@ -709,50 +716,62 @@ function onNet(m) {
   }
   else if (m.t === 's') {
     if (!net.base || !playing && !endShown) return;
-    const f = Core.expandFrame(m.s, net.base), now = performance.now();
-    net.frames.push({ time: f.time, s: f, at: now }); if (net.frames.length > 40) net.frames.shift();
-    const off = now / 1000 - f.time; net.offset = net.offset == null ? off : Math.min(off, net.offset + .002); // 走最快的封包；慢慢放寬，時鐘飄了也跟得上
+    const f = Core.expandFrame(m.s, net.base);
+    const st = netTime(m); if (!frames.push(st, f)) return;
+    sync.sample(st, performance.now() / 1000); pred.onFrame(frames.latest);
     if (f.arena !== A?.id) { buildArena(f.arena); resetArenaState(); }
     S = S || f;
     for (const e of m.ev || []) if (e.e === 'round') showIntro(e.n, e.arena, f.rounds.length); // 換擂台已經照快照的 arena 重建，這裡只顯示介紹
     onEvents((m.ev || []).filter(e => e.e !== 'round'));
   }
+  else if (m.t === 'pong') sync.pong(m.at, performance.now() / 1000);
   else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
 }
-// 其他人畫在「伺服器時間減 100 ms」，用前後兩張快照內插；換關時不內插（站位會瞬移）
-const lerpAng = (a, b, k) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * k;
-function netState() {
-  const fr = net.frames; if (!fr.length) return S;
-  const t = performance.now() / 1000 - (net.offset ?? 0) - .1;
-  let i = fr.length - 1; while (i > 0 && fr[i - 1].time > t) i--;
-  const b = fr[i], a = fr[i - 1];
-  if (!a || a.time >= t || a.s.round !== b.s.round || b.time <= a.time) return b.s;
-  const k = Math.min(1, (t - a.time) / (b.time - a.time)), s = { ...b.s };
-  s.players = b.s.players.map(pb => { const pa = a.s.players.find(q => q.id === pb.id); if (!pa || pa.out !== pb.out) return pb; return { ...pb, x: pa.x + (pb.x - pa.x) * k, y: pa.y + (pb.y - pa.y) * k, z: pa.z + (pb.z - pa.z) * k, h: lerpAng(pa.h, pb.h, k) }; });
-  if (a.s.ba != null && b.s.ba != null) s.ba = lerpAng(a.s.ba, b.s.ba, k);
+// 其他人畫在「伺服器時間 − 延遲」，用前後兩張快照內插；快照晚到時照速度往前推最多 0.1 秒，不停住再跳；換關時不內插（站位會瞬移）
+function netState(dt) {
+  const sn = sync.serverNow(performance.now() / 1000), r = sn == null ? null : frames.at(sn - lag.update(sync, dt)); if (!r) return S;
+  const { a, b, u } = r; if (a === b || a.s.round !== b.s.round) return b.s;
+  const s = { ...b.s };
+  if (u > 1) {
+    const tau = Math.min(.1, (u - 1) * r.span);
+    s.players = b.s.players.map(p => p.out ? p : { ...p, x: p.x + p.vx * tau, y: p.y + p.vy * tau });
+    return s;
+  }
+  s.players = b.s.players.map(pb => { const pa = a.s.players.find(q => q.id === pb.id); if (!pa || pa.out !== pb.out) return pb; return { ...pb, x: mix(pa.x, pb.x, u), y: mix(pa.y, pb.y, u), z: mix(pa.z, pb.z, u), h: mixAngle(pa.h, pb.h, u) }; });
+  if (a.s.ba != null && b.s.ba != null) s.ba = mixAngle(a.s.ba, b.s.ba, u);
   return s;
 }
-// 自己的角色：本機照搖桿先動，伺服器的位置來了再慢慢對齊；被撞飛、衝撞、趴下、掉落時直接照伺服器
+// 自己的角色：新快照到了，從伺服器給的位置、速度、面向，把伺服器還沒算進去的搖桿輸入重播一次，就是「現在」的位置；兩張快照之間照搖桿往前推。
+// 被撞飛、衝撞、趴下、掉落、還沒開打時照伺服器，往前推算到同一個時間（現在按的鍵送到伺服器的那一刻）。畫面位置用 follow 把修正攤在約 0.1 秒內
 const pred = {
-  x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ok: false, jumpAt: 0,
-  reset() { this.ok = false; this.jumpAt = 0; },
-  step(dt) {
-    const fr = net.frames.at(-1); if (!fr || net.myId == null) return null;
-    const sp = fr.s.players.find(p => p.id === net.myId); if (!sp || sp.out) { this.ok = false; return null; }
-    const age = Math.min(.25, performance.now() / 1000 - (net.offset ?? 0) - fr.time + .05);
-    const tx = sp.x + sp.vx * age, ty = sp.y + sp.vy * age, B = Core.BODY;
-    const forced = sp.stun > 0 || sp.dash || sp.dive || sp.prone > 0 || sp.fall || Math.hypot(sp.vx, sp.vy) > B.WALK * 1.6 + .2;
-    if (!this.ok || forced || Math.hypot(tx - this.x, ty - this.y) > 2.5) { Object.assign(this, { x: tx, y: ty, vx: sp.vx, vy: sp.vy, ok: true }); }
+  x: 0, y: 0, vx: 0, vy: 0, h: 0, ok: false, jumpAt: -1e9, view: {},
+  reset() { this.ok = false; this.jumpAt = -1e9; this.view = {}; },
+  me(f) { const sp = f?.s.players.find(p => p.id === net.myId); return sp && !sp.out ? sp : null; },
+  forced(sp, s) { return s.phase !== 'play' || sp.stun > 0 || sp.dash || sp.dive || sp.prone > 0 || sp.fall || Math.hypot(sp.vx, sp.vy) > Core.BODY.WALK * 1.6 + .2; },
+  // 照 party-core 的 move()：面向每秒最多轉 TURN；地上速度往搖桿方向靠近（放開用 STOP 減速），空中只剩 AIR 倍
+  advance(dt, { mx, my, air }, sp) {
+    const B = Core.BODY, W = B.WALK * (sp.fast > 0 ? Core.ITEMS.speed.mult : 1) * (sp.big > 0 ? Core.ITEMS.giant.walk : 1), on = Math.hypot(mx, my) > .1, up = air || sp.z > .05;
+    if (on) { const d = Math.atan2(Math.sin(Math.atan2(my, mx) - this.h), Math.cos(Math.atan2(my, mx) - this.h)), turn = B.TURN * dt; this.h += Math.max(-turn, Math.min(turn, d)); }
+    const lim = (up ? B.ACC * B.AIR : on ? B.ACC : B.STOP) * dt, dvx = mx * W - this.vx, dvy = my * W - this.vy, d = Math.hypot(dvx, dvy);
+    if (d <= lim) { this.vx += dvx; this.vy += dvy; } else { this.vx += dvx / d * lim; this.vy += dvy / d * lim; }
+    this.x += this.vx * dt; this.y += this.vy * dt;
+  },
+  onFrame(f) {
+    const sp = this.me(f); if (!sp || this.forced(sp, f.s)) { this.ok = false; return; }
+    Object.assign(this, { x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, h: sp.h, ok: true });
+    for (const [dt, v] of substeps(inputs.since(sync.inputTime(f.t)), Core.DT)) this.advance(dt, v, sp);
+  },
+  step(dt, input) {
+    const fr = frames.latest, sp = this.me(fr); if (!sp) { this.ok = false; return null; }
+    if (this.ok && !this.forced(sp, fr.s)) this.advance(dt, input, sp);
     else {
-      const { mx, my } = readInput(), Wk = B.WALK * (sp.fast > 0 ? Core.ITEMS.speed.mult : 1) * (sp.big > 0 ? Core.ITEMS.giant.walk : 1), air = sp.z > .05;
-      const dvx = mx * Wk - this.vx, dvy = my * Wk - this.vy, d = Math.hypot(dvx, dvy), lim = (Math.hypot(mx, my) > .1 ? B.ACC : B.STOP) * (air ? B.AIR : 1) * dt;
-      if (d <= lim) { this.vx += dvx; this.vy += dvy; } else { this.vx += dvx / d * lim; this.vy += dvy / d * lim; }
-      this.x += this.vx * dt; this.y += this.vy * dt;
-      const k = 1 - Math.exp(-dt * 5); this.x += (tx - this.x) * k; this.y += (ty - this.y) * k;
+      const sn = sync.serverNow(performance.now() / 1000) ?? fr.t, tau = Math.max(0, Math.min(.3, sn - fr.t + (sync.rtt ?? .1) - TICK / 2));
+      Object.assign(this, { x: sp.x + sp.vx * tau, y: sp.y + sp.vy * tau, vx: sp.vx, vy: sp.vy, h: sp.h, ok: !this.forced(sp, fr.s) }); // 剛恢復操作：從這裡開始自己推
     }
-    let z = sp.z; const since = (performance.now() - this.jumpAt) / 1000;
-    if (since < .62 && !forced) { const zj = B.JUMP * since - B.G * since * since / 2; z = Math.max(z, zj); } // 剛按跳：先照拋物線畫，伺服器的高度晚一點才到
-    return { x: this.x, y: this.y, z };
+    const [x, y] = follow(this.view, this.x, this.y, this.vx, this.vy, dt, { tau: .08, snap: 2.5 });
+    let z = sp.z; const since = (performance.now() - this.jumpAt) / 1000, B = Core.BODY;
+    if (since < .62 && !this.forced(sp, fr.s)) z = Math.max(z, B.JUMP * since - B.G * since * since / 2); // 剛按跳：先照拋物線畫，伺服器的高度晚一點才到
+    return { x, y, z, h: this.h };
   },
 };
 function showLobby() { if (!endShown && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
@@ -784,7 +803,9 @@ function tick() {
   if (mode === 'offline' && L) {
     if (playing && !paused) { Core.setInput(L, 0, readInput()); const evs = Core.step(L, dt); S = Core.snapshot(L); onEvents(evs); }
   } else if (mode === 'online' && net.base) {
-    sendInput(false); S = netState(); myPos = pred.step(dt);
+    sendInput(false); ping(now, o => net.send(o));
+    S = netState(dt); myPos = pred.step(dt, inputs.current ?? { mx: 0, my: 0, air: false }); // 用上一幀讀到並送出的輸入往前推；這一幀讀到的從現在起才生效
+    inputs.add(now, { ...netInput(), air: performance.now() - pred.jumpAt < 620 });
   }
   if (S) { updateArena(S, dt, now); updatePlayers(S, dt, t, myPos); updateItems(S, t); if (playing || endShown) updateHud(dt); }
   updateCamera(dt);
@@ -801,7 +822,7 @@ async function changeAvatar() { const a = await openAvatarPicker({ initial: setu
 $('avatarBtn').addEventListener('click', changeAvatar); $('lAvatarBtn').addEventListener('click', changeAvatar);
 async function goOnline() {
   if (!ID) ID = await openLogin({ soloLabel: '先玩單人版', suggest: myName }); if (!ID) return;
-  mode = 'online'; L = null; net.tries = 0; net.opened = false; net.wantIn = true; net.base = null; net.frames = [];
+  mode = 'online'; L = null; net.tries = 0; net.opened = false; net.wantIn = true; net.base = null; frames.reset();
   $('startScreen').hidden = $('endScreen').hidden = true; $('lobbyScreen').hidden = false; lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect();
 }
 $('onlineBtn').addEventListener('click', goOnline);

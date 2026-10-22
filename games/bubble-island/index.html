@@ -175,6 +175,7 @@ import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, OUTLINE, G, M, withOutline, blob, boxOutline, makeCritter, addNameTag } from '/shared/three-kit.js';
+import { TICK, createClock, createDelay, createBuffer, createInputLog, substeps, follow, pinger, mix } from '/shared/net-sync.js';
 
 /* ================= 連線設定：部署 Worker 後改這一行 ================= */
 const WORKER_URL = location.origin; // 頁面由同一個 Worker 提供，WebSocket 連 wss://<同網域>/ws
@@ -269,8 +270,9 @@ const SOFT_COLORS = ['#ffd0dc', '#ffe3b8', '#e2d6ff', '#cdeef9'];
 let V = null;          // 目前畫面上的這一局
 let playing = false;   // 有一局正在進行（隱藏開始／大廳畫面）
 let local = null;      // 單人版：本機跑 game-core
-const buf = [];        // 連線版：收到的位置快照，用來內插
-const INTERP_MS = 100;
+// 連線版：快照照伺服器時鐘排；別人畫在「伺服器時間 − 延遲」（延遲跟著網路抖動調整），自己用輸入紀錄重播（pred）
+const netClock = createClock(), lag = createDelay({ interval: TICK }), frames = createBuffer(), inputs = createInputLog(), ping = pinger();
+let netT = null; // 這一幀別人的角色要畫在的伺服器時間
 let setup = {
   color: COLORS[0], ear: 'be', eye: 'dot', // 載入後由 applyAppearance 設定
   diff: store.get('bp-diff') || 'normal',
@@ -335,7 +337,7 @@ function buildView(s, myId) {
     v.players.push({ c, d });
   }
   $('meTag').hidden = true; $('timer').classList.remove('hurry');
-  buf.length = 0;
+  frames.reset(); netClock.reset(); lag.reset(); inputs.reset(); pred.reset(); netT = null; // 新的一局：伺服器步數從 0 重算
   applySnap(s, []);
 }
 function disposeView() {
@@ -554,16 +556,16 @@ function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
   else if (m.t === 'start') {
-    buildView(m.s, m.me); playing = true;
+    buildView(m.s, m.me); playing = true; netFrame(m, m.s);
     $('lobbyScreen').hidden = true; $('endScreen').hidden = true; $('startScreen').hidden = true;
     toast(m.me == null ? '觀戰中' : '開始！', 1000);
     if (m.me != null) window.dispatchEvent(new CustomEvent('bubblepop:start', { detail: { difficulty: 'normal', online: true } }));
   }
   else if (m.t === 's') {
     if (!V || V.seed !== m.s.seed) { buildView(m.s, null); playing = !m.s.over; }
-    buf.push({ at: performance.now(), ps: m.s.players.map(p => [p.x, p.y]) }); if (buf.length > 12) buf.shift();
-    applySnap(m.s, m.ev);
+    netFrame(m, m.s); applySnap(m.s, m.ev);
   }
+  else if (m.t === 'pong') netClock.pong(m.at, performance.now() / 1000);
   else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
 }
 function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
@@ -586,13 +588,44 @@ $('joinBtn').addEventListener('click', () => {
   if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); }
   else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
 });
+function netFrame(m, s) { // 照伺服器時鐘 at 排；舊版伺服器沒有 at 就用步數 k
+  const t = m.at != null ? m.at / 1000 : m.k != null ? m.k * TICK : (frames.latest?.t ?? 0) + TICK;
+  if (frames.push(t, s)) { netClock.sample(t, performance.now() / 1000); pred.onFrame(frames.latest); }
+}
+// 和伺服器 setInput 一樣：左右優先，只取正負號
+const normDir = d => { const x = Math.sign(Number(d[0]) || 0); return [x, x ? 0 : Math.sign(Number(d[1]) || 0)]; };
+// 自己的角色：新快照到了，用伺服器的格子、水球和自己的位置建一張小地圖，把伺服器還沒算進去的方向鍵用同一個 tryMove 重播一次，就是「現在」的位置。
+// 小地圖上不能踢水球（踢到時先當成擋住，伺服器的結果下一張快照就到）。畫面位置用 follow 把修正攤在約 0.1 秒內
+const pred = {
+  ok: false, g: null, p: null, speed: 0, face: 0, moving: false, view: {}, x: 0, y: 0,
+  reset() { this.ok = false; this.g = null; this.view = {}; },
+  onFrame(f) {
+    const s = f.s, d = s.players[V?.myId ?? -1];
+    if (mode !== 'online' || !d || d.state === 'dead' || s.over) { this.ok = false; return; }
+    const grid = []; for (let y = 0; y < ROWS; y++) { const r = []; for (let x = 0; x < COLS; x++) r.push(Number(s.grid[y * COLS + x])); grid.push(r); }
+    const p = { id: d.id, x: d.x, y: d.y, kick: false, state: d.state }, near = (x, y) => Math.abs(p.x - x) < .98 && Math.abs(p.y - y) < .98;
+    this.g = { grid, bombs: s.bombs.map(([, x, y]) => ({ x, y, passers: new Set(near(x, y) ? [p.id] : []) })), items: new Map(), players: [p] }; // 站在水球上（剛放的）可以走出去
+    this.p = p; this.speed = d.speed * (d.state === 'trapped' ? .22 : 1); this.face = d.face; this.ok = true;
+    for (const [dt, dir] of substeps(inputs.since(netClock.inputTime(f.t)), TICK / 2)) this.advance(dt, dir);
+  },
+  advance(dt, dir) {
+    if (!dir[0] && !dir[1]) return;
+    const p = this.p; Core.tryMove(this.g, p, dir[0], dir[1], this.speed * dt); this.face = Math.atan2(dir[0], dir[1]);
+    for (const b of this.g.bombs) if (b.passers.size && (Math.abs(p.x - b.x) >= .98 || Math.abs(p.y - b.y) >= .98)) b.passers.clear(); // 離開水球後就不能再穿過
+  },
+  step(dt, dir) {
+    if (!this.ok) return;
+    const x0 = this.p.x, y0 = this.p.y; this.advance(dt, dir); this.moving = !!(dir[0] || dir[1]);
+    [this.x, this.y] = follow(this.view, this.p.x, this.p.y, dt > 0 ? (this.p.x - x0) / dt : 0, dt > 0 ? (this.p.y - y0) / dt : 0, dt, { snap: 1.5 });
+  },
+};
 function sendDir() {
   if (mode !== 'online' || !playing || V?.myId == null) return;
   const d = humanDir(), k = d.join(','), now = performance.now();
   if (k !== net.lastDir || now - net.lastDirAt > 400) { net.lastDir = k; net.lastDirAt = now; net.send({ t: 'in', d }); }
 }
 
-window.BubblePop = { version: '0.2.0', start: startOffline, onEnd: null, get inTelegram() { return inTelegram; }, get online() { return mode === 'online'; } };
+window.BubblePop = { version: '0.2.0', start: startOffline, onEnd: null, get inTelegram() { return inTelegram; }, get online() { return mode === 'online'; }, get view() { return V; } }; // view 給測試和除錯用
 
 /* ---------- 主迴圈 ---------- */
 document.addEventListener('visibilitychange', () => { if (document.hidden) { held.length = 0; stickDir = [0, 0]; } });
@@ -650,15 +683,14 @@ const clock = new THREE.Clock();
 const tagPos = new THREE.Vector3();
 let hudTick = 0;
 
-// 連線版位置內插：畫 INTERP_MS 之前的狀態，夾在兩個快照之間
+// 連線版位置：自己用 pred；別人在 netT（伺服器時間 − 延遲）用前後兩張快照內插，快照晚到時照速度往前推最多 0.05 秒
 function posOf(id, d) {
-  // 自己的角色直接用最新位置（不延遲 INTERP_MS），畫面才跟伺服器判定對得上
-  if (mode !== 'online' || buf.length < 2 || id === V.myId) return [d.x, d.y];
-  const rt = performance.now() - INTERP_MS;
-  let i = buf.length - 2; while (i > 0 && buf[i].at > rt) i--;
-  const a = buf[i], b = buf[i + 1]; if (!a.ps[id] || !b.ps[id]) return [d.x, d.y];
-  const k = Math.max(0, Math.min(1, (rt - a.at) / Math.max(1, b.at - a.at)));
-  return [a.ps[id][0] + (b.ps[id][0] - a.ps[id][0]) * k, a.ps[id][1] + (b.ps[id][1] - a.ps[id][1]) * k];
+  if (mode !== 'online') return [d.x, d.y];
+  if (id === V.myId) return pred.ok ? [pred.x, pred.y] : [d.x, d.y];
+  const r = netT == null ? null : frames.at(netT); if (!r) return [d.x, d.y];
+  const a = r.a.s.players[id], b = r.b.s.players[id]; if (!a || !b) return [d.x, d.y];
+  const u = Math.min(r.u, 1 + (r.span > 0 ? .05 / r.span : 0));
+  return [mix(a.x, b.x, u), mix(a.y, b.y, u)];
 }
 function animate(dt, t) {
   const v = V;
@@ -693,9 +725,9 @@ function animate(dt, t) {
   }
   for (const { c, d: p } of v.players) {
     if (p.state === 'dead') continue;
-    const moving = !!p.mv, [px, py] = posOf(p.id, p);
+    const mine = mode === 'online' && p.id === V.myId && pred.ok, moving = mine ? pred.moving : !!p.mv, [px, py] = posOf(p.id, p);
     c.root.position.x = wx(px); c.root.position.z = wz(py);
-    let d = p.face - c.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); c.root.rotation.y += d * Math.min(1, dt * 14);
+    let d = (mine ? pred.face : p.face) - c.root.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d)); c.root.rotation.y += d * Math.min(1, dt * 14);
     const trapped = p.state === 'trapped';
     const walk = moving && !trapped ? Math.abs(Math.sin(t * 13 + c.phase)) : 0;
     const sq = 1 + (moving ? (walk - .5) * .1 : Math.sin(t * 2.2 + c.phase) * .035);
@@ -728,6 +760,11 @@ function tick() {
     const evs = Core.step(local, dt); applySnap(Core.snapshot(local), evs);
   }
   sendDir();
+  if (mode === 'online' && V) {
+    const now = performance.now() / 1000, dir = playing && V.myId != null ? normDir(humanDir()) : [0, 0];
+    ping(now, o => net.send(o)); pred.step(dt, inputs.current ?? [0, 0]); inputs.add(now, dir); // 用上一幀讀到並送出的方向往前推；這一幀讀到的從現在起才生效
+    const sn = netClock.serverNow(now); netT = sn == null ? null : sn - lag.update(netClock, dt);
+  }
   if (V && (playing || mode === 'offline' || V.over)) animate(dt, t);
   renderer.render(scene, camera);
   requestAnimationFrame(tick);

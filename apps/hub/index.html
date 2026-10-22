@@ -109,6 +109,7 @@ import { loadAppearance, openAvatarPicker, createCritterPreview, EARS, EYES } fr
 import { watchUpdates } from '/shared/update.js';
 watchUpdates(); // 有新版本時在畫面上方提醒重新整理
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { createClock, createDelay, mix } from '/shared/net-sync.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -326,7 +327,21 @@ function setPlaying(c, on) { // 遊戲中：名字上方的小牌子（共用同
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: playTex, transparent: true, depthTest: false }));
   sp.scale.set(1.2, .3, 1); sp.position.y = 2.15; sp.renderOrder = 11; c.root.add(sp); c.playTag = sp;
 }
-const others = new Map(); // id -> { c, x, y, tx, ty, f }
+const others = new Map(); // id -> { c, x, y, tx, ty, f, path }
+// 別人的位置：每人每 0.1 秒回報一次、大廳每 0.1 秒推一次，兩邊沒對齊。照伺服器收到位置的時間（ts）排成路徑，畫在「伺服器時間 − 延遲」，走起來才不會一頓一頓
+const hubClock = createClock(), hubLag = createDelay({ interval: .2, max: .6 });
+function addPathPoint(o, p) {
+  const t = p.ts / 1000, path = o.path ||= [], last = path.at(-1);
+  if (last && t <= last.t) return;
+  if (last && t - last.t > .3) path.push({ t: t - .1, x: last.x, y: last.y }); // 停了一陣子才又開始走：假設 0.1 秒前還在原地，不會一下子滑過去
+  path.push({ t, x: p.x, y: p.y }); while (path.length > 12) path.shift();
+}
+function pathAt(o, t) {
+  const path = o.path; if (!path?.length || t == null) return [o.tx, o.ty];
+  let i = path.length - 1; while (i > 0 && path[i - 1].t > t) i--;
+  const b = path[i], a = path[i - 1]; if (!a || t >= b.t) return [b.x, b.y]; // 比最新一點還晚：停在那裡（停下來的人最後一點就是終點）
+  const u = Math.max(0, (t - a.t) / (b.t - a.t)); return [mix(a.x, b.x, u), mix(a.y, b.y, u)];
+}
 const net = { ws: null, tries: 0, me: null, lastX: 0, lastY: 0,
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
 function connect() {
@@ -374,13 +389,13 @@ function onNet(m) {
   if (m.t === 'hello') net.me = m.you;
   else if (m.t === 'rooms') { const now = Date.now(); roomStatus = m.rooms || {}; for (const st of Object.values(roomStatus)) st.recv = now; }
   else if (m.t === 'snap') {
-    const seen = new Set(); $('online').textContent = `在線 ${m.players.length} 人 ${whoOpen ? '▴' : '▾'}`; renderWho(m.players);
+    const seen = new Set(); if (Number.isFinite(m.at)) hubClock.sample(m.at / 1000, performance.now() / 1000); $('online').textContent = `在線 ${m.players.length} 人 ${whoOpen ? '▴' : '▾'}`; renderWho(m.players);
     const lite = m.players.length - 1 > LITE_AT;
     for (const p of m.players) {
       if (p.id === net.me) continue; seen.add(p.id);
       let o = others.get(p.id); const key = [p.color, p.ear, p.eye, p.body, p.blush, lite].join();
       if (!o || o.key !== key) { if (o) root.remove(o.c.root); const c = spawn({ color: p.color, ear: p.ear, eye: p.eye, body: p.body, blush: p.blush }, p.name, lite); o = { c, x: o?.x ?? p.x, y: o?.y ?? p.y, key }; others.set(p.id, o); }
-      o.tx = p.x; o.ty = p.y; o.f = p.f; setPlaying(o.c, p.st === 'play');
+      o.tx = p.x; o.ty = p.y; o.f = p.f; setPlaying(o.c, p.st === 'play'); if (p.ts) addPathPoint(o, p); else o.path = null;
     }
     for (const [id, o] of others) if (!seen.has(id)) { root.remove(o.c.root); others.delete(id); }
   }
@@ -436,9 +451,11 @@ function tick(now) {
     me.c.root.position.set(wx(me.x), 0, wz(me.y)); me.c.root.rotation.y += (((me.f - me.c.root.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 14);
     animateCritter(me.c, dt, t, me.moving); ring.position.x = wx(me.x); ring.position.z = wz(me.y);
   }
+  const sn = hubClock.serverNow(now / 1e3), tOther = sn == null ? null : sn - hubLag.update(hubClock, dt);
   for (const o of others.values()) {
-    const ddx = o.tx - o.x, ddy = o.ty - o.y, mv = Math.hypot(ddx, ddy) > .03;
-    o.x += ddx * Math.min(1, dt * 12); o.y += ddy * Math.min(1, dt * 12);
+    const [nx, ny] = o.path ? pathAt(o, tOther) : [o.x + (o.tx - o.x) * Math.min(1, dt * 12), o.y + (o.ty - o.y) * Math.min(1, dt * 12)];
+    const ddx = nx - o.x, ddy = ny - o.y, mv = dt > 0 && Math.hypot(ddx, ddy) / dt > .3;
+    o.x = nx; o.y = ny;
     o.c.root.position.set(wx(o.x), 0, wz(o.y)); if (mv) o.c.root.rotation.y += (((Math.atan2(ddx, ddy) - o.c.root.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 14);
     animateCritter(o.c, dt, t, mv);
   }

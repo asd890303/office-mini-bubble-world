@@ -190,6 +190,7 @@ import { mountKeyHelp } from '/shared/keyhelp.js';
 import { soloStart, soloFinish, showSoloNote } from '/shared/solo-record.js';
 import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
 import { toon, G, M, blob, withOutline, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+import { TICK, createClock, createBuffer, createInputLog, substeps, follow, pinger } from '/shared/net-sync.js';
 watchUpdates();
 mountKeyHelp({ rows: ['[W][A][S][D] 或 [方向鍵] 移動（手機拖曳）', '[空白] 無敵衝刺（手機點右下按鈕）', '攻擊自動，泡泡會包住敵人', '走進被包住的敵人 戳破它', '[1][2][3] 升級選擇　[R] 重抽'], top: '190px' });
 
@@ -314,7 +315,7 @@ function clearView() {
 function buildView(snap, myId) {
   clearView();
   const group = new THREE.Group(); root.add(group);
-  V = { group, myId, info: snap.pl.map(p => ({ name: p.name, look: p.look, uid: p.uid })), players: new Map(), enemies: new Map(), bullets: [], ebullets: [], shards: [], orbits: new Map(), pred: null, dashLocal: null, cam: { x: Core.ARENA.W / 2, y: Core.ARENA.H / 2 }, snapAt: performance.now(), ended: false, lastRun: 0, hurtAt: 0 };
+  V = { group, myId, info: snap.pl.map(p => ({ name: p.name, look: p.look, uid: p.uid })), players: new Map(), enemies: new Map(), bullets: [], ebullets: [], shards: [], orbits: new Map(), pred: null, dashLocal: null, cam: { x: Core.ARENA.W / 2, y: Core.ARENA.H / 2 }, ended: false, lastRun: 0, hurtAt: 0 };
   const me = snap.pl[myId ?? 0]; if (me) V.pred = { x: me.x, y: me.y };
   $('team').hidden = snap.pl.length < 2; $('hudbot').hidden = false; lastChoiceKey = ''; lastCount = null;
 }
@@ -333,25 +334,54 @@ function followTarget(s) {
   return s.pl.find(p => p.a) || me || s.pl[0];
 }
 
+// 自己的角色：新快照到了，從伺服器位置把伺服器還沒算進去的輸入重播一次，就是「現在」的位置；兩張快照之間照搖桿往前推。衝刺照輸入紀錄裡的方向重播。
+// 畫面位置用 follow 把修正攤在約 0.1 秒內；倒下、還沒開跑時照伺服器位置
+const pred = {
+  x: 0, y: 0, vx: 0, vy: 0, ok: false, view: {},
+  reset() { this.ok = false; this.view = {}; },
+  me(f) { const sp = f?.s.pl[V?.myId ?? -1]; return sp && sp.a && f.s.phase === 'running' ? sp : null; },
+  advance(dt, v, sp) {
+    const R = Core.PLAYER.R, dash = v.dx != null, sp0 = dash ? Core.DASH.DIST / Core.DASH.TIME : Core.stats({ passives: sp.ps || {} }).speed;
+    this.vx = (dash ? v.dx : v.x) * sp0; this.vy = (dash ? v.dy : v.y) * sp0; if (!dash && (v.x || v.y)) this.f = Math.atan2(v.y, v.x);
+    this.x = Math.max(R, Math.min(Core.ARENA.W - R, this.x + this.vx * dt)); this.y = Math.max(R, Math.min(Core.ARENA.H - R, this.y + this.vy * dt));
+  },
+  onFrame(f) {
+    const sp = this.me(f); if (!sp) { this.ok = false; return; }
+    Object.assign(this, { x: sp.x, y: sp.y, f: sp.f, ok: true });
+    for (const [dt, v] of substeps(inputs.since(netClock.inputTime(f.t)), Core.DT)) this.advance(dt, v, sp);
+  },
+  step(dt, v) {
+    const fr = frames.latest, sp = this.me(fr);
+    if (sp && this.ok) this.advance(dt, v, sp);
+    else { const p = fr?.s.pl[V?.myId ?? -1]; if (!p) return null; Object.assign(this, { x: p.x, y: p.y, vx: 0, vy: 0, f: p.f, ok: !!sp }); }
+    const [x, y] = follow(this.view, this.x, this.y, this.vx, this.vy, dt, { snap: 90 });
+    return { x, y, f: this.f };
+  },
+};
+// 連線畫面：最新一張快照往前推算 tau 秒（到「伺服器現在」，最多 0.2 秒）。別人和敵人的速度用最後兩張快照算
+function netView(now) {
+  const b = frames.latest, a = frames.prev; if (!b) return net1;
+  const tau = Math.max(0, Math.min(.2, (netClock.serverNow(now) ?? b.t) - b.t)), span = a ? b.t - a.t : 0, ok = span > 0 && span < .5 && a.s.phase === b.s.phase, s = b.s, MAXV = 600;
+  const vel = (pa, x, y) => { if (!ok || !pa) return [0, 0]; const vx = (x - pa[0]) / span, vy = (y - pa[1]) / span; return Math.hypot(vx, vy) > MAXV ? [0, 0] : [vx, vy]; };
+  const ea = ok ? new Map(a.s.en.map(e => [e[0], [e[2], e[3]]])) : null;
+  V.tau = tau;
+  return {
+    ...s, run: s.phase === 'running' ? s.run + tau : s.run,
+    pl: s.pl.map(p => { if (p.id === V.myId || !p.a) return p; const [vx, vy] = vel(ok && a.s.pl[p.id] ? [a.s.pl[p.id].x, a.s.pl[p.id].y] : null, p.x, p.y); return { ...p, x: p.x + vx * tau, y: p.y + vy * tau, vx, vy }; }),
+    en: s.en.map(e => { const [vx, vy] = vel(ea?.get(e[0]), e[2], e[3]); return [e[0], e[1], e[2] + vx * tau, e[3] + vy * tau, e[4], e[5], e[6], vx, vy]; }),
+  };
+}
+
 function sync(s, dt, t) {
-  const online = mode === 'online', k = online ? Math.min(1, dt * 14) : 1;
-  const meSp = V.myId != null ? s.pl[V.myId] : null;
-  // 自己的位置：連線版先在本機預測，伺服器位置只用來修正
-  if (online && meSp) {
-    if (V.newFrame) { const ex = meSp.x - V.pred.x, ey = meSp.y - V.pred.y; if (Math.hypot(ex, ey) > 90) { V.pred.x = meSp.x; V.pred.y = meSp.y; } else { V.pred.x += ex * .2; V.pred.y += ey * .2; } }
-    if (meSp.a && s.phase === 'running') {
-      let vx, vy; const d = V.dashLocal;
-      if (d) { const step = Math.min(dt, d.t); vx = d.dx * Core.DASH.DIST / Core.DASH.TIME * step / dt; vy = d.dy * Core.DASH.DIST / Core.DASH.TIME * step / dt; d.t -= step; if (d.t <= 1e-9) V.dashLocal = null; }
-      else { const sp = Core.stats({ passives: meSp.ps || {} }).speed, v = inputVec(); vx = v.x * sp; vy = v.y * sp; }
-      V.pred.x = Math.max(Core.PLAYER.R, Math.min(Core.ARENA.W - Core.PLAYER.R, V.pred.x + vx * dt)); V.pred.y = Math.max(Core.PLAYER.R, Math.min(Core.ARENA.H - Core.PLAYER.R, V.pred.y + vy * dt));
-    }
-  }
+  const online = mode === 'online';
   for (const sp of s.pl) {
-    const o = ensurePlayer(sp), mine = online && sp.id === V.myId, tx = mine ? V.pred.x : sp.x, ty = mine ? V.pred.y : sp.y;
-    const px = o.x, py = o.y; o.x += (tx - o.x) * (mine ? 1 : k); o.y += (ty - o.y) * (mine ? 1 : k);
+    const o = ensurePlayer(sp), mine = online && sp.id === V.myId && V.pred, px = o.x, py = o.y;
+    if (mine) { o.x = V.pred.x; o.y = V.pred.y; } // 自己：pred 算好的位置
+    else if (online) [o.x, o.y] = follow(o.fw ||= {}, sp.x, sp.y, sp.vx || 0, sp.vy || 0, dt, { snap: 120 }); // 別人：往前推算到伺服器現在的位置，修正攤在約 0.1 秒內
+    else { o.x = sp.x; o.y = sp.y; }
     o.moving = Math.hypot(o.x - px, o.y - py) > .15;
     o.g.position.set(o.x / S, 0, o.y / S);
-    const targetYaw = Math.PI / 2 - sp.f; o.yaw += wrapAngle(targetYaw - o.yaw) * Math.min(1, dt * 14); o.c.root.rotation.y = o.yaw;
+    const targetYaw = Math.PI / 2 - (mine ? V.pred.f ?? sp.f : sp.f); o.yaw += wrapAngle(targetYaw - o.yaw) * Math.min(1, dt * 14); o.c.root.rotation.y = o.yaw;
     if (!sp.a) { o.dead = Math.min(1, o.dead + dt * 3); o.c.root.rotation.z = -o.dead * 1.5; for (const e of o.c.eyes) e.scale.y = .008; o.c.pivot.rotation.x = 0; o.c.pivot.position.z = 0; }
     else {
       o.dead = 0; o.c.root.rotation.z = 0; animateCritter(o.c, dt, t, o.moving);
@@ -373,21 +403,20 @@ function sync(s, dt, t) {
   }
   // 敵人
   const seen = new Set();
-  for (const [id, type, x, y, wr, , arm] of s.en) {
+  for (const [id, type, x, y, wr, , arm, vx = 0, vy = 0] of s.en) {
     let o = V.enemies.get(id); if (!o) { o = makeEnemy(type); o.x = x; o.y = y; V.group.add(o.g); V.enemies.set(id, o); }
-    seen.add(id); const ek = online ? Math.min(1, dt * 12) : 1; o.x += (x - o.x) * ek; o.y += (y - o.y) * ek;
+    seen.add(id); if (online) [o.x, o.y] = follow(o.fw ||= {}, x, y, vx, vy, dt, { snap: 120 }); else { o.x = x; o.y = y; }
     o.g.position.set(o.x / S, 0, o.y / S); o.wrapped = wr;
     o.bubble.visible = !!wr; if (o.armor) o.armor.visible = !!arm;
     if (o.flash > 0) { o.flash -= dt; const f = Math.max(0, o.flash); o.body.material = f > 0 ? flashMat : o.mat; o.body.scale.set(o.bs.x * (1 + f * 2.6), o.bs.y * (1 + f * 2.6), o.bs.z * (1 + f * 2.6)); }
     const bob = wr ? Math.sin(t * 3 + o.seed) * .12 : 0; o.body.position.y = o.r * .85 + bob; o.bubble.position.y = o.r * .85 + bob; o.bubble.scale.setScalar(o.r * (1.5 + (wr ? Math.sin(t * 4 + o.seed) * .06 : 0)));
   }
   for (const [id, o] of V.enemies) if (!seen.has(id)) { V.group.remove(o.g); V.enemies.delete(id); addRing(o.x, o.y, o.r * S * 1.6, 0xffffff, .25); }
-  // 子彈與碎片
-  const age = Math.min(.15, (performance.now() - V.snapAt) / 1000);
+  // 子彈與碎片：連線版從最新一張快照照子彈速度往前推 tau 秒
+  const age = online ? V.tau || 0 : 0;
   pool(V.bullets, s.b, () => { const m = new THREE.Mesh(bulletGeo, bulletMat); m.scale.setScalar(.26); return m; }, (m, b) => { m.material = b[4] ? spikeMat : bulletMat; m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .55, (b[1] + (online ? (b[3] || 0) * age : 0)) / S); });
   pool(V.ebullets, s.eb, () => { const m = new THREE.Mesh(bulletGeo, ebMat); m.scale.setScalar(.2); withOutline(m, 1.1); return m; }, (m, b) => m.position.set((b[0] + (online ? (b[2] || 0) * age : 0)) / S, .5, (b[1] + (online ? (b[3] || 0) * age : 0)) / S));
   pool(V.shards, s.sh, () => { const m = new THREE.Mesh(G.star, shardMat); m.scale.setScalar(.2); withOutline(m, 1.15); return m; }, (m, b) => { m.position.set(b[0] / S, .3 + Math.sin(t * 4 + b[0]) * .05, b[1] / S); m.rotation.y = t * 2; });
-  V.newFrame = false;
   // 特效
   for (let i = fx.length - 1; i >= 0; i--) {
     const f = fx[i]; f.t += dt; const k = Math.min(1, f.t / f.dur);
@@ -595,6 +624,8 @@ if (inTelegram) { try { TG.MainButton.onClick(() => { if (mode === 'offline') st
 /* ---------- 連線版（Worker 房間） ---------- */
 const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0, lastIn: '', lastInAt: 0,
   send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+// 快照照伺服器時鐘 at 排（每 2 步送一張）。別人、敵人、子彈都往前推算到「伺服器現在」，和事件（傷害數字、擊倒）同一個時間；自己的角色用輸入紀錄重播（pred）
+const SNAP_S = TICK * 2, netClock = createClock(), frames = createBuffer(), inputs = createInputLog(), ping = pinger();
 const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
 const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
 function connect() {
@@ -625,14 +656,17 @@ function onNet(m) {
   if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.lastJoin = 0; tryJoin(); } }
   else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
   else if (m.t === 'start') {
-    buildView(m.s, m.me); net1 = m.s; V.newFrame = true; playing = true;
+    buildView(m.s, m.me); net1 = m.s; playing = true;
+    frames.reset(); netClock.reset(); inputs.reset(); pred.reset(); const st = m.at != null ? m.at / 1000 : (m.k ?? 0) * TICK; frames.push(st, m.s); netClock.sample(st, performance.now() / 1000);
     $('lobbyScreen').hidden = $('endScreen').hidden = $('startScreen').hidden = true;
     toast(m.me == null ? '觀戰中' : '選好武器就開打！', 1400);
   }
   else if (m.t === 's') {
-    if (!V) return; net1 = m.s; V.newFrame = true; V.snapAt = performance.now();
-    onEvents(m.ev, m.s);
+    if (!V) return; const st = m.at != null ? m.at / 1000 : m.k != null ? m.k * TICK : (frames.latest?.t ?? 0) + SNAP_S;
+    if (frames.push(st, m.s)) { netClock.sample(st, performance.now() / 1000); pred.onFrame(frames.latest); }
+    net1 = m.s; onEvents(m.ev, m.s);
   }
+  else if (m.t === 'pong') netClock.pong(m.at, performance.now() / 1000);
   else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
 }
 function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
@@ -656,7 +690,7 @@ $('joinBtn').addEventListener('click', () => {
   else { net.wantIn = true; net.lastJoin = 0; tryJoin(); }
 });
 
-window.BubbleSurvivors = { start: startOffline, get game() { return L; }, get online() { return mode === 'online'; }, get me() { return V?.myId ?? null; } };
+window.BubbleSurvivors = { start: startOffline, get game() { return L; }, get online() { return mode === 'online'; }, get me() { return V?.myId ?? null; }, get view() { return V; }, get snap() { return net1; } }; // view、snap 給測試和除錯用
 
 /* ---------- 主迴圈 ---------- */
 const clock = new THREE.Clock();
@@ -667,8 +701,12 @@ function tick() {
     if (mode === 'offline' && L) {
       if (playing) { const v = inputVec(); Core.setInput(L, 0, v); const evs = Core.step(L, dt); s = Core.snapshot(L, { full: false }); onEvents(evs, s); } else s = Core.snapshot(L, { full: false });
     } else if (mode === 'online' && net1) {
-      s = net1;
-      if (playing && V.myId != null) { const v = inputVec(), k = v.x.toFixed(2) + ',' + v.y.toFixed(2), now = performance.now(); if (k !== net.lastIn || now - net.lastInAt > 400) { net.lastIn = k; net.lastInAt = now; net.send({ t: 'in', x: Number(v.x.toFixed(2)), y: Number(v.y.toFixed(2)) }); } }
+      const now = performance.now() / 1000, v = inputVec(), inp = { x: Number(v.x.toFixed(2)), y: Number(v.y.toFixed(2)) }; // 送出去的值取到 0.01，預測也用同一個值
+      if (playing && V.myId != null) { const k = inp.x + ',' + inp.y; if (k !== net.lastIn || now * 1000 - net.lastInAt > 400) { net.lastIn = k; net.lastInAt = now * 1000; net.send({ t: 'in', ...inp }); } }
+      ping(now, o => net.send(o));
+      if (V.dashLocal) { const d = V.dashLocal; d.at ??= now; if (now - d.at < Core.DASH.TIME) { inp.dx = d.dx; inp.dy = d.dy; } else V.dashLocal = null; } // 衝刺從送出的這一幀起算 DASH.TIME 秒
+      V.pred = pred.step(dt, inputs.current ?? { x: 0, y: 0 }); inputs.add(now, playing ? inp : { x: 0, y: 0 }); // 用上一幀讀到並送出的輸入往前推；這一幀讀到的從現在起才生效
+      s = netView(now);
     }
     updateChains();
     if (s) { sync(s, dt, t); placeCamera(s, dt); hudAt -= dt; if (hudAt <= 0) { hudAt = .1; hud(s); } }

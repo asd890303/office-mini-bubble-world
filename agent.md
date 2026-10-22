@@ -13,7 +13,7 @@
 - `games/bubble-together`：泡泡Together（合作闖關，單人或 2 到 4 人，3 D 畫面、2 D 操作）。
 - 新遊戲的規則檔只能有 `export`、不能 `import`，`deploy/build.mjs` 會把它內嵌進 Worker。
 - `apps/worker/worker.js` 只能匯出函式或類別。匯出數字或字串常數，Cloudflare 會拒絕啟動。
-- `packages/ui`：共用美術、角色、外觀選擇。
+- `packages/ui`：共用美術、角色、外觀選擇。連線遊戲的對時、快照內插、自己角色的預測重播放在 `packages/ui/net-sync.js`，新遊戲照泡泡派對或泡泡倖存者的用法接。
 - `deploy/`：所有部署相關檔案（`wrangler.toml`、`build.mjs`、部署文件）。
 - `docs/`：遊戲設計文件，例如 `docs/kart-island.md`、`docs/artillery.md`。
 - `.github/workflows/`：GitHub 規定 workflow 只能放這裡，所以不在 `deploy/`。

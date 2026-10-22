@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, PartyRoom, TogetherRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
+import { verifyInitData, verifyInitDataAny, botTokens, GameRoom, KartRoom, ArtilleryRoom, RunRoom, SurviveRoom, PartyRoom, TogetherRoom, DanceRoom, LobbyRoom, signSession, readSession, resolveUser, verifyTelegramIdToken, resetJwksCache, kartMinTime } from '../worker.js';
 import * as KartCore from '../../../games/kart-island/kart-core.js';
 import * as RunCore from '../../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../../games/bubble-survivors/survivors-core.js';
 import * as PartyCore from '../../../games/party/party-core.js';
 import * as TogetherCore from '../../../games/bubble-together/together-core.js';
+import * as DanceCore from '../../../games/bubble-dance/dance-core.js';
 const { LOBBY, IDLE_MS } = LobbyRoom;
 import * as Bundle from '../../../deploy/dist/worker.bundle.js';
 
@@ -924,6 +925,56 @@ test('together room: a cleared run gives everyone points and a time record; fail
 test('bundle serves the together page and its rules file; the room is exported and needs a websocket', async () => {
   for (const path of ['/together/', '/together/together-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
   assert.equal((await Bundle.default.fetch(new Request('https://x.test/together/ws'), {})).status, 426); assert.equal(typeof Bundle.TogetherRoom, 'function');
+});
+
+test('dance room: two players get two bots, the server judges each hand by the time it was sent (future means now, older than LATE is dropped), an out player keeps a rank, the game posts the ranking', async () => {
+  const R = fakeRoom(DanceRoom), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob');
+  await R.msg(a, { t: 'join', color: '#a8d8ff' }); await R.msg(b, { t: 'join' }); R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const st = a.out.find(m => m.t === 'start'), g = R.room.game; assert.equal(st.me, 0); assert.equal(st.s.players.length, 4); assert.equal(st.s.players[2].bot, 'normal'); assert.equal(st.s.seed, g.seed); assert.equal(st.s.players[0].look.color, '#a8d8ff');
+  const t0 = st.at - st.s.t * 1000, atOf = t => Math.round(t0 + t * 1000), other = s => (s === 'L' ? 'R' : 'L');
+  while (g.phase !== 'play') R.tick();
+  let P = g.round; while (g.t < P.player[0] + .02) R.tick();
+  await R.msg(b, { t: 'hand', side: P.moves[0], at: atOf(P.player[0]) + 60000 }); assert.equal(g.players[1].got[0], 1, 'a future hand is clamped to now, which is on the beat');
+  while (g.t < P.player[0] + .3) R.tick();
+  await R.msg(a, { t: 'hand', side: P.moves[0], at: atOf(P.player[0]) }); assert.equal(g.players[0].got[0], 1, 'judged at the sent time, not the arrival time');
+  while (g.round.r === 1) R.tick();
+  P = g.round; assert.equal(P.n, 2); while (g.t < P.player[0] + .02) R.tick();
+  await R.msg(b, { t: 'hand', side: P.moves[0], at: atOf(g.t) });
+  while (g.t < P.player[0] + .45) R.tick();
+  await R.msg(a, { t: 'hand', side: P.moves[0], at: atOf(P.player[0] - .1) }); assert.equal(g.players[0].got[0], 0, 'hands older than LATE do not count');
+  while (g.t < P.player[1]) R.tick();
+  await R.msg(b, { t: 'hand', side: other(P.moves[1]), at: atOf(g.t) }); assert.equal(g.players[1].why, 'wrong');
+  const ticks = a.out.filter(m => m.t === 's'), last = ticks.at(-1); assert.equal(last.s.seed, undefined); assert.equal(last.s.r, 2); assert.ok(Math.abs(last.at - t0 - last.s.t * 1000) <= 1, 'game time follows the server clock');
+  b.readyState = 3; R.room.onLeave(b); assert.equal(R.room.gone.has('2'), false, 'already out: no forfeit timer');
+  let k = 0; while (R.room.phase === 'play' && k++ < 5000) R.tick();
+  assert.equal(R.room.phase, 'end'); const r = R.room.result; assert.equal(r.rounds, 2); assert.deepEqual(r.players.map(p => p.rank), [1, 1, 3, 4]);
+  assert.equal(r.players[2].uid, '2'); assert.equal(r.players[3].uid, '1', 'out in the same round with fewer hands right'); assert.equal(r.players[3].why, 'miss');
+  await new Promise(res => setTimeout(res, 0)); assert.match(R.fetches.at(-1).body.text, /泡泡跳舞機 結果（跳到第 2 回合）/); assert.match(R.fetches.at(-1).body.text, /Alice｜過 1 回合｜1 分/);
+});
+test('dance room: every hand (human and bot) goes out in the next snapshot; a watcher takes no seat, gets the game, cannot press, sees the result and can join the next game', async () => {
+  const R = fakeRoom(DanceRoom), a = R.connect('1', 'Alice'), b = R.connect('2', 'Bob'), w = R.connect('9', 'Watcher');
+  await R.msg(a, { t: 'join' }); await R.msg(b, { t: 'join' });
+  assert.equal(R.room.lobby.length, 2, 'the watcher never joined'); R.adv(20500); R.tick(); assert.equal(R.room.phase, 'play');
+  const g = R.room.game; assert.equal(g.players.filter(p => p.human).length, 2); assert.equal(g.players.length, 4, 'two bots fill the seats; the watcher is not one');
+  assert.equal(w.out.find(m => m.t === 'start').me, null, 'the watcher gets the game with no seat');
+  await R.msg(w, { t: 'join' }); assert.match(w.out.at(-1).text, /進行中/); assert.equal(R.room.lobby.length, 0, 'joining mid-game only watches');
+  const late = R.connect('8', 'Late'), lst = late.out.find(m => m.t === 'start'); assert.equal(lst.me, null); assert.equal(lst.s.players.length, 4); assert.ok(lst.s.seed, 'late watchers get the full snapshot');
+  while (g.phase !== 'play') R.tick();
+  const P = g.round; while (g.t < P.player[0] + .02) R.tick();
+  await R.msg(w, { t: 'hand', side: 'L', at: R.room.now() }); assert.ok(g.players.filter(p => p.human).every(p => p.hand === null && !p.out), 'a watcher hand is ignored');
+  await R.msg(a, { t: 'hand', side: P.moves[0], at: R.room.now() }); R.tick();
+  const s = w.out.at(-1); assert.equal(s.t, 's'); assert.equal(s.s.players[0].h[0], P.moves[0], 'Alice raised her hand');
+  assert.ok(s.s.players.slice(2).every(p => p.h[0] === P.moves[0] && p.h[1] === P.player[0]), 'bots raise on the beat');
+  assert.equal(s.s.players[1].h, undefined, 'Bob has not raised yet');
+  let k = 0; while (R.room.phase === 'play' && k++ < 5000) R.tick();
+  assert.equal(R.room.phase, 'end'); assert.equal(R.room.result.players.length, 4);
+  assert.ok(w.out.some(m => m.t === 's' && m.ev.some(e => e.type === 'end')), 'the watcher sees the result');
+  R.adv(8000); R.tick(); assert.equal(R.room.phase, 'lobby');
+  await R.msg(w, { t: 'join' }); assert.ok(R.room.lobby.some(p => p.uid === '9'), 'the watcher joins the next game');
+});
+test('bundle serves the dance page and its rules file; the room is exported and needs a websocket', async () => {
+  for (const path of ['/dance/', '/dance/dance-core.js']) { const r = await Bundle.default.fetch(new Request('https://x.test' + path), {}); assert.equal(r.status, 200, path); }
+  assert.equal((await Bundle.default.fetch(new Request('https://x.test/dance/ws'), {})).status, 426); assert.equal(typeof Bundle.DanceRoom, 'function');
 });
 
 test('placement: rooms and the lobby are looked up under a new name with an Asia-Pacific hint; kart keeps its nearby main room', async () => {

@@ -39,6 +39,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | `/together/ws` | 泡泡Together | 2 到 4 位真人合作，沒有電腦補位，房間建在亞太區；客戶端送 `in`（`x` 左右、`j` 跳、`a` 抱或丟）、`place`（`i` 方塊選項、`x`、`y`）；快照每 50 毫秒一格 |
 | `/party/ws` | 泡泡派對 | 2 到 6 人，空位補電腦；客戶端送 `in`（`mx`、`my` 移動方向）、`jump`、`dash`；斷線時電腦接手 |
 | `/run/ws` | 泡泡跑跑 | 2 到 4 人同場，輸入只有 `{t:'jump'}`；開局快照帶種子，之後每格只送跳躍高度與生死 |
+| `/dance/ws` | 泡泡跳舞機 | 2 到 4 人，空位補電腦；客戶端只送 `{t:'hand', side, at}`（`side` 是 `'L'` 或 `'R'`，`at` 舉手時換算成伺服器時鐘的毫秒）；伺服器照 `at` 判定，晚於現在當作現在，早於 0.5 秒前丟掉；開局快照帶種子、名字與外觀，之後每格只送 `r`（回合）與每人的 `s`（過關回合數）、`o`（淘汰）、`l`（離開）、`h`（最近一次舉手 `[side, 遊戲秒數]`，舉錯也算，還沒舉過就沒有，電腦在照做拍點自動更新）；觀戰：連上但沒 `join`，或對局中才連上，`start` 的 `me` 是 `null`，照樣收快照與結算，送 `hand` 不算，不佔名額；事件有 `go`、`round`、`hand`、`out`（`why`：`wrong`、`extra`、`miss`）、`clear`、`left`、`end` |
 | `/lobby/ws` | 大廳 | 位置同步、房間狀態、在線玩家 |
 
 ### 共用訊息（三款遊戲房間）
@@ -72,7 +73,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 客戶端送出 | `{t:'pos', x, y, f}` | 回報位置與朝向，間隔太短的會被忽略 |
 | 客戶端送出 | `{t:'look', color, ear, eye, body, blush}` | 換外觀 |
 | 客戶端送出 | `{t:'ping', at}` | 保活 |
-| 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`、`run`、`survive`、`party`、`together`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
+| 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`、`run`、`survive`、`party`、`together`、`dance`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
 | 伺服器送出 | `{t:'hello', you, W, H}` | 連上後第一則，含大廳尺寸 |
 | 伺服器送出 | `{t:'snap', at, players}` | 所有人的位置；`at` 是伺服器時鐘（毫秒），每人的 `ts` 是最後一次回報位置的伺服器時鐘（沒動過是 0）；遊戲中的人多一個 `st:'play'` |
 | 伺服器送出 | `{t:'rooms', rooms}` | 各遊戲房間狀態（等待、選地圖、比賽中、結算中） |
@@ -161,6 +162,8 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | `/together/together-core.js` | 泡泡Together 規則 |
 | `/party/` | 泡泡派對頁面 |
 | `/party/party-core.js` | 派對規則 |
+| `/dance/` | 泡泡跳舞機頁面 |
+| `/dance/dance-core.js` | 跳舞機規則 |
 | `/shared/theme.css` | 共用配色、描邊、卡片、按鈕 |
 | `/shared/draw.js` | 圖示與徽章底的 canvas 繪製 |
 | `/shared/keyhelp.js` | 各遊戲共用的左側操作提示框 |

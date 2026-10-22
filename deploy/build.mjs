@@ -10,7 +10,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 const asset = p => ({ type: TYPES[path.extname(p)], body: read(p) });
 
 // 新增遊戲：加一筆 { id, dir }，並在 apps/hub/index.html 的 ROOMS 加上同一個 id
-export const GAMES = [{ id: 'bubble', dir: 'games/bubble-island' }, { id: 'kart', dir: 'games/kart-island' }, { id: 'artillery', dir: 'games/artillery' }, { id: 'run', dir: 'games/bubble-run' }, { id: 'survive', dir: 'games/bubble-survivors' }, { id: 'party', dir: 'games/party' }, { id: 'together', dir: 'games/bubble-together' }];
+export const GAMES = [{ id: 'bubble', dir: 'games/bubble-island' }, { id: 'kart', dir: 'games/kart-island' }, { id: 'artillery', dir: 'games/artillery' }, { id: 'run', dir: 'games/bubble-run' }, { id: 'survive', dir: 'games/bubble-survivors' }, { id: 'party', dir: 'games/party' }, { id: 'together', dir: 'games/bubble-together' }, { id: 'dance', dir: 'games/bubble-dance' }];
 
 export function collectAssets() {
   const out = { '/': asset('apps/hub/index.html') };

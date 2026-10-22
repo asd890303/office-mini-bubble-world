@@ -1,5 +1,5 @@
 // 泡泡碰碰島 — Cloudflare Worker + Durable Object (single room "main"), server-authoritative.
-// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、TOGETHER_ROOM (class TogetherRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
+// Bindings: GAME_ROOM (Durable Object, class GameRoom)、KART_ROOM (class KartRoom)、ARTILLERY_ROOM (class ArtilleryRoom)、RUN_ROOM (class RunRoom)、SURVIVE_ROOM (class SurviveRoom)、PARTY_ROOM (class PartyRoom)、TOGETHER_ROOM (class TogetherRoom)、DANCE_ROOM (class DanceRoom)、LOBBY_ROOM (class LobbyRoom), secret BOT_TOKEN（多個 bot 用逗號分隔，第一個負責貼名次到群組）, var GROUP_ID, optional var ALLOWED_ORIGIN.
 // 新增遊戲：照下面的格式加一行 import，路徑以 ../../games/ 開頭，deploy/build.mjs 才找得到並內嵌
 import * as Core from '../../games/bubble-island/game-core.js';
 import * as KartCore from '../../games/kart-island/kart-core.js';
@@ -8,6 +8,7 @@ import * as RunCore from '../../games/bubble-run/run-core.js';
 import * as SurviveCore from '../../games/bubble-survivors/survivors-core.js';
 import * as PartyCore from '../../games/party/party-core.js';
 import * as TogetherCore from '../../games/bubble-together/together-core.js';
+import * as DanceCore from '../../games/bubble-dance/dance-core.js';
 
 const TICK_MS = 50, LOBBY_MS = 20000, END_MS = 8000, AUTH_MAX_AGE = 86400, LOBBY_PUSH_MS = 500;
 // 線上房間只給真人玩：湊滿 MIN_PLAYERS 才倒數開局；斷線超過 GRACE_MS 判出局
@@ -272,7 +273,7 @@ export default {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders(env) });
     // 新增遊戲：加 '/<id>/ws': 'XXX_ROOM'，deploy/wrangler.toml 也要加同名 binding 與下一個 migration tag
-    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/together/ws': 'TOGETHER_ROOM', '/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
+    const binding = { '/ws': 'GAME_ROOM', '/kart/ws': 'KART_ROOM', '/artillery/ws': 'ARTILLERY_ROOM', '/run/ws': 'RUN_ROOM', '/survive/ws': 'SURVIVE_ROOM', '/party/ws': 'PARTY_ROOM', '/together/ws': 'TOGETHER_ROOM', '/dance/ws': 'DANCE_ROOM','/lobby/ws': 'LOBBY_ROOM' }[url.pathname];
     if (binding) {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
       const origin = req.headers.get('Origin');
@@ -354,6 +355,7 @@ export class GameRoom {
   stopPlayer(p) { this.core.setInput(this.game, p.id, [0, 0]); }
   expire(p) { this.core.forfeit(this.game, p.id); } // 斷線超過寬限期
   frame() { return this.core.snapshot(this.game); } // 每個 tick 廣播的快照
+  stepDt() { return TICK_MS / 1000; } // 每個 tick 推進幾秒
   isWin(r, p) { return !!r.winner && r.winner.id === p.id; }
   alive(p) { return p.state !== 'dead'; }
   lobbyMsg() {
@@ -427,7 +429,7 @@ export class GameRoom {
     } else if (this.phase === 'play') {
       if (!n) { this.phase = 'lobby'; this.game = null; this.lobby = []; this.gone.clear(); return this.stopTimer(); } // 全部離線：直接收掉這局
       for (const [uid, at] of this.gone) if (now - at >= GRACE_MS) { const p = this.gamePlayer(uid); if (p) this.expire(p); this.gone.delete(uid); }
-      const ev = this.core.step(this.game, TICK_MS / 1000);
+      const ev = this.core.step(this.game, this.stepDt(now));
       this.broadcast({ t: 's', s: this.frame(), ev, k: ++this.k, at: now }); // k：這局第幾步；at：這一步的伺服器時鐘（毫秒）。計時器每步會晚一點點（約 3%），所以客戶端照 at 排快照、對時，不看封包幾時到
       if (this.game.over) {
         this.result = this.game.result; this.phase = 'end'; this.endAt = now + END_MS;
@@ -728,6 +730,28 @@ export class TogetherRoom extends GameRoom {
   }
 }
 
+/* ---------- 泡泡跳舞機房間：沿用 GameRoom 的大廳、倒數、斷線寬限、掛機踢除；空位補電腦。客戶端只送左右手與舉手時的伺服器時鐘，伺服器照時間判定 ---------- */
+export class DanceRoom extends GameRoom {
+  constructor(ctx, env) { super(ctx, env); this.core = DanceCore; this.gameId = 'dance'; }
+  gamePlayers() { return (this.game?.players || []).filter(p => p.human); } // 電腦沒有 uid，不參與斷線、在線人數這些判斷
+  newGame(seed) { this.t0 = this.lastStep = this.now(); return this.core.createGame({ seed, humans: this.lobby, bots: true, diff: 'normal' }); }
+  stepDt(now) { const dt = (now - this.lastStep) / 1000; this.lastStep = now; return dt; } // 照實際經過的時間推進，計時器變慢時拍點也不會漂掉
+  // m.at：舉手時的伺服器時鐘（毫秒）。晚於現在的當作現在（不能預先按）；早於 LATE 秒前的丟掉（那些拍子已判少按）
+  onInput(p, m) {
+    if (m.t !== 'hand') return;
+    const g = this.game, at = Number(m.at), t = Number.isFinite(at) ? Math.min(g.t, (at - this.t0) / 1000) : g.t;
+    if (t >= g.t - DanceCore.LATE) this.core.press(g, p.id, m.side, t);
+  }
+  stopPlayer() {} // 斷線：拍子照樣走，沒舉手就是少按
+  frame() { return this.core.snapshot(this.game, { full: false }); }
+  alive(p) { return !p.left && !p.out; }
+  recordStats() { return null; } // 只進總積分，沒有遊戲紀錄榜
+  resultText(r) {
+    const medal = ['🥇', '🥈', '🥉', '4.'];
+    return `💃 泡泡跳舞機 結果（跳到第 ${r.rounds} 回合）\n` + r.players.map(p => `${medal[p.rank - 1] || p.rank + '.'} ${p.bot ? '🤖' : ''}${p.name}｜過 ${p.score} 回合${p.bot ? '' : p.out ? '｜中途離開' : `｜${p.points} 分`}`).join('\n');
+  }
+}
+
 // /board/games 的空白格式：賽道名稱來自 KartCore.TRACKS
 // 新增遊戲（有紀錄榜才加）：加 <id>: { <欄位>: [] }，gameBoard() 讀出同一個欄位
 function emptyGameBoard() {
@@ -736,7 +760,7 @@ function emptyGameBoard() {
 
 /* ---------- 大廳（可走動、多人同場；位置由各自的瀏覽器回報，伺服器只做範圍限制與廣播） ---------- */
 // 新增遊戲：在 GAMES 加 id，大廳才接受 {t:'playing', game}
-const LOBBY = { W: 18, H: 26, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party', 'together'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
+const LOBBY = { W: 18, H: 26, MAX: 40, PUSH_MS: 100, MIN_GAP_MS: 40, GHOST_MS: 10 * 60 * 1000, GAMES: ['bubble', 'kart', 'artillery', 'run', 'survive', 'party', 'together', 'dance'] }; // GHOST_MS：進遊戲的人離開大廳後，角色留在原地並標示「遊戲中」的最長時間
 export class LobbyRoom {
   constructor(ctx, env) { this.ctx = ctx; this.env = env; this.timer = null; this.dirty = false; this.lastMsg = new Map(); this.active = new Map(); this.ghosts = new Map(); this.lastRecord = new Map(); this.now = () => Date.now(); }
   async fetch(req) {

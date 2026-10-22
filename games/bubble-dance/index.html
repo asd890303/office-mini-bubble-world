@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>泡泡跳舞機</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%23ffd6ea'/%3E%3Cg%20stroke='%233b2f2f'%20stroke-width='3.5'%20stroke-linejoin='round'%3E%3Ccircle%20cx='19'%20cy='17'%20r='8'%20fill='%23ff7eb6'/%3E%3Ccircle%20cx='45'%20cy='17'%20r='8'%20fill='%23ff7eb6'/%3E%3Ccircle%20cx='32'%20cy='37'%20r='22'%20fill='%23fffdf7'/%3E%3C/g%3E%3Ccircle%20cx='24'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Ccircle%20cx='40'%20cy='36'%20r='3.4'%20fill='%233b2f2f'/%3E%3Cellipse%20cx='17.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cellipse%20cx='46.5'%20cy='44'%20rx='4.5'%20ry='3'%20fill='%23ffa3b5'/%3E%3Cpath%20d='M28%2043q4%204%208%200'%20fill='none'%20stroke='%233b2f2f'%20stroke-width='2.8'%20stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="/shared/theme.css">
+<style>
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+body { touch-action: none; user-select: none; -webkit-user-select: none; background: linear-gradient(#ffd6ea, #cfe9ff); }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.top { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 10px; right: 10px; display: flex; align-items: center; gap: 8px; pointer-events: none; z-index: 3; }
+.pill { padding: 2px 12px; border-width: 2px; border-radius: 999px; font-weight: 900; font-size: 16px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.top .grow { flex: 1; }
+.turn { position: fixed; left: 50%; top: calc(max(8px, env(safe-area-inset-top)) + 44px); transform: translateX(-50%); padding: 4px 22px; font-size: 24px; font-weight: 900; border-width: 3px; border-radius: 999px; z-index: 3; pointer-events: none; white-space: nowrap; transition: background .15s; }
+.turn.you { background: var(--pink); }
+.team { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 96px); right: 10px; display: flex; flex-direction: column; gap: 3px; pointer-events: none; z-index: 3; }
+.tm { padding: 1px 10px; border-width: 2px; border-radius: 12px; font-size: 12px; font-weight: 900; display: flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+.tm i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--ink); }
+.tm b { margin-left: auto; padding-left: 8px; }
+.tm.me { background: var(--pink); color: #4a3b3b; }
+.tm.gone { opacity: .45; }
+.toast { position: fixed; left: 50%; top: 140px; transform: translateX(-50%); padding: 4px 16px; font-weight: 900; font-size: 15px; border-width: 2px; z-index: 7; pointer-events: none; opacity: 0; transition: opacity .2s; white-space: nowrap; }
+.toast.show { opacity: 1; }
+.pad { position: fixed; left: 10px; right: 10px; bottom: max(14px, env(safe-area-inset-bottom)); z-index: 6; display: none; gap: 12px; }
+body.touch .pad { display: flex; }
+body.watching .pad { display: none; }
+.pad button { flex: 1; height: min(110px, 24vw); border-radius: 22px; border: 3px solid var(--ink); background: color-mix(in srgb, var(--paper) 82%, transparent); font-weight: 900; font-size: 24px; touch-action: none; box-shadow: var(--shadow); }
+.pad button.on { background: var(--pink); }
+.screen { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(74,59,59,.35); padding: 16px; }
+.screen[hidden] { display: none; }
+.screen .box { max-width: 420px; width: 100%; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.screen h1, .screen h2 { margin: 0; }
+.screen p { margin: 0; font-size: 14px; line-height: 1.5; }
+.slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.slots li { display: flex; justify-content: space-between; padding: 5px 10px; border: 2px solid var(--line); border-radius: 12px; font-weight: 700; }
+.slots li i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink); margin-right: 6px; }
+.slots li.empty { color: var(--ink-soft); border-style: dashed; }
+.go { padding: 10px 16px; font-size: 18px; }
+a.btn { text-align: center; text-decoration: none; display: block; }
+.res { list-style: none; margin: 0; padding: 0; font-size: 14px; font-weight: 700; }
+.res li { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line); }
+.res small { color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="top"><div class="pill box" id="round">第 1 回合</div><div class="grow"></div><div class="pill box" id="alive">存活</div><div class="pill box" id="watch" style="display:none">👀 觀戰中</div><button class="pill box" id="beatBtn" style="pointer-events:auto" aria-pressed="true" title="節拍提示音">♩ 開</button></div>
+<div class="turn box" id="turn">預備</div>
+<div class="team" id="team"></div>
+<div class="toast box" id="toast"></div>
+<div class="pad" id="pad"><button data-s="L">✋ 左手</button><button data-s="R">右手 ✋</button></div>
+
+<section class="screen" id="lobbyScreen">
+  <div class="box">
+    <h1>泡泡跳舞機</h1>
+    <p id="lobbyStatus">連線中…</p>
+    <ul class="slots" id="slots"></ul>
+    <p>老師先跟著節拍舉手示範，助教照做一遍，接著換你：照同樣順序、在同樣的拍子上舉左手或右手。舉錯手、少舉、多舉或沒踩在拍子上就淘汰。每回合動作越來越多、越來越快。2 到 4 人比誰撐最久，空位由電腦補上。</p>
+    <div style="display:flex;gap:8px"><button class="btn" id="avatarBtn" style="flex:1">換外觀</button><button class="btn primary" id="joinBtn" style="flex:2">加入連線</button></div>
+    <button class="btn" id="watchBtn" hidden>👀 觀戰這局</button>
+    <button class="btn" id="soloBtn">單人玩（跳到失誤為止）</button>
+    <a class="btn" href="/">回遊戲大廳</a>
+  </div>
+</section>
+<section class="screen" id="endScreen" hidden>
+  <div class="box">
+    <h2 id="endTitle"></h2>
+    <p id="endSub"></p>
+    <ul class="res" id="endRes"></ul>
+    <button class="btn primary go" id="againBtn">回大廳，再玩一局</button>
+    <a class="btn" href="/">回遊戲大廳</a>
+  </div>
+</section>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import * as Core from './dance-core.js';
+import { loadAppearance, openAvatarPicker } from '/shared/avatar.js';
+import { watchUpdates } from '/shared/update.js';
+import { mountKeyHelp } from '/shared/keyhelp.js';
+import { identity, openLogin, captureLogin, LOGIN_ERRORS } from '/shared/session.js';
+import { toon, G, makeCritter, addNameTag, animateCritter } from '/shared/three-kit.js';
+import { createClock, pinger } from '/shared/net-sync.js';
+watchUpdates();
+mountKeyHelp({ rows: ['[←] 或滑鼠左鍵：舉左手', '[→] 或滑鼠右鍵：舉右手', '老師示範、助教照做，再換你', '照順序、踩在拍子上舉手'], top: '110px' });
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const TG = window.Telegram?.WebApp, inTelegram = !!(TG && TG.initData);
+if (inTelegram) { try { TG.ready(); TG.expand(); TG.disableVerticalSwipes?.(); } catch {} if (TG.colorScheme) document.documentElement.dataset.theme = TG.colorScheme; }
+if (matchMedia('(pointer: coarse)').matches || inTelegram || new URLSearchParams(location.search).has('touch')) document.body.classList.add('touch');
+const WORKER_URL = location.origin, loginErr = captureLogin();
+let ID = identity(), setup = { color: '#ffb3c7', ear: 'cat', eye: 'dot', body: '#fffdf7', blush: '#ffa3b5' };
+const haptic = { hit() { try { TG?.HapticFeedback?.impactOccurred('light'); } catch {} }, out() { try { TG?.HapticFeedback?.notificationOccurred('error'); } catch {} }, win() { try { TG?.HapticFeedback?.notificationOccurred('success'); } catch {} } };
+const WHY = { wrong: '舉錯手', extra: '多舉了', miss: '沒踩到拍子' };
+const TURN = { ready: '預備', teacher: '老師示範', assist: '助教照做', you: '換你！', rest: '…' };
+
+/* ---------- 音效：沒有背景音樂，全部用 Web Audio 即時合成 ---------- */
+const audio = { ctx: null, master: null, metro: true };
+function ensureAudio() {
+  if (!audio.ctx) { try { audio.ctx = new AudioContext(); audio.master = audio.ctx.createGain(); audio.master.gain.value = .5; audio.master.connect(audio.ctx.destination); } catch { return null; } }
+  if (audio.ctx.state === 'suspended') audio.ctx.resume().catch(() => {});
+  return audio.ctx;
+}
+addEventListener('pointerdown', ensureAudio); addEventListener('keydown', ensureAudio);
+const ready = () => audio.ctx?.state === 'running';
+function env(t, peak, len) { const g = audio.ctx.createGain(); g.gain.setValueAtTime(peak, t); g.gain.exponentialRampToValueAtTime(.001, t + len); g.connect(audio.master); return g; }
+function tone(t, hz, type, peak, len, to) { const o = audio.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(hz, t); if (to) o.frequency.exponentialRampToValueAtTime(to, t + len); o.connect(env(t, peak, len)); o.start(t); o.stop(t + len); }
+// delay：幾秒後播（排程用）。啾：左手低、右手高；悶響：淘汰；兩聲上行：回合過關
+const SFX = {
+  chirp(side, delay = 0, peak = .3) { if (!ready()) return; const t = audio.ctx.currentTime + delay, f = side === 'L' ? 740 : 1110; tone(t, f, 'sine', peak, .09, f * 1.6); },
+  tick(delay, strong) { if (!ready() || !audio.metro) return; tone(audio.ctx.currentTime + delay, strong ? 1320 : 880, 'sine', strong ? .14 : .05, .04); },
+  thud() { if (!ready()) return; const t = audio.ctx.currentTime; tone(t, 130, 'sine', .55, .25, 50); tone(t, 90, 'triangle', .25, .2, 40); },
+  clear() { if (!ready()) return; const t = audio.ctx.currentTime; tone(t, 880, 'sine', .14, .1); tone(t + .09, 1320, 'sine', .14, .14); },
+};
+// 每幀往前排 0.12 秒內的節拍聲與老師、助教的啾；cue 記住排到哪個時間，不重複排
+let cue = 0;
+function scheduleCues(seed, gt) {
+  const until = gt + .12;
+  if (cue < Core.LEAD) for (let s = 1; s <= 3; s++) { const x = Core.LEAD - s; if (x > cue && x <= until) SFX.tick(Math.max(0, x - gt), true); } // 開局倒數 3 聲
+  for (let r = Core.roundAt(Math.max(cue, Core.LEAD)); r <= Core.roundAt(until); r++) {
+    const R = planOf(seed, r), beats = Core.beatsOf(R.n);
+    for (let b = 0; b < beats; b++) { const x = R.start + b * R.beat; if (x > cue && x <= until) SFX.tick(Math.max(0, x - gt), b === 0); }
+    for (const who of ['teacher', 'assist']) R[who].forEach((x, i) => { if (x > cue && x <= until) SFX.chirp(R.moves[i], Math.max(0, x - gt), .22); });
+  }
+  cue = until;
+}
+const plans = new Map(); function planOf(seed, r) { const k = seed + ':' + r; if (!plans.has(k)) { if (plans.size > 64) plans.clear(); plans.set(k, Core.plan(seed, r)); } return plans.get(k); }
+
+/* ---------- three.js 舞台：單人是老師、助教、你一排；多人時老師與助教站後排高台，這局所有玩家站前排 ---------- */
+const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(34, 1, .1, 200);
+scene.add(new THREE.HemisphereLight(0xfff6f0, 0xffd6e4, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(3, 10, 8); scene.add(sun);
+const stage = new THREE.Group(); scene.add(stage);
+const floor = new THREE.Mesh(G.cyl, toon('#c9b6ff')); floor.position.y = -.15; stage.add(floor);
+const riser = new THREE.Mesh(G.cyl, toon('#b39ddb')); riser.scale.set(2.9, .5, .95); riser.position.set(0, .1, -1.5); stage.add(riser);
+// halfW：舞台要露出的半寬；front：前排的 z。直式畫面依寬度把鏡頭往後拉，4 人也放得下
+let halfW = 3.4, front = 0;
+function resize() {
+  renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  const dist = front + Math.max(9.5, halfW / (Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect));
+  camera.position.set(0, .7 + dist * (front ? .4 : .2), dist); camera.lookAt(0, .7, 0);
+}
+addEventListener('resize', resize);
+const TEACHER = { color: '#c9b6ff', ear: 'bear', eye: 'happy', body: '#fff3b8', blush: '#ffa3b5' }, ASSIST = { color: '#a8e6cf', ear: 'tool', eye: 'big', body: '#e8f4ff', blush: '#ffc27a' };
+const GRAY = { color: '#c4c4c4', body: '#e0e0e0', blush: '#cfcfcf' }, RING = new THREE.MeshBasicMaterial({ color: '#ff7eb6' });
+const spot = new THREE.Mesh(G.cyl, new THREE.MeshBasicMaterial({ color: '#fff6b0', transparent: true, opacity: .55, depthWrite: false })); spot.scale.set(1.1, .02, 1.1); spot.position.y = .02; stage.add(spot);
+let dancers = {}; // key：teacher / assist / 玩家 id。{ g, c, look, name, scale, arm: { L, R }, raise: { side, at }, sad, st, lastH }
+function makeDancer(x, y, z, scale, look, name) {
+  const g = new THREE.Group(); g.position.set(x, y, z); stage.add(g);
+  const d = { g, c: null, look, name, scale, arm: { L: .5, R: .5 }, raise: null, sad: 0, st: '', lastH: null };
+  dress(d, ''); return d;
+}
+// st：''、'淘汰'、'離開'。重做角色：淘汰與離開的人變灰，名字旁標狀態
+function dress(d, st) {
+  if (d.c) d.g.remove(d.c.root);
+  d.st = st; d.c = makeCritter(st ? { ...d.look, ...GRAY } : d.look); addNameTag(d.c, st ? `${d.name}・${st}` : d.name); d.c.root.scale.setScalar(d.scale); d.g.add(d.c.root);
+}
+const lookOf = p => ({ color: p.look?.color || Core.COLORS[p.id % Core.COLORS.length], ear: p.look?.ear || 'be', eye: p.look?.eye || 'dot', body: p.look?.body || '#fffdf7', blush: p.look?.blush || '#ffa3b5' });
+const preview = () => buildStage([{ id: 0, name: '你', look: setup }], 0);
+// players：快照的 players（含 name、look、bot）；myId：自己的 id，觀戰是 null
+function buildStage(players, myId) {
+  for (const d of Object.values(dancers)) stage.remove(d.g);
+  const solo = players.length < 2, n = players.length, gap = 1.8, back = solo ? 0 : .35;
+  dancers = { teacher: makeDancer(solo ? -2.6 : -1.45, back, solo ? 0 : -1.5, 1.35, TEACHER, '老師'), assist: makeDancer(solo ? 0 : 1.45, back, solo ? 0 : -1.5, 1.35, ASSIST, '助教') };
+  players.forEach((p, i) => {
+    const me = p.id === myId, d = dancers[p.id] = makeDancer(solo ? 2.6 : (i - (n - 1) / 2) * gap, 0, solo ? 0 : 2.6, solo ? 1.35 : 1.1, lookOf(p), solo ? '你' : me ? `${p.name}（你）` : (p.bot ? '🤖' : '') + p.name);
+    if (me && !solo) { const r = new THREE.Mesh(G.cyl, RING); r.scale.set(.75, .03, .75); r.position.y = .02; d.g.add(r); } // 自己腳下的粉紅光圈
+  });
+  riser.visible = !solo; halfW = solo ? 3.4 : Math.max(1.45, (n - 1) / 2 * gap) + .9; front = solo ? 0 : 2.6;
+  floor.scale.set(solo ? 4.6 : Math.max(3.4, halfW + .8), .3, solo ? 2.2 : 3.4); floor.position.z = solo ? 0 : .4;
+  resize();
+}
+const meD = () => V && V.myId != null ? dancers[V.myId] : null;
+// 快照裡每人的狀態與最近一次舉手（h：[side, g.t]）；時間變了就讓台上那人舉手、輕啾一聲。自己的舉手在按下時已經畫過
+function syncDancers(players, gt) {
+  for (const p of players) {
+    const d = dancers[p.id]; if (!d) continue;
+    const st = p.l ? '離開' : p.o ? '淘汰' : '';
+    if (st !== d.st) { dress(d, st); if (st) d.sad = 1; }
+    if (!p.h || p.h[1] === d.lastH) continue;
+    d.lastH = p.h[1];
+    if (p.id !== V.myId && !st) { d.raise = { side: p.h[0], at: gt }; SFX.chirp(p.h[0], 0, .12); }
+  }
+}
+// 示範的人：拍點過後 0.6 拍內舉著那隻手
+function demoSide(times, moves, gt, beat) { for (let i = times.length - 1; i >= 0; i--) if (gt >= times[i]) return gt - times[i] < beat * .6 ? moves[i] : null; return null; }
+function animate(dt, t, gt, R) {
+  const bp = R ? (gt - R.start) / R.beat : t * 2, ph = bp - Math.floor(bp), bounce = R && gt >= Core.LEAD ? Math.sin(ph * Math.PI) : 0, turn = R ? Core.turnOf(R, gt) : 'ready';
+  for (const [key, d] of Object.entries(dancers)) {
+    animateCritter(d.c, dt, t, false);
+    const demo = key === 'teacher' || key === 'assist', side = !R ? null : demo ? demoSide(R[key], R.moves, gt, R.beat) : (d.raise && gt - d.raise.at < R.beat * .6 ? d.raise.side : null);
+    d.c.pivot.position.y = bounce * .18 * (1 - d.sad) - d.sad * .15; // 淘汰：矮下去、垂頭、歪一邊
+    d.c.pivot.rotation.x = d.sad * .4;
+    d.c.root.rotation.z = (Math.floor(bp) % 2 ? 1 : -1) * bounce * .06 * (1 - d.sad) + d.sad * .5;
+    for (const a of d.c.arms) { const s = a.userData.side < 0 ? 'L' : 'R', want = side === s ? 2.7 : .5; d.arm[s] += (want - d.arm[s]) * Math.min(1, dt * 22); a.rotation.z = a.userData.side * d.arm[s]; } // 畫面左邊那隻是左手（像照鏡子）
+  }
+  // 聚光燈：示範時照老師或助教，換玩家時照整排玩家
+  const on = turn === 'teacher' || turn === 'assist' ? [dancers[turn]] : turn === 'you' ? Object.entries(dancers).filter(([k]) => k !== 'teacher' && k !== 'assist').map(e => e[1]) : [];
+  spot.visible = on.length > 0; if (!on.length) return;
+  const xs = on.map(d => d.g.position.x), k = Math.min(1, dt * 12), w = (Math.max(...xs) - Math.min(...xs)) / 2 + 1.1, p = on[0].g.position;
+  spot.position.x += ((Math.max(...xs) + Math.min(...xs)) / 2 - spot.position.x) * k; spot.position.z += (p.z - spot.position.z) * k; spot.position.y = p.y + .02; spot.scale.x += (w - spot.scale.x) * k;
+}
+
+/* ---------- 一局 ---------- */
+// V：{ seed, myId, info, g0, ended, out }。L：本機規則（單人時是整局；連線時只判自己的舉手，讓結果立刻出來，名次以伺服器為準）
+let V = null, L = null, playing = false, mode = 'online';
+// now：觀戰中途進來時現在的快照（舉手時間從這裡開始算，不補播之前的節拍聲）
+function startView(snap, myId, g0, now = snap) {
+  V = { seed: snap.seed, myId, info: snap.players, g0, ended: false, out: false };
+  if (mode === 'online') L = myId != null ? Core.createGame({ seed: snap.seed, humans: [{ uid: 'me', name: '你' }], bots: false, late: 0 }) : null;
+  cue = now.t - .001; plans.clear();
+  buildStage(snap.players, myId);
+  for (const p of now.players) if (dancers[p.id]) dancers[p.id].lastH = p.h?.[1] ?? null;
+  $('team').innerHTML = snap.players.map(p => `<div class="tm box" data-id="${p.id}"><i style="background:${p.look?.color || Core.COLORS[p.id]}"></i>${esc((p.bot ? '🤖' : '') + p.name)}<b></b></div>`).join('');
+  $('team').style.display = snap.players.length < 2 ? 'none' : '';
+  $('lobbyScreen').hidden = $('endScreen').hidden = true; playing = true;
+}
+// 現在是第幾秒（g.t 的時間軸）：單人看本機規則；連線用對時後的伺服器時鐘
+const sync = createClock(), ping = pinger();
+const gameNow = local => mode === 'offline' ? L.t + (local - L.wall) : sync.serverNow(local) - V.g0;
+function hand(side, local) {
+  if (!V || V.ended || !playing || V.myId == null || !L || V.out) return; // 觀戰與淘汰後不能按
+  const gt = gameNow(local); meD().raise = { side, at: gt };
+  SFX.chirp(side);
+  if (mode === 'online') { if (sync.offset == null) return; net.send({ t: 'hand', side, at: Math.round((gt + V.g0) * 1000) }); }
+  if (gt > L.t) { onLocal(Core.step(L, gt - L.t)); if (mode === 'offline') L.wall = local; }
+  const r = Core.press(L, 0, side, gt); if (r === 'ok') haptic.hit(); else if (r) onLocal([{ type: 'out', id: 0, why: r }]);
+}
+// 本機規則的事件：自己淘汰、過關（連線時名次與結算看伺服器）
+function onLocal(evs) {
+  for (const e of evs) {
+    if (e.type === 'out' && e.id === 0 && !V.out) { V.out = true; meD().sad = 1; SFX.thud(); haptic.out(); toast(['淘汰！', WHY[e.why], mode === 'online' && '觀戰中'].filter(Boolean).join(' '), 2000); }
+    else if (e.type === 'clear' && e.ids.includes(0)) { SFX.clear(); toast(`第 ${e.r} 回合過關！`, 900); }
+    else if (e.type === 'end' && mode === 'offline') showEnd(e.result);
+  }
+}
+function onEvents(evs) {
+  for (const e of evs || []) {
+    if (e.type === 'go') toast('開始！看老師示範', 1000);
+    else if (e.type === 'out' && e.id !== V.myId) toast(`${V.info[e.id]?.name || '玩家'} 淘汰（${WHY[e.why] || ''}）`, 1200);
+    else if (e.type === 'left') toast(`${V.info[e.id]?.name || '玩家'} 離開了`, 1400);
+    else if (e.type === 'end') showEnd(e.result);
+  }
+}
+function hud(players, gt) {
+  const r = Core.roundAt(gt), R = planOf(V.seed, r), turn = gt < Core.LEAD ? 'ready' : Core.turnOf(R, gt);
+  $('round').textContent = `第 ${r} 回合・${R.bpm} BPM`;
+  const alive = players.filter(p => !p.o && !p.l).length; $('alive').textContent = `存活 ${alive}/${players.length}`;
+  const watching = mode === 'online' && (V.myId == null || V.out) && !V.ended;
+  $('watch').style.display = watching ? '' : 'none'; document.body.classList.toggle('watching', watching);
+  const t = $('turn'), you = turn === 'you'; t.textContent = you && (V.out || V.myId == null) ? '玩家照做' : TURN[turn]; t.classList.toggle('you', you && !V.out && V.myId != null);
+  $('team').querySelectorAll('.tm').forEach(el => { const p = players.find(q => q.id === +el.dataset.id); el.classList.toggle('me', +el.dataset.id === V.myId); el.classList.toggle('gone', !!(p?.o || p?.l)); el.querySelector('b').textContent = !p ? '' : p.l ? '離開' : p.o ? '淘汰' : `過 ${p.s}`; });
+  return R;
+}
+function showEnd(r) {
+  if (!V || V.ended) return; V.ended = true;
+  const me = r.players.find(p => p.id === V.myId);
+  $('endTitle').textContent = mode === 'offline' ? `過了 ${me?.score ?? 0} 回合` : me ? `第 ${me.rank} 名` : '結算';
+  $('endSub').textContent = `跳到第 ${r.rounds} 回合${V.myId == null ? '（觀戰）' : ''}`;
+  $('endRes').innerHTML = r.players.map(p => `<li><span>${p.rank}. ${esc((p.bot ? '🤖' : '') + p.name)}${p.id === V.myId ? '（你）' : ''}${p.out ? '（離開）' : ''}<br><small>過 ${p.score} 回合${p.why ? `・${WHY[p.why]}` : ''}</small></span><span>${mode === 'online' && !p.bot ? `${p.points} 分` : ''}</span></li>`).join('');
+  setTimeout(() => { $('endScreen').hidden = false; }, 900); if (me?.rank === 1 && r.players.length > 1) haptic.win(); net.wantIn = false;
+  $('againBtn').textContent = mode === 'offline' ? '再玩一局' : '加入下一局';
+  document.body.classList.remove('watching');
+}
+$('againBtn').addEventListener('click', () => { $('endScreen').hidden = true; playing = false; V = null; if (mode === 'offline') return startOffline(); net.watch = false; net.wantIn = true; sendJoin(); showLobby(); });
+
+/* ---------- 輸入：← → 方向鍵、滑鼠左右鍵、手機下方兩顆大鍵；送出的是舉手那一刻的時間 ---------- */
+const KEYS = { arrowleft: 'L', arrowright: 'R' };
+addEventListener('keydown', e => { const s = KEYS[e.key.toLowerCase()]; if (!s) return; e.preventDefault(); if (!e.repeat) hand(s, e.timeStamp / 1000); });
+$('scene').addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse' || (e.button !== 0 && e.button !== 2)) return; e.preventDefault(); hand(e.button === 0 ? 'L' : 'R', e.timeStamp / 1000); });
+addEventListener('contextmenu', e => { if (!e.target.closest('.screen')) e.preventDefault(); });
+for (const b of $('pad').querySelectorAll('button')) {
+  const up = () => b.classList.remove('on');
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('on'); hand(b.dataset.s, e.timeStamp / 1000); });
+  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+}
+
+/* ---------- 提示 ---------- */
+let toastT = 0; function toast(m, ms = 1600) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
+
+/* ---------- 連線 ---------- */
+const net = { ws: null, tries: 0, opened: false, wantIn: true, me: null, lobby: null, lastJoin: 0, snap: null,
+  send(o) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } };
+const inLobby = () => !!net.lobby?.players.some(p => p.uid === net.me);
+const sendJoin = () => net.send({ t: 'join', color: setup.color, ear: setup.ear, eye: setup.eye, body: setup.body, blush: setup.blush });
+function lobbyStatus(t) { $('lobbyStatus').textContent = t; }
+function connect() {
+  const url = WORKER_URL.replace(/\/$/, '').replace(/^http/, 'ws') + '/dance/ws?' + ID.query;
+  let ws; try { ws = new WebSocket(url); } catch { return lobbyStatus('連不上遊戲伺服器，請稍後再試'); }
+  net.ws = ws; ws.onopen = () => { net.tries = 0; net.opened = true; };
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m); };
+  ws.onclose = e => {
+    if (net.ws !== ws || mode === 'offline') return;
+    if (e.code === 4000) return lobbyStatus('你在其他視窗開了遊戲，這裡已斷線');
+    if (e.code === 4001) { lobbyStatus('閒置超過 10 分鐘，已離開房間。點一下畫面重新加入'); const back = () => { removeEventListener('keydown', back); removeEventListener('pointerdown', back); net.tries = 0; connect(); }; addEventListener('keydown', back); addEventListener('pointerdown', back); return; }
+    net.tries++; if (!net.opened && net.tries >= 4) return lobbyStatus('連不上遊戲伺服器，請稍後再試');
+    lobbyStatus('連線中斷，重新連線中…'); setTimeout(connect, Math.min(5000, 400 * 2 ** net.tries));
+  };
+}
+function tryJoin() { if (!net.wantIn || inLobby() || Date.now() - net.lastJoin < 1500) return; const Lb = net.lobby; if (Lb && (Lb.phase === 'play' || Lb.players.length >= Lb.max)) return; net.lastJoin = Date.now(); sendJoin(); }
+function onNet(m) {
+  const local = performance.now() / 1000;
+  if (m.t === 'hello') { net.me = m.you; if (m.phase !== 'play') { net.live = null; net.lastJoin = 0; tryJoin(); } }
+  else if (m.t === 'lobby') { net.lobby = m; renderLobby(); tryJoin(); }
+  else if (m.t === 'start') {
+    // 有位子的人直接開局；沒位子（開局後才進來、房間滿、沒加入）先留在大廳，按「觀戰這局」才看。已在觀戰的人自動看下一局
+    sync.reset(); sync.sample(m.at / 1000, local); net.snap = m.s; net.live = { s: m.s, g0: m.at / 1000 - m.s.t };
+    if (m.me != null || (net.watch && (!V || V.ended))) { startView(m.s, m.me, net.live.g0); toast(m.me == null ? '觀戰中' : '準備！先看老師示範', 1800); } else renderLobby();
+  }
+  else if (m.t === 's') { sync.sample(m.at / 1000, local); net.snap = m.s; if (m.s.over && net.live) { net.live = null; renderLobby(); } if (V) onEvents(m.ev); }
+  else if (m.t === 'pong') sync.pong(m.at, local);
+  else if (m.t === 'note') { toast(m.text, 2000); lobbyStatus(m.text); }
+}
+function showLobby() { if ($('endScreen').hidden && !playing) $('lobbyScreen').hidden = false; renderLobby(); }
+function renderLobby() {
+  const Lb = net.lobby; if (!Lb) return; const slots = [];
+  for (let i = 0; i < Lb.max; i++) { const p = Lb.players[i]; slots.push(p ? `<li><span><i style="background:${p.color || '#fff'}"></i>${esc(p.name)}${p.uid === net.me ? '（你）' : ''}</span><span>已加入</span></li>` : `<li class="empty"><span><i></i>空位</span><span>開局時由電腦補上</span></li>`); }
+  $('slots').innerHTML = slots.join('');
+  lobbyStatus(Lb.phase === 'play' ? '這局進行中，結束後可加入（可先觀戰）' : Lb.phase === 'end' ? `上一局結算中，${Lb.endIn} 秒後開放新局` : Lb.players.length >= (Lb.min || 2) ? `${Lb.countdown} 秒後開局（滿 ${Lb.max} 人立即開始）` : Lb.players.length ? `還差 ${(Lb.min || 2) - Lb.players.length} 人才開局，也可以先玩單人` : `等待玩家加入（至少 ${Lb.min || 2} 人）`);
+  $('watchBtn').hidden = !net.live || (!!V && !V.ended);
+  const joined = inLobby(); $('joinBtn').textContent = joined ? '離開' : '加入連線'; $('joinBtn').disabled = !joined && (Lb.phase === 'play' || Lb.players.length >= Lb.max);
+  if (!playing && $('endScreen').hidden) $('lobbyScreen').hidden = false;
+}
+$('watchBtn').addEventListener('click', () => { if (!net.live || !net.snap) return; net.watch = true; ensureAudio(); startView(net.live.s, null, net.live.g0, net.snap); toast('觀戰中', 1500); });
+$('joinBtn').addEventListener('click', () => { if (inLobby()) { net.wantIn = false; net.send({ t: 'leave' }); } else { net.wantIn = true; net.lastJoin = 0; tryJoin(); } });
+function applyAppearance(a) { Object.assign(setup, { color: a.color, ear: a.ear, eye: a.eye, body: a.body, blush: a.blush }); if (inLobby()) sendJoin(); }
+$('avatarBtn').addEventListener('click', async () => { const a = await openAvatarPicker({ initial: setup }); if (a) applyAppearance(a); });
+
+/* ---------- 單人（本機執行，不連線，沒有電腦，跳到失誤為止） ---------- */
+function startOffline() {
+  mode = 'offline'; if (inLobby()) net.send({ t: 'leave' }); try { net.ws?.close(); } catch {} net.wantIn = false; ensureAudio();
+  L = Core.createGame({ seed: (Math.random() * 2 ** 32) >>> 0, humans: [{ uid: 'me', name: '你', ...setup }], bots: false, late: 0 }); L.wall = performance.now() / 1000;
+  startView(Core.snapshot(L), 0, 0); toast('準備！先看老師示範', 1800);
+}
+$('soloBtn').addEventListener('click', startOffline);
+$('beatBtn').addEventListener('click', e => { audio.metro = !audio.metro; e.currentTarget.textContent = audio.metro ? '♩ 開' : '♩ 關'; e.currentTarget.setAttribute('aria-pressed', audio.metro); e.currentTarget.blur(); });
+
+/* ---------- 主迴圈 ---------- */
+const clock = new THREE.Clock();
+function tick() {
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime, local = performance.now() / 1000;
+  if (mode === 'online' && net.ws) ping(local, o => net.send(o));
+  let gt = null, players = null;
+  if (V && mode === 'offline' && L) {
+    const evs = Core.step(L, local - L.wall); L.wall = local; gt = L.t; players = Core.snapshot(L, { full: false }).players;
+    onLocal(evs);
+  } else if (V && net.snap && sync.offset != null) {
+    gt = gameNow(local); players = net.snap.players;
+    if (L && !V.ended && !L.over && gt > L.t) onLocal(Core.step(L, gt - L.t));
+    if (V.myId != null && players[V.myId]?.o && !V.out) onLocal([{ type: 'out', id: 0 }]); // 伺服器判淘汰為準
+  }
+  let R = null;
+  if (V && gt != null) { R = hud(players, gt); syncDancers(players, gt); if (playing && !V.ended) scheduleCues(V.seed, gt); }
+  animate(dt, t, gt ?? 0, gt != null && gt >= Core.LEAD ? R : null);
+  renderer.render(scene, camera); requestAnimationFrame(tick);
+}
+window.BubbleDance = { get v() { return V; }, get L() { return L; }, get mode() { return mode; }, get dancers() { return dancers; }, net, Core };
+preview();
+(async () => {
+  if (loginErr) toast(LOGIN_ERRORS[loginErr] || `登入失敗（${loginErr}）`, 2600);
+  if (!ID && !inTelegram) ID = await openLogin({ required: true, title: '歡迎！選擇身分', soloLabel: '' });
+  const a = await loadAppearance() || await openAvatarPicker({ required: true, title: '先選你的小傢伙', note: '還沒設定過外觀。選好後會記住，之後可以在遊戲大廳更換。' });
+  applyAppearance(a); if (!V) preview();
+  if (new URLSearchParams(location.search).get('mode') === 'solo') return startOffline();
+  if (!ID) { lobbyStatus('需要登入才能連線，也可以先玩單人'); } else { lobbyStatus(ID.guest ? '連線中…（訪客：成績不計入總積分榜）' : '連線中…'); connect(); }
+})();
+tick();
+</script>
+</body>
+</html>

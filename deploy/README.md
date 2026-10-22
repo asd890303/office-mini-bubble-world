@@ -18,7 +18,7 @@
 3. 回根目錄執行 `npm run deploy`。
 4. 照下一節設定 BotFather。
 
-部署會依 `wrangler.toml` 建立八個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）、`RunRoom`（泡泡跑跑，migration v5）、`SurviveRoom`（泡泡倖存者，migration v6）、`PartyRoom`（泡泡派對，migration v7）、`TogetherRoom`（泡泡Together，migration v8）。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
+部署會依 `wrangler.toml` 建立九個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）、`RunRoom`（泡泡跑跑，migration v5）、`SurviveRoom`（泡泡倖存者，migration v6）、`PartyRoom`（泡泡派對，migration v7）、`TogetherRoom`（泡泡Together，migration v8）、`DanceRoom`（泡泡跳舞機，migration v9）。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
 
 ## 房間的機房位置（約 3 分鐘）
 

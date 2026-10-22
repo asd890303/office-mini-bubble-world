@@ -18,7 +18,27 @@
 3. 回根目錄執行 `npm run deploy`。
 4. 照下一節設定 BotFather。
 
-部署會依 `wrangler.toml` 建立六個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）、`RunRoom`（泡泡跑跑，migration v5）、`SurviveRoom`（泡泡倖存者，migration v6）。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
+部署會依 `wrangler.toml` 建立八個 Durable Object：`GameRoom`（泡泡碰碰島，migration v1）、`LobbyRoom`（大廳，migration v2）、`KartRoom`（泡泡賽車，migration v3）、`ArtilleryRoom`（泡泡砲戰，migration v4）、`RunRoom`（泡泡跑跑，migration v5）、`SurviveRoom`（泡泡倖存者，migration v6）、`PartyRoom`（泡泡派對，migration v7）、`TogetherRoom`（泡泡Together，migration v8）。`BOT_TOKEN` 存在 Cloudflare，之後部署不會覆蓋它。總積分存在 `LobbyRoom` 的儲存空間，重新部署不會清掉。
+
+## 房間的機房位置（約 3 分鐘）
+
+下一步：部署後執行 `node deploy/ping.mjs https://<Worker 網址>`，約 10 秒，看每個房間的往返延遲。
+
+Durable Object 第一次被呼叫時，建在呼叫者附近的機房，之後不會搬。2026-10-21 實測，舊房間（名稱 `main`）除了泡泡賽車都在離台北約 140 ms 的機房，連線對戰明顯卡頓。現在的設定在 `apps/worker/worker.js` 開頭：
+
+- 遊戲房間用 `ROOM_NAME`（`apac-1`），指定建在亞太（`locationHint: 'apac'`）。房間不存資料，換名字只是開新房間。
+- 泡泡賽車沿用 `KART_NAME`（`main`），實測約 30 ms。
+- 大廳用 `LOBBY_NAME`（`apac-1`）。新大廳第一次被呼叫時，從 `LOBBY_FROM`（`main`）複製全部積分與紀錄。複製失敗時大廳回 503，下一個請求自動重試。舊大廳的資料不刪。
+
+部署這版後確認（約 3 分鐘）：
+
+1. 打開大廳，走到總積分看板，確認積分和各遊戲紀錄都在。
+2. 執行 `node deploy/ping.mjs https://<Worker 網址>`。
+3. 房間比「邊緣節點」多 30 ms 以內就正常。
+4. 某個遊戲房間多很多：把 `ROOM_NAME` 改成 `apac-2` 重新部署，再量一次。不要改 `LOBBY_NAME`，大廳會從 `main` 重新複製，蓋掉之後的積分。
+5. 要退回舊版：舊版讀 `main` 大廳，`apac-1` 上線後新增的積分不會出現。
+
+要再搬一次大廳：先把 `LOBBY_FROM` 改成目前的 `LOBBY_NAME`，再把 `LOBBY_NAME` 換新名字。
 
 ## 開啟網頁版 Telegram 登入（約 5 分鐘）
 
@@ -101,6 +121,7 @@ Telegram 的 CloudStorage 依 bot 分開存。玩家換 bot 開啟時，外觀�
 
 - `wrangler.toml`：Worker 名稱、Durable Object 綁定、migration。
 - `build.mjs`：把大廳、共用檔案、遊戲頁面和 Worker 程式打包成 `dist/worker.bundle.js`。
+- `ping.mjs`：量每個房間的往返延遲，部署後確認房間建在附近的機房。
 - `dist/`：build 的輸出，由程式產生，不進 git。
 
 ## 現在做

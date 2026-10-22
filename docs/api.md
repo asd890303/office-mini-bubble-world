@@ -28,7 +28,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 
 ## WebSocket
 
-連線時沒有身分回 401；不是 WebSocket 升級請求回 426；設了 `ALLOWED_ORIGIN` 而 Origin 不符回 403。每個房間只有一個實例（`main`）。
+連線時沒有身分回 401；不是 WebSocket 升級請求回 426；設了 `ALLOWED_ORIGIN` 而 Origin 不符回 403。每個房間只有一個實例：泡泡賽車用 `main`，其他房間和大廳用 `apac-1`，建在亞太機房（見 `deploy/README.md` 的「房間的機房位置」）。
 
 | 路徑 | 房間 | 說明 |
 |---|---|---|
@@ -47,11 +47,11 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 |---|---|---|
 | 客戶端送出 | `{t:'join', color, ear, eye, body, blush, ...}` | 加入等待區；砲戰可帶 `team`、`seat`；賽車可帶 `shape`（車子造型）、`rperk`（競速能力）、`iperk`（道具能力），不合法的值不採用，沒帶就沿用上次 |
 | 客戶端送出 | `{t:'leave'}` | 離開等待區 |
-| 客戶端送出 | `{t:'ping', at}` | 保活，伺服器回 `pong` |
+| 客戶端送出 | `{t:'ping', at}` | 保活與量往返延遲（遊戲頁每 2 秒一次），伺服器原樣回 `pong` |
 | 伺服器送出 | `{t:'hello', you, name, phase, me, result}` | 連上後第一則 |
 | 伺服器送出 | `{t:'lobby', phase, players, max, min, countdown, ...}` | 等待區狀態，約每 0.5 秒 |
-| 伺服器送出 | `{t:'start', me, s}` | 開局或晚加入，`s` 是完整快照 |
-| 伺服器送出 | `{t:'s', s, ev}` | 每 50 毫秒一則快照與事件 |
+| 伺服器送出 | `{t:'start', me, s, k, at}` | 開局或晚加入，`s` 是完整快照 |
+| 伺服器送出 | `{t:'s', s, ev, k, at}` | 每 50 毫秒一則快照與事件（倖存者每 100 毫秒）。`k` 是這局第幾步，`at` 是這一步的伺服器時鐘（毫秒）。客戶端照 `at` 排快照、對時，不看封包幾時到 |
 | 伺服器送出 | `{t:'pong', at}` | 回應 ping |
 | 伺服器送出 | `{t:'note', text}` | 提示文字 |
 
@@ -74,7 +74,7 @@ WebSocket 把它接在網址後面：`wss://<Worker 網址>/artillery/ws?auth=..
 | 客戶端送出 | `{t:'ping', at}` | 保活 |
 | 客戶端送出 | `{t:'playing', game}` | 進遊戲前送出（`bubble`、`kart`、`artillery`、`run`、`survive`、`party`、`together`）。連線斷開後角色留在原地，標示「遊戲中」，最長 10 分鐘，回大廳就清除 |
 | 伺服器送出 | `{t:'hello', you, W, H}` | 連上後第一則，含大廳尺寸 |
-| 伺服器送出 | `{t:'snap', players}` | 所有人的位置；遊戲中的人多一個 `st:'play'` |
+| 伺服器送出 | `{t:'snap', at, players}` | 所有人的位置；`at` 是伺服器時鐘（毫秒），每人的 `ts` 是最後一次回報位置的伺服器時鐘（沒動過是 0）；遊戲中的人多一個 `st:'play'` |
 | 伺服器送出 | `{t:'rooms', rooms}` | 各遊戲房間狀態（等待、選地圖、比賽中、結算中） |
 
 ### 掛機踢除

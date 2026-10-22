@@ -298,18 +298,83 @@ const setup = { color: Core.COLORS[0], ear: 'be', eye: 'dot' };
 
 /* ---------- 音效 ---------- */
 let muted = store.get('kt-muted') === '1', actx = null;
+const ctx = () => (actx ||= new (window.AudioContext || window.webkitAudioContext)());
 function tone(freq, dur = .12, type = 'sine', vol = .14, slide = 0) {
   if (muted) return;
   try {
-    actx ||= new AudioContext(); const t = actx.currentTime, o = actx.createOscillator(), gn = actx.createGain();
+    ctx(); const t = actx.currentTime, o = actx.createOscillator(), gn = actx.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
     gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(.001, t + dur); o.connect(gn).connect(actx.destination); o.start(t); o.stop(t + dur);
   } catch {}
 }
-// boost(level)：漂移加速的音高跟著火花段數往上（藍 1、橘 2、粉 3；起跑加速是 0）
-const sfx = { beep: () => tone(520, .14, 'square', .08), go: () => tone(880, .3, 'square', .1), item: () => { tone(660, .08); setTimeout(() => tone(990, .1), 70); }, use: () => tone(420, .12, 'triangle', .12, 200), hit: () => tone(220, .3, 'sawtooth', .1, -120), boost: (level = 1) => tone(260 + level * 70, .3 + level * .05, 'triangle', .12, 420 + level * 140), lap: () => { tone(700, .1); setTimeout(() => tone(1050, .15), 90); }, bump: () => tone(120, .08, 'square', .06), block: () => { tone(880, .06, 'sine', .1); setTimeout(() => tone(1320, .12, 'sine', .08), 50); } };
+// 音效檔：加速、倒數、背景音樂（來源與授權見 assets/audio/CREDITS.md）。檔案還沒載好或載入失敗時，改用上面的合成音
+const AUDIO = './assets/audio/', VOL = { boost: .5, countdown: .6, bgm: .3 };
+const CD_GO = 1.915; // 倒數音檔第 1.915 秒是「GO」：剩餘倒數等於這個值時開始播，GO 剛好落在開跑
+const BGM_IN = 2.5, BGM_OUT = 1.5; // 背景音樂淡入、淡出秒數
+const clips = {}; // 名稱 → AudioBuffer
+function loadClip(name, file) {
+  try {
+    fetch(AUDIO + file).then(r => (r.ok ? r.arrayBuffer() : Promise.reject(r.status)))
+      .then(b => new Promise((ok, no) => ctx().decodeAudioData(b, ok, no))).then(buf => { clips[name] = buf; }).catch(() => {});
+  } catch {}
+}
+function playClip(name, vol, { offset = 0, rate = 1 } = {}) {
+  const buf = clips[name]; if (muted || !buf) return null;
+  try {
+    const c = ctx(), src = c.createBufferSource(), gn = c.createGain();
+    src.buffer = buf; src.playbackRate.value = rate; gn.gain.value = vol; src.connect(gn).connect(c.destination); src.start(0, Math.min(offset, buf.duration)); return src;
+  } catch { return null; }
+}
+loadClip('boost', 'sfx-boost.mp3'); loadClip('countdown', 'sfx-countdown.mp3');
+// 背景音樂用 <audio> 播（整首解碼成 AudioBuffer 太吃記憶體）；先整檔抓成 blob，Safari 才不需要伺服器支援分段下載。音量走 GainNode，iOS 也能淡入淡出
+const bgm = { el: null, gain: null, on: false, primed: false, stopT: 0 };
+function bgmInit() {
+  if (bgm.el) return;
+  const el = bgm.el = new Audio(); el.loop = true; el.preload = 'auto';
+  try { bgm.gain = ctx().createGain(); bgm.gain.gain.value = 0; ctx().createMediaElementSource(el).connect(bgm.gain).connect(ctx().destination); } catch { bgm.gain = null; }
+  fetch(AUDIO + 'bgm-dizzy-racing.mp3').then(r => (r.ok ? r.blob() : Promise.reject(r.status))).then(b => { el.src = URL.createObjectURL(b); if (bgm.on) el.play().catch(() => {}); }).catch(() => {});
+}
+function bgmFade(to, sec) {
+  if (bgm.gain) { const g = bgm.gain.gain, t = ctx().currentTime; g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(to, t + sec); }
+  else if (bgm.el) bgm.el.volume = to; // 沒有 Web Audio 時只能直接設音量
+}
+// 開跑時從頭播，音量從 0 淡入
+function bgmStart() {
+  if (muted) return; bgmInit(); clearTimeout(bgm.stopT);
+  if (!bgm.on) { bgm.on = true; try { bgm.el.currentTime = 0; } catch {} bgmFade(0, 0); }
+  if (bgm.el.src) bgm.el.play().catch(() => {});
+  bgmFade(VOL.bgm, BGM_IN);
+}
+function bgmStop(sec = BGM_OUT) {
+  if (!bgm.on) return; bgm.on = false; bgmFade(0, sec); clearTimeout(bgm.stopT);
+  bgm.stopT = setTimeout(() => { if (!bgm.on) bgm.el.pause(); }, sec * 1000 + 50);
+}
+bgmInit();
+// 瀏覽器和 Telegram 要等玩家點一下才准出聲：第一次點擊時喚醒 AudioContext，並先無聲播放、暫停一次背景音樂
+function unlockAudio() {
+  try { if (ctx().state !== 'running') ctx().resume().catch(() => {}); } catch {}
+  const el = bgm.el; if (!el?.src) return;
+  if (bgm.on) { if (el.paused && !document.hidden && !paused) el.play().catch(() => {}); return; } // 開跑時還沒點過畫面：這次點擊補播
+  if (bgm.primed) return; bgm.primed = true;
+  el.play().then(() => { if (!bgm.on) el.pause(); }).catch(() => { bgm.primed = false; });
+}
+for (const t of ['pointerdown', 'touchend', 'keydown']) addEventListener(t, unlockAudio, { capture: true, passive: true });
+document.addEventListener('visibilitychange', () => { if (!bgm.el) return; if (document.hidden) bgm.el.pause(); else if (bgm.on && !paused) bgm.el.play().catch(() => {}); });
+let boostSrc = null, cdSrc = null;
+const BOOST_ITEMS = new Set(['shoe', 'nitro', 'rocket']); // 用了會加速的道具：氮氣鞋、競速賽氮氣、泡泡火箭
+function stopCdClip() { try { cdSrc?.stop(); } catch {} cdSrc = null; }
+function boostClip(level) {
+  try { boostSrc?.stop(); } catch {}
+  boostSrc = playClip('boost', VOL.boost, { rate: 1 + level * .05 }); return !!boostSrc;
+}
+// boost(level)：漂移加速的音高跟著火花段數往上（藍 1、橘 2、粉 3；起跑加速與加速道具是 0，尾流是 1）
+const sfx = { beep: () => tone(520, .14, 'square', .08), go: () => tone(880, .3, 'square', .1), item: () => { tone(660, .08); setTimeout(() => tone(990, .1), 70); }, use: () => tone(420, .12, 'triangle', .12, 200), hit: () => tone(220, .3, 'sawtooth', .1, -120), boost: (level = 1) => { if (!boostClip(level)) tone(260 + level * 70, .3 + level * .05, 'triangle', .12, 420 + level * 140); }, lap: () => { tone(700, .1); setTimeout(() => tone(1050, .15), 90); }, bump: () => tone(120, .08, 'square', .06), block: () => { tone(880, .06, 'sine', .1); setTimeout(() => tone(1320, .12, 'sine', .08), 50); } };
 $('mute').textContent = muted ? '音效 關' : '音效 開';
-$('mute').addEventListener('click', () => { muted = !muted; store.set('kt-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開'; });
+$('mute').addEventListener('click', () => {
+  muted = !muted; store.set('kt-muted', muted ? '1' : '0'); $('mute').textContent = muted ? '音效 關' : '音效 開';
+  if (muted) { bgmStop(.3); stopCdClip(); try { boostSrc?.stop(); } catch {} }
+  else if (playing && V?.s.phase === 'race' && !V.s.karts[V.myId]?.done) bgmStart(); // 比賽中打開音效：音樂接著淡入
+});
 
 /* ---------- 場景 ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: $('scene'), antialias: true, alpha: true });
@@ -678,7 +743,7 @@ function disposeView() {
   if (!V) return;
   for (const k of V.karts.values()) { scene.remove(k.root); scene.remove(k.beam); }
   for (const b of V.boxes) scene.remove(b); for (const m of V.shots.values()) scene.remove(m); for (const m of V.haz.values()) scene.remove(m);
-  V = null;
+  V = null; bgmStop(.3); stopCdClip();
 }
 function buildView(s, myId) {
   disposeView(); setTrack(s.track);
@@ -711,9 +776,9 @@ function applySnap(s, evs) {
 function onEvent(e) {
   const me = V?.myId, mine = e.id === me && me != null;
   if (e.e === 'spin' && V?.karts.get(e.id)) V.karts.get(e.id).spin = 1;
-  if (e.e === 'go') { sfx.go(); showCount('GO!'); setTimeout(() => $('count').hidden = true, 700); }
+  if (e.e === 'go') { if (!V?.cdClip) sfx.go(); bgmStart(); showCount('GO!'); setTimeout(() => $('count').hidden = true, 700); }
   else if (e.e === 'item' && mine) { sfx.item(); haptic.tap(); }
-  else if (e.e === 'use') { if (mine) sfx.use(); const t = { shoe: '用了氮氣', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈', rocket: '坐上泡泡火箭', magnet: '拿出磁鐵', big: '變成巨大泡泡' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告；泡泡雲在 foam 事件公告蓋住誰
+  else if (e.e === 'use') { if (mine) BOOST_ITEMS.has(e.kind) ? sfx.boost(0) : sfx.use(); const t = { shoe: '用了氮氣', shield: '張開泡泡盾', jet: '噴出超級水柱', storm: '放出雷雨雲', hot: '丟出燙手泡泡', ghost: '放出小幽靈', rocket: '坐上泡泡火箭', magnet: '拿出磁鐵', big: '變成巨大泡泡' }[e.kind]; if (t) feed(`${who(e.id)} ${t}`, e.id); } // 假道具箱不公告；泡泡雲在 foam 事件公告蓋住誰
   else if (e.e === 'nitro' && mine) { sfx.item(); toast(`氮氣 +1（${e.n}/${Core.NITRO.max}）`, 800); }
   else if (e.e === 'reset' && mine) toast(`${Core.RESET} 秒後回到賽道`, 1000);
   else if (e.e === 'draft' && mine) { sfx.boost(1); haptic.tap(); toast('尾流加速！', 800); }
@@ -731,8 +796,8 @@ function onEvent(e) {
   else if (e.e === 'boost' && mine) { sfx.boost(e.level); haptic.tap(); if (e.chain >= 2) toast(`連噴 ×${e.chain}`, 800); }
   else if (e.e === 'lap' && mine) { const lt = V.s.time - V.lapAt; V.laps.push(lt); V.lapAt = V.s.time; sfx.lap(); toast(`${e.lap === V.s.laps ? '最後一圈！' : `第 ${e.lap} 圈`}　上一圈 ${lt.toFixed(1)} 秒`, 1600); }
   else if (e.e === 'bump' && mine) sfx.bump();
-  else if (e.e === 'finish') { feed(`${who(e.id)} 完賽，第 ${e.place} 名`, e.id); if (mine) { V.laps.push(e.time - V.lapAt); V.lapAt = e.time; haptic.win(); } }
-  else if (e.e === 'end') showEnd(e.result);
+  else if (e.e === 'finish') { feed(`${who(e.id)} 完賽，第 ${e.place} 名`, e.id); if (mine) { V.laps.push(e.time - V.lapAt); V.lapAt = e.time; haptic.win(); bgmStop(); } }
+  else if (e.e === 'end') { bgmStop(); showEnd(e.result); }
 }
 // 道具提示列：所有人都看得到誰用了什麼、誰被誰打中；每則 3.5 秒，最多 4 則
 const who = id => { const k = V?.s.karts[id]; return !k ? '?' : id === V.myId ? '你' : k.name; };
@@ -841,7 +906,10 @@ function updateHud(s, me) {
   $('time').textContent = fmtTime(s.time);
   $('resetBtn').hidden = !(k && s.phase === 'race' && k.st === 'racing' && !k.done); $('pauseBtn').hidden = !canPause();
   if (s.mode === 'speed') { drawNitro(k?.ni || 0, k?.ga || 0); drawSlot2(null); } else { drawSlot(k?.item || null); drawSlot2(k?.i2 || null); }
-  if (s.phase === 'countdown') { const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); sfx.beep(); } }
+  if (s.phase === 'countdown') {
+    const c = Math.ceil(s.cd); if (c !== V.lastCd && c > 0) { V.lastCd = c; showCount(String(c)); if (!clips.countdown) sfx.beep(); } // 有倒數音檔就不放合成嗶聲
+    if (!V.cdClip && clips.countdown && s.cd <= CD_GO) { V.cdClip = true; cdSrc = playClip('countdown', VOL.countdown, { offset: CD_GO - s.cd }); } // 晚進來就從對應的位置接著播
+  }
 }
 
 /* ---------- 單人 ---------- */
@@ -924,6 +992,8 @@ const canPause = () => mode === 'offline' && !!local && playing;
 function setPaused(on) {
   if (on && !canPause()) return;
   paused = on; $('pauseScreen').hidden = !on;
+  if (bgm.on && bgm.el?.src) on ? bgm.el.pause() : bgm.el.play().catch(() => {}); // 暫停時音樂一起停
+  if (on && V?.s.phase === 'countdown') { stopCdClip(); V.cdClip = false; } // 倒數中暫停：繼續時倒數音檔從對應位置重播
   if (!on) return;
   keys.clear(); stickX = 0; driftHeld = gasHeld = false; knob.style.transform = ''; // 叫出選單時放開的鍵收不到 keyup，先全部放開
   $('pauseNote').textContent = `${Core.trackById(V.s.track).name}・${Core.MODES[V.s.mode].label}`;

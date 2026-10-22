@@ -22,6 +22,24 @@ export function collectAssets() {
   return out;
 }
 
+// 音效等二進位檔不內嵌：各遊戲 assets/ 底下的檔案複製到 deploy/dist/public，由 Cloudflare 靜態資產（wrangler.toml 的 [assets]）直接提供
+const STATIC_TYPES = { '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg', '.wav': 'audio/wav', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp' };
+export const PUBLIC_DIR = path.join(ROOT, 'deploy/dist/public');
+// 回傳 { 網址: { type, file（絕對路徑） } }，例如 /kart/assets/audio/sfx-boost.mp3
+export function collectStatic() {
+  const out = {};
+  const walk = (dir, url) => {
+    if (!fs.existsSync(path.join(ROOT, dir))) return;
+    for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+      const type = STATIC_TYPES[path.extname(e.name)];
+      if (e.isDirectory()) walk(`${dir}/${e.name}`, `${url}/${e.name}`);
+      else if (type) out[`${url}/${e.name}`] = { type, file: path.join(ROOT, dir, e.name) };
+    }
+  };
+  for (const g of GAMES) walk(`${g.dir}/assets`, `/${g.id}/assets`);
+  return out;
+}
+
 export const buildHash = text => crypto.createHash('sha256').update(text).digest('hex').slice(0, 12);
 
 // 把一個規則檔（只有 export、不 import 其他檔）包成 const Name = (() => { ...; return { 匯出 }; })();
@@ -49,4 +67,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   fs.mkdirSync(new URL('./dist/', import.meta.url), { recursive: true });
   fs.writeFileSync(new URL('./dist/worker.bundle.js', import.meta.url), `// 自動產生（node deploy/build.mjs），請改 worker.js / 各遊戲原始檔再重新產生\n` + body.replace(BUILD, () => `const BUILD_ID = ${JSON.stringify(buildId)};`));
   console.log('dist/worker.bundle.js ok, build', buildId, ', exports:', counts.join(', '));
+  fs.rmSync(PUBLIC_DIR, { recursive: true, force: true }); fs.mkdirSync(PUBLIC_DIR, { recursive: true }); // 先清空，刪掉的檔案才不會留在線上
+  const files = Object.entries(collectStatic());
+  for (const [url, a] of files) { const to = path.join(PUBLIC_DIR, url); fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(a.file, to); }
+  console.log('dist/public ok,', files.length, 'static files');
 }

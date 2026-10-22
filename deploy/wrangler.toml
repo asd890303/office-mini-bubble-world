@@ -3,6 +3,10 @@ name = "office-mini-bubble-world"
 main = "dist/worker.bundle.js"   # 已內嵌入口頁與各遊戲；改程式後先 npm run build
 compatibility_date = "2025-01-01"
 
+# 音效檔：build.mjs 把各遊戲 assets/ 複製到 dist/public。網址對到檔案就直接回檔案，其他請求才進 Worker
+[assets]
+directory = "dist/public"
+
 # 選填：[vars] GROUP_ID = "<Telegram 群組 id>" 與 secret BOT_TOKEN 都設了，對戰結束才會把名次貼到群組
 # 選填：[vars] ALLOWED_ORIGIN = "https://<你的網址>"：只允許這個網址連線
 

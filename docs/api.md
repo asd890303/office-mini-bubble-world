@@ -2,7 +2,7 @@
 
 下一步：想快速試一個端點，執行 `curl -s https://<Worker 網址>/version`，回傳 `{"v":"..."}` 就代表線上正常，約 10 秒。
 
-這份文件列出 Worker 對外的所有入口、程式往外呼叫的第三方服務，以及頁面載入的外部資源。路由寫在 `apps/worker/worker.js`，新增或修改路徑時一起更新本檔。
+這份文件列出 Worker 對外的所有入口、程式往外呼叫的第三方服務，以及頁面載入的外部資源。路由寫在 `apps/worker/worker.js`，新增或修改路徑時一起更新本檔。新增一款遊戲時，更新總覽、WebSocket、各遊戲專屬訊息、大廳的 `playing` 訊息、單人紀錄、`/board/games` 與靜態頁面這幾張表；步驟見 [`new-game.md`](new-game.md)。
 
 ## 總覽
 

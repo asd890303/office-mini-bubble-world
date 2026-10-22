@@ -229,7 +229,8 @@ async function loadNotice() {
 async function loadBoard() {
   try { const r = await fetch('/board', { cache: 'no-store' }); if (r.ok) { boardData = await r.json(); drawBoard(); renderBoardList(); } } catch {}
 }
-/* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games */
+/* 看板分頁：總積分 / 賽車每條賽道前 3 快 / 泡泡島單場最多擊敗前 3。切到遊戲分頁才讀 /board/games
+   新增遊戲（有紀錄榜才加）：#boardTabs 加按鈕，BOARD_TABS 加一筆，renderGames() 加一行 */
 const BOARD_TABS = { total: { title: '總積分榜', note: '連線對戰才計分，每場依名次給 5、3、2、1 分' }, kart: { title: '賽車紀錄', note: '道具賽・連線和單人普通電腦，每條賽道最快完賽前 3 名' }, bubble: { title: '泡泡島紀錄', note: '單場最多擊敗前 3 名' }, artillery: { title: '砲戰紀錄', note: '單場擊敗對手數前 3 名，不含隊友與自己' }, run: { title: '跑跑紀錄', note: '單場跑最遠前 3 名（公尺與秒數），連線與單人都算' }, together: { title: 'Together 紀錄', note: '全員過關最快前 3 名（秒數與人數），只記連線過關' }, survive: { title: '倖存者紀錄', note: '單場存活最久前 3 名（秒數與擊殺數），連線與單人都算' } };
 let boardTab = 'total', gamesData = null, kartDiff = 'normal', kartMode = 'item'; // 賽車分頁裡可以切換模式（道具賽／競速賽）與電腦難度，各自一份榜
 async function loadGames() {
